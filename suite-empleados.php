@@ -2,12 +2,11 @@
 /**
  * Plugin Name: Suite de Empleados (ERP Intranet)
  * Plugin URI: https://mitiendaunit.com/intranet_1
- * Description: Sistema modular V8 (Arquitectura OOP/MVC) para gestión de Inventario, CRM, Cotizaciones y Logística.
+ * Description: Sistema modular V8.0 para gestión de Inventario, CRM, Logística, Gamificación y Cerebro de Demanda (IA). Arquitectura MVC.
  * Version: 8.0.0
- * Author: RV Automation Technology (DevOps Team)
+ * Author: DevOps Team & RV Automation Technology
  * Text Domain: suite-empleados
- *
- * @package SuiteEmpleados
+ * License: GPLv2 or later
  */
 
 // 1. SEGURIDAD: Evitar acceso directo
@@ -21,61 +20,101 @@ define( 'SUITE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SUITE_URL', plugin_dir_url( __FILE__ ) );
 
 /**
- * 3. AUTOLOADER BASADO EN ESTÁNDARES DE WORDPRESS
- * 
- * Carga automáticamente las clases bajo demanda. 
- * Si instanciamos "new Suite_Model_Client()", buscará el archivo "class-suite-model-client.php".
- */
-spl_autoload_register( function ( $class_name ) {
-    // Solo procesar clases que pertenezcan a nuestro plugin (Prefijo 'Suite_')
-    if ( strpos( $class_name, 'Suite_' ) !== 0 ) {
-        return;
-    }
-
-    // Convertir nombre de clase a formato de archivo WP (Ej: Suite_Model_Base -> class-suite-model-base.php)
-    $file_name = strtolower( str_replace( '_', '-', $class_name ) );
-    $file_name = 'class-' . $file_name . '.php';
-
-    // Rutas donde el sistema buscará las clases
-    $directories = [
-        'includes/Core/',
-        'includes/Models/',
-        'includes/Controllers/',
-        'includes/Controllers/Ajax/',
-        'includes/Controllers/Api/',
-        'includes/Controllers/Admin/',
-        'includes/Helpers/'
-    ];
-
-    // Buscar y requerir el archivo
-    foreach ( $directories as $directory ) {
-        $full_path = SUITE_PATH . $directory . $file_name;
-        if ( file_exists( $full_path ) ) {
-            require_once $full_path;
-            return;
-        }
-    }
-});
-
-/**
- * 4. INICIALIZADOR (BOOTSTRAP)
- * 
- * En el futuro, aquí instanciamos una clase "Suite_Core" u "Orquestador"
- * que dispare los hooks principales.
+ * 3. INICIALIZADOR DEL SISTEMA (Orquestador MVC)
+ * Se engancha a 'plugins_loaded' para asegurar que el core de WP esté listo.
  */
 function suite_empleados_init() {
-    // Ejemplo futuro: 
-    // $app = new Suite_Core();
-    // $app->run();
+    
+    // --- A. CARGA DE DEPENDENCIAS (REQUIRE_ONCE) ---
+
+    // Core
+    require_once SUITE_PATH . 'includes/Core/class-activator.php';
+    require_once SUITE_PATH . 'includes/Core/class-cron-jobs.php';
+
+    // Modelos (Capa de Base de Datos y Lógica de Negocio)
+    require_once SUITE_PATH . 'includes/Models/class-model-base.php';
+    require_once SUITE_PATH . 'includes/Models/class-model-client.php';
+    require_once SUITE_PATH . 'includes/Models/class-model-quote.php';
+    require_once SUITE_PATH . 'includes/Models/class-model-inventory.php';
+    require_once SUITE_PATH . 'includes/Models/class-model-commission.php';
+
+    // Controladores Base
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-ajax-controller-base.php'; // Clase padre (si aplica)
+
+    // Controladores AJAX (Módulos de la UI)
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-ajax-quotes.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-ajax-kanban.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-ajax-commissions.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-ajax-logistics.php';
+
+    // Controladores API REST (Data Lake y Machine Learning)
+    require_once SUITE_PATH . 'includes/Controllers/Api/class-api-stats.php';
+
+    // Controlador del Administrador / Frontend (Shortcodes y Vistas)
+    require_once SUITE_PATH . 'includes/Controllers/Admin/class-suite-shortcode-controller.php';
+
+
+    // --- B. INSTANCIACIÓN DE CONTROLADORES (Encendiendo los motores) ---
+
+    // Módulo de Cotizaciones y CRM
+    new Suite_Ajax_Quote_Save();
+    new Suite_Ajax_Quote_History();
+    new Suite_Ajax_Quote_Status();
+
+    // Módulo 1: Tablero Kanban (Pedidos)
+    new Suite_Ajax_Kanban_Data();
+    new Suite_Ajax_Kanban_Status();
+
+    // Módulo 3: Logística y Despacho
+    new Suite_Ajax_Upload_POD();
+    new Suite_Ajax_Print_Picking();
+
+    // Módulo 4: Dashboard de Comisiones y Gamificación
+    new Suite_Ajax_Dashboard_Stats();
+
+    // Módulo 5: Cerebro de Demanda (REST API)
+    new Suite_API_Stats();
+
+    // Gestor de la Vista Principal (Shortcode y encolado de assets)
+    new Suite_Shortcode_Controller();
+
+    // --- C. TAREAS PROGRAMADAS (Cron Jobs para Data Lake) ---
+    if ( class_exists( 'Suite_Cron_Jobs' ) ) {
+        $cron_jobs = new Suite_Cron_Jobs();
+        $cron_jobs->schedule_events();
+    }
 }
 add_action( 'plugins_loaded', 'suite_empleados_init' );
 
+
 /**
- * 5. ACTIVACIÓN DE BASE DE DATOS
+ * 4. ACTIVACIÓN DEL PLUGIN
+ * Crea las tablas de la base de datos y define roles usando dbDelta.
  */
-register_activation_hook( __FILE__, 'suite_plugin_activate' );
 function suite_plugin_activate() {
-    // Requerimos el instalador manualmente solo al activar para no sobrecargar el autoloader diario
-    require_once SUITE_PATH . 'includes/Core/class-suite-activator.php';
-    Suite_Activator::activate();
+    // Requerimos el activador manualmente porque plugins_loaded aún no ha disparado el autoloader en la activación
+    require_once SUITE_PATH . 'includes/Core/class-activator.php';
+    
+    // Llamada a tu función de instalación actualizada (Fases anteriores)
+    if ( class_exists( 'Suite_Activator' ) && method_exists( 'Suite_Activator', 'activate' ) ) {
+        Suite_Activator::activate();
+    } elseif ( function_exists( 'suite_install_db' ) ) {
+        // Fallback por si mantuviste la función procedural dentro de class-activator.php
+        suite_install_db(); 
+    }
 }
+register_activation_hook( __FILE__, 'suite_plugin_activate' );
+
+
+/**
+ * 5. DESACTIVACIÓN DEL PLUGIN
+ * Limpia los Cron Jobs activos para no dejar basura en la memoria de WordPress.
+ */
+function suite_plugin_deactivate() {
+    require_once SUITE_PATH . 'includes/Core/class-cron-jobs.php';
+    if ( class_exists( 'Suite_Cron_Jobs' ) ) {
+        $cron_jobs = new Suite_Cron_Jobs();
+        $cron_jobs->clear_events();
+    }
+}
+register_deactivation_hook( __FILE__, 'suite_plugin_deactivate' );
