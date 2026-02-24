@@ -64,39 +64,47 @@ class Suite_Cron_Jobs {
             return; 
         }
 
-        // 2. Extraer el inventario actual (Solo necesitamos el almacén principal 'stock_gale' y el precio)
-        $inventario = $wpdb->get_results( "SELECT sku, stock_gale, precio FROM {$tabla_cache}" );
+        // 2. Extraer el inventario por lotes (Chunking) para evitar Memory Leaks
+        $limit = 500;
+        $offset = 0;
 
-        if ( empty( $inventario ) ) {
-            return;
-        }
+        while ( true ) {
+            $inventario = $wpdb->get_results( $wpdb->prepare(
+                "SELECT sku, stock_gale, precio FROM {$tabla_cache} LIMIT %d OFFSET %d",
+                $limit, $offset
+            ) );
 
-        // 3. Transformación y Carga (Insert)
-        foreach ( $inventario as $item ) {
-            $sku = strtoupper( sanitize_text_field( $item->sku ) );
-            
-            // Ingeniería de Características (Feature Engineering): Inferir categoría por prefijo
-            $categoria = 'General';
-            if ( strpos( $sku, 'UT' ) === 0 ) {
-                $categoria = 'UNI-T';
-            } elseif ( strpos( $sku, 'HM' ) === 0 || strpos( $sku, 'HIK' ) === 0 || strpos( $sku, 'DS' ) === 0 ) {
-                $categoria = 'HIKMICRO';
-            } elseif ( strpos( $sku, 'RV' ) === 0 ) {
-                $categoria = 'RV TECH';
+            if ( empty( $inventario ) ) {
+                break; // Fin de los registros
             }
 
-            // Insertar fila en la serie de tiempo
-            $wpdb->insert(
-                $tabla_historico,
-                [
-                    'fecha_snapshot'   => $hoy,
-                    'sku'              => $sku,
-                    'stock_disponible' => intval( $item->stock_gale ),
-                    'precio'           => floatval( $item->precio ),
-                    'categoria'        => $categoria
-                ],
-                [ '%s', '%s', '%d', '%f', '%s' ]
-            );
+            // 3. Transformación y Carga en Base de Datos
+            foreach ( $inventario as $item ) {
+                $sku = strtoupper( sanitize_text_field( $item->sku ) );
+
+                $categoria = 'General';
+                if ( strpos( $sku, 'UT' ) === 0 ) {
+                    $categoria = 'UNI-T';
+                } elseif ( strpos( $sku, 'HM' ) === 0 || strpos( $sku, 'HIK' ) === 0 || strpos( $sku, 'DS' ) === 0 ) {
+                    $categoria = 'HIKMICRO';
+                } elseif ( strpos( $sku, 'RV' ) === 0 ) {
+                    $categoria = 'RV TECH';
+                }
+
+                $wpdb->insert(
+                    $tabla_historico,
+                    [
+                        'fecha_snapshot'   => $hoy,
+                        'sku'              => $sku,
+                        'stock_disponible' => intval( $item->stock_gale ),
+                        'precio'           => floatval( $item->precio ),
+                        'categoria'        => $categoria
+                    ],
+                    [ '%s', '%s', '%d', '%f', '%s' ]
+                );
+            }
+            // Avanzar al siguiente lote liberando memoria
+            $offset += $limit;
         }
 
         // 4. Auditoría

@@ -52,12 +52,11 @@ const SuiteState = (function() {
          * @param {Object} item 
          */
         addItem: function(item) {
-            // Normalizar datos
-            item.qty = parseInt(item.qty) || 1;
-            item.price = parseFloat(item.price) || 0.00;
+            // Normalizar datos: Prohibir cantidades negativas o cero
+            item.qty = Math.max(1, parseInt(item.qty) || 1);
+            item.price = Math.max(0, parseFloat(item.price) || 0.00);
 
             const existingIndex = cart.findIndex(i => i.sku === item.sku);
-            
             if (existingIndex > -1) {
                 cart[existingIndex].qty += item.qty;
             } else {
@@ -74,7 +73,11 @@ const SuiteState = (function() {
          */
         updateItem: function(index, field, value) {
             if (cart[index]) {
-                cart[index][field] = (field === 'qty') ? parseInt(value) || 1 : parseFloat(value) || 0;
+                if (field === 'qty') {
+                    cart[index][field] = Math.max(1, parseInt(value) || 1);
+                } else {
+                    cart[index][field] = Math.max(0, parseFloat(value) || 0);
+                }
                 calculateTotals();
             }
         },

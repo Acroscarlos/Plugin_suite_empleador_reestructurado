@@ -152,9 +152,11 @@ const SuiteMarketing = (function($) {
                     }
                 },
                 error: function(err) {
-                    console.error('Error al cargar datos REST del Cerebro de Demanda', err);
                     if(err.status === 401 || err.status === 403) {
                         alert('🔒 Acceso Denegado: Su rol no tiene permisos para ver analíticas.');
+                    } else {
+                        $('#chart-canales-venta').parent().html('<p style="color:red;">Error al cargar datos.</p>');
+                        $('#chart-tendencia-ventas').parent().html('<p style="color:red;">Error al cargar datos.</p>');
                     }
                 }
             });

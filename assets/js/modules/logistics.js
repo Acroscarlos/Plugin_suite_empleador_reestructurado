@@ -55,7 +55,6 @@ const SuiteLogistics = (function($) {
                 }
             }).catch(err => {
                 alert('❌ Error de conexión al subir el archivo.');
-                console.error(err);
             }).finally(() => {
                 btn.prop('disabled', false).text('Subir y Marcar Despachado');
             });

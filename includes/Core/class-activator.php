@@ -1,19 +1,18 @@
 <?php
-// includes/db-install.php V7
-
 // SEGURIDAD: Evitar acceso directo
 if ( ! defined( 'ABSPATH' ) ) {
-    exit; 
+    exit;
 }
 
 /**
  * Función de Instalación de Base de Datos
- * Crea las 4 tablas críticas: Inventario, Clientes, Cotizaciones, Items.
+ * Crea las tablas críticas: Inventario, Clientes, Cotizaciones, Items, etc.
  */
 if ( ! function_exists( 'suite_install_db' ) ) {
     function suite_install_db() {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();
+
         require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
 
         // 1. Tabla Inventario (Cache)
@@ -43,13 +42,13 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             telefono VARCHAR(50),
             email VARCHAR(100),
             contacto_persona VARCHAR(150),
-			notas TEXT,
+            notas TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY idx_rif (rif_ci)
         ) $charset_collate;";
 
-        // MODIFICACIÓN: Tabla Cotizaciones (Se añade pod_url al final)
+        // 3. Tabla Cotizaciones
         $sql_cotizaciones = "CREATE TABLE {$wpdb->prefix}suite_cotizaciones (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             codigo_cotizacion VARCHAR(20) NOT NULL,
@@ -70,11 +69,11 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             metodo_entrega VARCHAR(100),
             url_captura_pago TEXT,
             recibo_loyverse VARCHAR(100),
-            pod_url TEXT, -- NUEVO CAMPO: Proof of Delivery (Fase 7)
+            pod_url TEXT,
             PRIMARY KEY (id)
         ) $charset_collate;";
 
-        // 2. NUEVA TABLA: Libro Mayor de Comisiones (Ledger)
+        // 4. Tabla Libro Mayor de Comisiones (Ledger)
         $sql_comisiones = "CREATE TABLE {$wpdb->prefix}suite_comisiones_ledger (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             quote_id bigint(20) NOT NULL,
@@ -87,7 +86,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             KEY idx_vendedor (vendedor_id)
         ) $charset_collate;";
 
-        // 3. NUEVA TABLA: Gamificación y Premios
+        // 5. Tabla Gamificación y Premios
         $sql_premios = "CREATE TABLE {$wpdb->prefix}suite_premios_mensuales (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             vendedor_id bigint(20) NOT NULL,
@@ -101,7 +100,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             KEY idx_mes_anio (mes, anio)
         ) $charset_collate;";
 
-        // 4. Tabla Items (Detalle)
+        // 6. Tabla Items (Detalle)
         $sql_items = "CREATE TABLE {$wpdb->prefix}suite_cotizaciones_items (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             cotizacion_id bigint(20) NOT NULL,
@@ -114,21 +113,20 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             PRIMARY KEY (id),
             KEY idx_cotizacion (cotizacion_id)
         ) $charset_collate;";
-		
-		// 5. Tabla de Auditoría (Logs)
-		$sql_logs = "CREATE TABLE {$wpdb->prefix}suite_logs (
-			id bigint(20) NOT NULL AUTO_INCREMENT,
-			usuario_id bigint(20) NOT NULL,
-			accion VARCHAR(50) NOT NULL,
-			detalle TEXT,
-			ip VARCHAR(45),
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (id),
-			KEY idx_usuario (usuario_id)
-		) $charset_collate;";
 
+        // 7. Tabla de Auditoría (Logs)
+        $sql_logs = "CREATE TABLE {$wpdb->prefix}suite_logs (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            usuario_id bigint(20) NOT NULL,
+            accion VARCHAR(50) NOT NULL,
+            detalle TEXT,
+            ip VARCHAR(45),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_usuario (usuario_id)
+        ) $charset_collate;";
 
-        // NUEVA TABLA: Data Lake / Inventario Histórico (Módulo 5 - IA)
+        // 8. Tabla Data Lake / Inventario Histórico (Módulo 5 - IA)
         $sql_historico = "CREATE TABLE {$wpdb->prefix}suite_inventario_historico (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             fecha_snapshot DATE NOT NULL,
@@ -136,26 +134,20 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             stock_disponible INT DEFAULT 0,
             precio DECIMAL(10,2) DEFAULT 0,
             categoria VARCHAR(100) DEFAULT 'General',
-            PRIMARY KEY  (id),
+            PRIMARY KEY (id),
             KEY idx_fecha (fecha_snapshot),
             KEY idx_sku (sku)
         ) $charset_collate;";
 
-		dbDelta($sql_logs);
-
-		// Crear Roles Personalizados (Ejecutar una vez)
-		add_role('suite_vendedor', 'Vendedor Suite', array('read' => true, 'suite_access' => true));
-		add_role('suite_logistica', 'Logística Suite', array('read' => true, 'suite_access' => true));
-		$admin = get_role('administrator');
-		$admin->add_cap('suite_access'); // Asegurar que admin tenga acceso
-		
-		
-
-        // Ejecutar dbDelta
+        // --- EJECUCIÓN ÚNICA DE DB-DELTA ---
         dbDelta( $sql_inventario );
         dbDelta( $sql_clientes );
         dbDelta( $sql_cotizaciones );
         dbDelta( $sql_items );
+        dbDelta( $sql_comisiones );
+        dbDelta( $sql_premios );
+        dbDelta( $sql_logs );
+        dbDelta( $sql_historico ); // Data Lake agregado correctamente
 
         // Ajuste de Auto-Increment para Cotizaciones (Inicio en 15000)
         $count = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}suite_cotizaciones" );
@@ -163,15 +155,14 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             $wpdb->query( "ALTER TABLE {$wpdb->prefix}suite_cotizaciones AUTO_INCREMENT = 15000" );
         }
 
-        // Ejecutar dbDelta para aplicar cambios sin destruir data
-        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-        dbDelta( $sql_cotizaciones );
-        dbDelta( $sql_comisiones );
-        dbDelta( $sql_premios );
-        
-        // Recuerda que dbDelta actualizará la tabla sin borrar datos
-        dbDelta( $sql_cotizaciones );
+        // --- CREACIÓN DE ROLES (Ejecutar una vez) ---
+        add_role('suite_vendedor', 'Vendedor Suite', array('read' => true, 'suite_access' => true));
+        add_role('suite_logistica', 'Logística Suite', array('read' => true, 'suite_access' => true));
+        add_role('suite_marketing', 'Marketing y Análisis', array('read' => true, 'suite_access' => true));
 
-
+        $admin = get_role('administrator');
+        if ( $admin ) {
+            $admin->add_cap('suite_access'); // Asegurar que admin tenga acceso
+        }
     }
 }

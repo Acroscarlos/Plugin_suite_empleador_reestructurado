@@ -37,6 +37,17 @@ const SuiteKanban = (function($) {
         `;
     };
 
+    /**
+     * Helper para devolver una tarjeta exactamente a su posición original
+     * si el usuario cancela el drag & drop o falla el servidor.
+     */
+    const revertCard = function(itemEl, fromCol, oldIndex) {
+        // Al usar el oldIndex, buscamos el elemento que AHORA ocupa ese índice.
+        // Insertando el itemEl antes de ese nodo, vuelve exactamente a su lugar original.
+        const referenceNode = fromCol.children[oldIndex] || null;
+        fromCol.insertBefore(itemEl, referenceNode);
+    };
+
     const initSortableColumns = function() {
         const columns = document.querySelectorAll('.kanban-column-body');
         
@@ -49,6 +60,7 @@ const SuiteKanban = (function($) {
                     const itemEl = evt.item;  
                     const toCol = evt.to;     
                     const fromCol = evt.from; 
+                    const oldIndex = evt.oldIndex; // <-- Capturamos la posición original exacta
                     
                     if (toCol === fromCol) return; 
 
@@ -60,7 +72,7 @@ const SuiteKanban = (function($) {
                     // ----------------------------------------------------
                     if (newStatus === 'pagado') {
                         // 1. Guardar contexto en memoria para no perder la tarjeta
-                        pendingDrop = { quoteId, itemEl, fromCol, toCol };
+                        pendingDrop = { quoteId, itemEl, fromCol, toCol, oldIndex };
                         
                         // 2. Limpiar modal anterior y setear ID oculto
                         $('#modal-cierre-venta input, #modal-cierre-venta select').val('');
@@ -71,7 +83,7 @@ const SuiteKanban = (function($) {
                     } else {
                         // Si es otro estado (ej. de Pagado a Despachado), enviar directo
                         updateCounters();
-                        updateOrderStatus(quoteId, newStatus, itemEl, fromCol);
+                        updateOrderStatus(quoteId, newStatus, itemEl, fromCol, oldIndex);
                     }
                 },
             });
@@ -81,19 +93,19 @@ const SuiteKanban = (function($) {
     /**
      * Envía un cambio de estado normal (Sin modal) a la base de datos
      */
-    const updateOrderStatus = function(quoteId, newStatus, itemEl, originalCol) {
+    const updateOrderStatus = function(quoteId, newStatus, itemEl, originalCol, oldIndex) {
         SuiteAPI.post('suite_change_status_ajax', { 
-            id: quoteId, // Actualizado al formato de Suite_Ajax_Quote_Status
+            id: quoteId, 
             estado: newStatus 
         }).then(res => {
             if (!res.success) {
                 alert('❌ Error: ' + (res.data.message || res.data));
-                originalCol.appendChild(itemEl); // Revertir UI
+                revertCard(itemEl, originalCol, oldIndex); // Revertir UI
                 updateCounters();
             }
         }).catch(() => {
             alert('❌ Fallo de conexión al actualizar el pedido.');
-            originalCol.appendChild(itemEl);
+            revertCard(itemEl, originalCol, oldIndex); // Revertir UI
             updateCounters();
         });
     };
@@ -114,8 +126,8 @@ const SuiteKanban = (function($) {
         // 1. Cerrar o cancelar Modal (Botón "X" o click por fuera)
         $('#close-modal-cierre').on('click', function() {
             if (pendingDrop) {
-                // Al cancelar, la tarjeta debe devolverse a su columna original
-                pendingDrop.fromCol.appendChild(pendingDrop.itemEl);
+                // Al cancelar, la tarjeta se devuelve a su posición milimétricamente exacta
+                revertCard(pendingDrop.itemEl, pendingDrop.fromCol, pendingDrop.oldIndex);
                 pendingDrop = null;
                 updateCounters();
             }
@@ -127,9 +139,8 @@ const SuiteKanban = (function($) {
             e.preventDefault();
             if (!pendingDrop) return;
 
-            // Recolectar datos
+            // Recolectar datos (NOTA: Se removió la propiedad 'action' redundante)
             const payload = {
-                action: 'suite_change_status_ajax',
                 id: pendingDrop.quoteId,
                 estado: 'pagado',
                 canal_venta: $('#cierre-canal').val(),
@@ -152,19 +163,18 @@ const SuiteKanban = (function($) {
                 if (res.success) {
                     alert('✅ ' + (res.data.message || 'Pago procesado y comisión registrada.'));
                     $('#modal-cierre-venta').fadeOut();
-                    pendingDrop = null; // Liberar memoria, tarjeta se queda en 'Pagado'
+                    pendingDrop = null; // Liberar memoria, la tarjeta se queda en 'Pagado'
                     updateCounters();
                 } else {
                     alert('❌ Error: ' + (res.data.message || res.data));
-                    // Revertir UI
-                    pendingDrop.fromCol.appendChild(pendingDrop.itemEl);
+                    revertCard(pendingDrop.itemEl, pendingDrop.fromCol, pendingDrop.oldIndex);
                     pendingDrop = null;
                     $('#modal-cierre-venta').fadeOut();
                     updateCounters();
                 }
             }).catch(() => {
                 alert('❌ Error de red. La operación fue cancelada.');
-                pendingDrop.fromCol.appendChild(pendingDrop.itemEl);
+                revertCard(pendingDrop.itemEl, pendingDrop.fromCol, pendingDrop.oldIndex);
                 pendingDrop = null;
                 $('#modal-cierre-venta').fadeOut();
                 updateCounters();

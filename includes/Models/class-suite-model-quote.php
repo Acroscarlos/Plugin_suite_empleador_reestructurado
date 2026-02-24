@@ -18,7 +18,8 @@ class Suite_Model_Quote extends Suite_Model_Base {
     }
 
     /**
-     * Crea una cotización completa usando Transacciones SQL Seguras.
+     * Crea una cotización completa usando Transacciones SQL Seguras y 
+     * validación cruzada de precios para evitar vulnerabilidades.
      */
     public function create_quote( $client_data, $items, $meta ) {
         // 1. Iniciar Transacción
@@ -59,27 +60,59 @@ class Suite_Model_Quote extends Suite_Model_Base {
                 'tasa_bcv'          => floatval( $meta['tasa'] ),
                 'validez_dias'      => intval( $meta['validez'] ),
                 'moneda'            => sanitize_text_field( $meta['moneda'] ),
-                'total_usd'         => 0,
+                'total_usd'         => 0, // Se actualizará luego del loop
                 'fecha_emision'     => current_time( 'mysql' ),
                 'estado'            => 'emitida'
             ] );
 
             if ( ! $quote_id ) throw new Exception( 'Fallo al generar la cabecera.' );
 
-            // --- INSERCIÓN DETALLE ---
+            // --- INSERCIÓN DETALLE (Optimización N+1) ---
             $total_usd = 0;
             $table_items = $this->wpdb->prefix . 'suite_cotizaciones_items';
-            
+            $table_inv   = $this->wpdb->prefix . 'suite_inventario_cache';
+
+            // 1. Pre-cargar todos los precios en 1 sola consulta
+            $skus_a_buscar = [];
             foreach ( $items as $item ) {
-                $sub = intval( $item['qty'] ) * floatval( $item['price'] );
+                if ( ! in_array( strtoupper( $item['sku'] ), ['MANUAL', 'GENERICO'] ) ) {
+                    $skus_a_buscar[] = sanitize_text_field( $item['sku'] );
+                }
+            }
+            
+            $precios_db = [];
+            if ( ! empty( $skus_a_buscar ) ) {
+                $placeholders = implode( ',', array_fill( 0, count( $skus_a_buscar ), '%s' ) );
+                $sql_precios = $this->wpdb->prepare( "SELECT sku, precio FROM {$table_inv} WHERE sku IN ($placeholders)", ...$skus_a_buscar );
+                $resultados_precios = $this->wpdb->get_results( $sql_precios );
+                foreach ( $resultados_precios as $rp ) {
+                    $precios_db[ strtoupper($rp->sku) ] = floatval( $rp->precio );
+                }
+            }
+
+            // 2. Procesar inserciones en memoria
+            foreach ( $items as $item ) {
+                $sku = sanitize_text_field( $item['sku'] );
+                $qty = intval( $item['qty'] );
+                $safe_price = floatval( $item['price'] ); // Fallback
+
+                if ( ! in_array( strtoupper( $sku ), ['MANUAL', 'GENERICO'] ) ) {
+                    if ( isset( $precios_db[ strtoupper($sku) ] ) ) {
+                        $safe_price = $precios_db[ strtoupper($sku) ];
+                    } else {
+                        throw new Exception( "El producto con SKU '{$sku}' no existe en el catálogo." );
+                    }
+                }
+
+                $sub = $qty * $safe_price;
                 $total_usd += $sub;
 
                 $this->wpdb->insert( $table_items, [
                     'cotizacion_id'       => $quote_id,
-                    'sku'                 => sanitize_text_field( $item['sku'] ),
+                    'sku'                 => $sku,
                     'producto_nombre'     => sanitize_text_field( $item['name'] ),
-                    'cantidad'            => intval( $item['qty'] ),
-                    'precio_unitario_usd' => floatval( $item['price'] ),
+                    'cantidad'            => $qty,
+                    'precio_unitario_usd' => $safe_price,
                     'tiempo_entrega'      => isset( $item['time'] ) ? sanitize_text_field( $item['time'] ) : 'Inmediata',
                     'subtotal_usd'        => $sub
                 ] );
@@ -135,12 +168,17 @@ class Suite_Model_Quote extends Suite_Model_Base {
         foreach ( $resultados as $row ) {
             $estado = empty( $row->estado ) ? 'emitida' : strtolower( $row->estado );
             if ( ! isset( $kanban_data[ $estado ] ) ) $kanban_data[ $estado ] = [];
-            
+
             $row->total_fmt = number_format( floatval( $row->total_usd ), 2 );
             $row->fecha_fmt = date( 'd/m', strtotime( $row->fecha_emision ) );
+
+            // PREVENCIÓN XSS: Escapar variables sensibles antes de enviarlas al JSON de Vue/Vanilla JS
+            $row->cliente_nombre    = esc_html( $row->cliente_nombre );
+            $row->codigo_cotizacion = esc_html( $row->codigo_cotizacion );
+
             $kanban_data[ $estado ][] = $row;
         }
-        
+
         return $kanban_data;
     }
 
@@ -161,21 +199,24 @@ class Suite_Model_Quote extends Suite_Model_Base {
         $protected_statuses = [ 'pagado', 'despachado' ];
 
         // 2. CANDADO DE INMUTABILIDAD (Módulo 2)
-        // Si el pedido ya está pagado/despachado, solo el Admin puede regresarlo a pendiente.
         $is_admin = current_user_can( 'manage_options' );
         if ( in_array( $current_status, $protected_statuses ) && ! $is_admin ) {
             return new WP_Error( 'immutable_lock', 'Candado de Inmutabilidad: Este pedido ya ha sido procesado (Pagado/Enviado) y no puede ser modificado por su nivel de acceso.' );
         }
 
-        // 3. Actualizar el estado en Base de Datos
-        $updated = $this->update( $quote_id, [ 'estado' => $new_status ] );
+        // 3. Actualizar el estado en Base de Datos de forma ATÓMICA (Bloqueo Optimista)
+        $sql_update = $this->wpdb->prepare(
+            "UPDATE {$this->table_name} SET estado = %s WHERE id = %d AND estado = %s",
+            $new_status, intval($quote_id), $current_status
+        );
+        $filas_afectadas = $this->wpdb->query( $sql_update );
 
-        if ( ! $updated ) {
-            return false;
+        // Si filas_afectadas es 0, otro proceso ya cambió el estado en este milisegundo (Race Condition)
+        if ( ! $filas_afectadas ) {
+            return new WP_Error( 'race_condition', 'Conflicto de concurrencia: El pedido ya fue procesado por otro usuario.' );
         }
 
         // 4. DESCUENTO DE INVENTARIO (Módulo 3)
-        // Regla: Descontar SOLO si pasa a 'pagado' o 'despachado', y NO estaba ya en uno de esos estados (evita doble descuento).
         if ( in_array( $new_status, $protected_statuses ) && ! in_array( $current_status, $protected_statuses ) ) {
             $this->process_inventory_discount( $quote_id );
         }
@@ -192,7 +233,7 @@ class Suite_Model_Quote extends Suite_Model_Base {
         $items = $this->wpdb->get_results( $this->wpdb->prepare(
             "SELECT sku, cantidad FROM {$table_items} WHERE cotizacion_id = %d",
             $quote_id
-        ), ARRAY_A ); // Retornamos ARRAY asociativo para que coincida con el modelo de Inventario
+        ), ARRAY_A );
 
         if ( empty( $items ) ) return;
 

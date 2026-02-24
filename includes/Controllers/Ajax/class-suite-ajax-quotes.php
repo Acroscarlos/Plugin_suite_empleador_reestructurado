@@ -2,8 +2,8 @@
 /**
  * Controlador AJAX: Cotizador y Venta (Módulo 2: Seguridad Aplicada)
  *
- * Contiene los manejadores para guardar cotizaciones (con control de precios mínimos),
- * consultar el historial y cambiar estados (con candado de inmutabilidad).
+ * Contiene los manejadores para guardar cotizaciones, consultar el historial 
+ * y cambiar estados (con candado de inmutabilidad y protección IDOR).
  *
  * @package SuiteEmpleados\Controllers\Ajax
  */
@@ -53,36 +53,44 @@ class Suite_Ajax_Quote_Save extends Suite_AJAX_Controller {
             $this->send_error( 'El carrito no puede estar vacío.' );
         }
 
-        // ==============================================================================
-        // MÓDULO 2: SEGURIDAD - CONTROL DE PRECIOS MÍNIMOS (MIDDLEWARE)
-        // ==============================================================================
+        // MÓDULO 2: SEGURIDAD - CONTROL DE PRECIOS MÍNIMOS (MIDDLEWARE OPTIMIZADO N+1)
         global $wpdb;
         $tabla_inv = $wpdb->prefix . 'suite_inventario_cache';
-        $is_admin  = current_user_can( 'manage_options' );
+        $is_admin = current_user_can( 'manage_options' );
 
-        foreach ( $items as $item ) {
-            $sku = sanitize_text_field( $item['sku'] );
-            
-            // Ignorar productos genéricos o manuales (no tienen costo base en BD)
-            if ( in_array( strtoupper( $sku ), ['MANUAL', 'GENERICO'] ) ) {
-                continue;
+        // Si es admin, nos saltamos la validación en BD para ahorrar recursos
+        if ( ! $is_admin && ! empty( $items ) ) {
+            $skus_a_verificar = [];
+            foreach ( $items as $item ) {
+                $sku = sanitize_text_field( $item['sku'] );
+                if ( ! in_array( strtoupper( $sku ), ['MANUAL', 'GENERICO'] ) ) {
+                    $skus_a_verificar[] = $sku;
+                }
             }
 
-            // Obtener el precio base (o costo) registrado en el inventario
-            $base_price = $wpdb->get_var( $wpdb->prepare( "SELECT precio FROM {$tabla_inv} WHERE sku = %s", $sku ) );
-            
-            if ( $base_price !== null ) {
-                $selling_price = floatval( $item['price'] );
-                $minimum_price = floatval( $base_price ); // Aquí puedes aplicar una fórmula de margen si lo deseas (Ej: $base_price * 0.90)
+            if ( ! empty( $skus_a_verificar ) ) {
+                // 1. Pre-cargar precios permitidos con un solo query (IN)
+                $placeholders = implode( ',', array_fill( 0, count( $skus_a_verificar ), '%s' ) );
+                $sql_precios = $wpdb->prepare( "SELECT sku, precio FROM {$tabla_inv} WHERE sku IN ($placeholders)", ...$skus_a_verificar );
+                // Usamos OBJECT_K para que el array resultante tenga los SKUs como llaves
+                $resultados_precios = $wpdb->get_results( $sql_precios, OBJECT_K );
 
-                // Si se vende por debajo del mínimo y no es Administrador -> RECHAZAR
-                if ( $selling_price < $minimum_price && ! $is_admin ) {
-                    $precio_fmt = number_format( $minimum_price, 2 );
-                    $this->send_error( "El precio de venta del producto '{$item['name']}' ({$sku}) está por debajo del mínimo permitido (\${$precio_fmt}). Requiere autorización de un supervisor.", 403 );
+                // 2. Validar precios en memoria
+                foreach ( $items as $item ) {
+                    $sku = strtoupper( sanitize_text_field( $item['sku'] ) );
+
+                    if ( isset( $resultados_precios[$sku] ) ) {
+                        $minimum_price = floatval( $resultados_precios[$sku]->precio );
+                        $selling_price = floatval( $item['price'] );
+
+                        if ( $selling_price < $minimum_price ) {
+                            $precio_fmt = number_format( $minimum_price, 2 );
+                            $this->send_error( "El precio del producto '{$item['name']}' ({$sku}) está por debajo del mínimo permitido (\${$precio_fmt}). Requiere autorización de un supervisor.", 403 );
+                        }
+                    }
                 }
             }
         }
-        // ==============================================================================
 
         $meta = [
             'vendedor_id' => get_current_user_id(),
@@ -171,21 +179,39 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
             $this->send_error( 'La cotización no existe.', 404 );
         }
 
-        $current_status = strtolower( $current_order->estado );
-        $protected_statuses = [ 'pagado', 'despachado' ];
         $is_admin = current_user_can( 'manage_options' );
 
-        // 1. CANDADO DE INMUTABILIDAD
+        // 1. SEGURIDAD: PREVENCIÓN DE IDOR
+        $user = wp_get_current_user();
+        $is_admin = current_user_can( 'manage_options' );
+        $is_logistica = in_array( 'suite_logistica', (array) $user->roles );
+        $is_owner = ( intval( $current_order->vendedor_id ) === get_current_user_id() );
+
+        // 1. SEGURIDAD: PREVENCIÓN DE IDOR (Con Bypass para Logística)
+        if ( ! $is_admin && ! $is_owner ) {
+            // Permitir SOLO si es Logística y está intentando mover a 'despachado'
+            if ( ! ( $is_logistica && $new_status === 'despachado' ) ) {
+                if ( function_exists('suite_record_log') ) {
+                    suite_record_log( 'violacion_idor', "Usuario " . get_current_user_id() . " intentó modificar el pedido #{$quote_id}." );
+                }
+                $this->send_error( 'Acceso Denegado: No tiene permisos para modificar un pedido que no le pertenece.', 403 );
+            }
+        }
+
+        $current_status = strtolower( $current_order->estado );
+        $protected_statuses = [ 'pagado', 'despachado' ];
+
+        // 2. CANDADO DE INMUTABILIDAD
         if ( in_array( $current_status, $protected_statuses ) && ! $is_admin ) {
             $this->send_error( 'Candado de Inmutabilidad 🔒: Este pedido ya ha sido procesado y no puede ser modificado.', 403 );
         }
 
-        $estados_validos = ['emitida', 'pagado', 'anulado', 'despachado'];
+        $estados_validos = ['emitida', 'proceso', 'pagado', 'anulado', 'despachado'];
         if ( ! in_array( $new_status, $estados_validos ) ) {
             $this->send_error( 'Estado no válido.', 400 );
         }
 
-        // 2. MÓDULO 4: CAPTURAR DATOS DE CIERRE DE VENTA
+        // 3. MÓDULO 4: CAPTURAR DATOS DE CIERRE DE VENTA
         if ( $new_status === 'pagado' ) {
             $extra_data = [
                 'canal_venta'      => isset($_POST['canal_venta']) ? sanitize_text_field($_POST['canal_venta']) : '',
@@ -194,11 +220,10 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
                 'url_captura_pago' => isset($_POST['url_captura']) ? esc_url_raw($_POST['url_captura']) : '',
                 'recibo_loyverse'  => isset($_POST['recibo_loyverse']) ? sanitize_text_field($_POST['recibo_loyverse']) : '',
             ];
-            // Actualizamos la cabecera antes de cambiar el estado formalmente
             $quote_model->update( $quote_id, $extra_data );
         }
 
-        // 3. CAMBIAR ESTADO (Esto también descuenta inventario si aplica)
+        // 4. CAMBIAR ESTADO
         $result = $quote_model->update_order_status( $quote_id, $new_status );
 
         if ( is_wp_error( $result ) ) {
@@ -206,8 +231,7 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
         }
 
         if ( $result ) {
-            // 4. MÓDULO 4: DISPARAR COMISIÓN AUTOMÁTICA
-            // Solo pagamos comisión si es un nuevo "Pagado" (evita duplicar comisiones si un admin lo edita)
+            // 5. DISPARAR COMISIÓN AUTOMÁTICA
             if ( $new_status === 'pagado' && $current_status !== 'pagado' ) {
                 $commission_model = new Suite_Model_Commission();
                 $commission_model->calculate_and_save_commission(

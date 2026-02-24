@@ -1,7 +1,6 @@
 /**
  * SuiteAPI - Orquestador de Peticiones AJAX
- * 
- * Centraliza las llamadas al servidor, inyectando automáticamente 
+ * * Centraliza las llamadas al servidor, inyectando automáticamente 
  * credenciales de seguridad (Nonces) y enrutamiento (URL).
  */
 const SuiteAPI = (function($) {
@@ -12,9 +11,19 @@ const SuiteAPI = (function($) {
     const sysNonce = suite_vars.nonce;
 
     /**
+     * Interceptor Global de Errores
+     * Captura expiración de sesión (401) o fallos de permisos (403)
+     */
+    const handleAjaxError = function(error, reject) {
+        if (error.status === 401 || error.status === 403) {
+            alert('🔒 Su sesión ha expirado o fue cerrada por seguridad. Por favor, recargue la página e inicie sesión nuevamente.');
+        }
+        reject(error);
+    };
+
+    /**
      * Petición POST estándar para JSON
-     * 
-     * @param {string} action - El nombre del hook de WP (ej. 'suite_search_client_ajax')
+     * * @param {string} action - El nombre del hook de WP (ej. 'suite_search_client_ajax')
      * @param {object} data - Datos a enviar
      * @returns {Promise}
      */
@@ -29,15 +38,14 @@ const SuiteAPI = (function($) {
 
             $.post(apiUrl, payload)
                 .done(response => resolve(response))
-                .fail(error => reject(error));
+                .fail(error => handleAjaxError(error, reject)); // <-- Interceptor inyectado
         });
     };
 
     /**
      * Petición POST para subir archivos (FormData)
      * Utilizado para la importación de CSV o futuras subidas de fotos (POD)
-     * 
-     * @param {string} action - El nombre del hook de WP
+     * * @param {string} action - El nombre del hook de WP
      * @param {FormData} formData - Objeto FormData instanciado
      * @returns {Promise}
      */
@@ -54,7 +62,7 @@ const SuiteAPI = (function($) {
                 processData: false, // Vital para que jQuery no procese el archivo
                 contentType: false, // Vital para que el navegador asigne el boundary multipart
                 success: response => resolve(response),
-                error: error => reject(error)
+                error: error => handleAjaxError(error, reject) // <-- Interceptor inyectado
             });
         });
     };

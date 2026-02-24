@@ -26,29 +26,31 @@ define( 'SUITE_URL', plugin_dir_url( __FILE__ ) );
 function suite_empleados_init() {
     
     // --- A. CARGA DE DEPENDENCIAS (REQUIRE_ONCE) ---
+    // [Error 1.1 Corregido]: Rutas apuntando a los nombres reales de los archivos.
 
     // Core
     require_once SUITE_PATH . 'includes/Core/class-activator.php';
-    require_once SUITE_PATH . 'includes/Core/class-cron-jobs.php';
+    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
 
     // Modelos (Capa de Base de Datos y Lógica de Negocio)
-    require_once SUITE_PATH . 'includes/Models/class-model-base.php';
-    require_once SUITE_PATH . 'includes/Models/class-model-client.php';
-    require_once SUITE_PATH . 'includes/Models/class-model-quote.php';
-    require_once SUITE_PATH . 'includes/Models/class-model-inventory.php';
-    require_once SUITE_PATH . 'includes/Models/class-model-commission.php';
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-base.php';
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-client.php';
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-quote.php';
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-inventory.php';
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-commission.php';
 
     // Controladores Base
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-ajax-controller-base.php'; // Clase padre (si aplica)
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-controller.php';
 
     // Controladores AJAX (Módulos de la UI)
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-ajax-quotes.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-ajax-kanban.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-ajax-commissions.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-ajax-logistics.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-client.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-quotes.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-kanban.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-commissions.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-logistics.php';
 
     // Controladores API REST (Data Lake y Machine Learning)
-    require_once SUITE_PATH . 'includes/Controllers/Api/class-api-stats.php';
+    require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-stats.php';
 
     // Controlador del Administrador / Frontend (Shortcodes y Vistas)
     require_once SUITE_PATH . 'includes/Controllers/Admin/class-suite-shortcode-controller.php';
@@ -56,7 +58,14 @@ function suite_empleados_init() {
 
     // --- B. INSTANCIACIÓN DE CONTROLADORES (Encendiendo los motores) ---
 
-    // Módulo de Cotizaciones y CRM
+    // Módulo de Clientes (CRM) - [Las 5 nuevas clases divididas]
+    new Suite_Ajax_Client_Search();
+    new Suite_Ajax_Client_Add();
+    new Suite_Ajax_Client_Import();
+    new Suite_Ajax_Client_Delete();
+    new Suite_Ajax_Client_Profile();
+
+    // Módulo de Cotizaciones
     new Suite_Ajax_Quote_Save();
     new Suite_Ajax_Quote_History();
     new Suite_Ajax_Quote_Status();
@@ -77,30 +86,29 @@ function suite_empleados_init() {
 
     // Gestor de la Vista Principal (Shortcode y encolado de assets)
     new Suite_Shortcode_Controller();
-
-    // --- C. TAREAS PROGRAMADAS (Cron Jobs para Data Lake) ---
-    if ( class_exists( 'Suite_Cron_Jobs' ) ) {
-        $cron_jobs = new Suite_Cron_Jobs();
-        $cron_jobs->schedule_events();
-    }
 }
 add_action( 'plugins_loaded', 'suite_empleados_init' );
 
 
 /**
  * 4. ACTIVACIÓN DEL PLUGIN
- * Crea las tablas de la base de datos y define roles usando dbDelta.
+ * Crea las tablas, define roles usando dbDelta y programa Cron Jobs.
  */
 function suite_plugin_activate() {
-    // Requerimos el activador manualmente porque plugins_loaded aún no ha disparado el autoloader en la activación
+    // 1. Instalación de BD y Roles
     require_once SUITE_PATH . 'includes/Core/class-activator.php';
-    
-    // Llamada a tu función de instalación actualizada (Fases anteriores)
     if ( class_exists( 'Suite_Activator' ) && method_exists( 'Suite_Activator', 'activate' ) ) {
         Suite_Activator::activate();
     } elseif ( function_exists( 'suite_install_db' ) ) {
-        // Fallback por si mantuviste la función procedural dentro de class-activator.php
         suite_install_db(); 
+    }
+
+    // 2. Programación de Tareas Automáticas (Data Lake)
+    // [Error 3.1 Corregido]: El Cron ahora se registra ESTRICTAMENTE UNA VEZ en la activación.
+    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
+    if ( class_exists( 'Suite_Cron_Jobs' ) ) {
+        $cron_jobs = new Suite_Cron_Jobs();
+        $cron_jobs->schedule_events();
     }
 }
 register_activation_hook( __FILE__, 'suite_plugin_activate' );
@@ -111,7 +119,7 @@ register_activation_hook( __FILE__, 'suite_plugin_activate' );
  * Limpia los Cron Jobs activos para no dejar basura en la memoria de WordPress.
  */
 function suite_plugin_deactivate() {
-    require_once SUITE_PATH . 'includes/Core/class-cron-jobs.php';
+    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
     if ( class_exists( 'Suite_Cron_Jobs' ) ) {
         $cron_jobs = new Suite_Cron_Jobs();
         $cron_jobs->clear_events();

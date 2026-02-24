@@ -112,6 +112,8 @@ const SuiteQuoter = (function($) {
                     } else {
                         resultsBox.html('<div class="p-2 text-red-500">No se encontraron productos.</div>');
                     }
+                }).catch(() => {
+                    resultsBox.html('<div class="p-2 text-red-500">❌ Error de conexión al buscar. Intente nuevamente.</div>');
                 });
             }, 400); // 400ms delay para no saturar el servidor
         });
