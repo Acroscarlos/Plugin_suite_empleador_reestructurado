@@ -160,7 +160,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 <!-- ========================================================= -->
 <!-- MODAL: CIERRE DE VENTA (MÓDULO 4 - COMISIONES Y LOGÍSTICA)-->
 <!-- ========================================================= -->
-<div id="modal-cierre-venta" class="suite-modal">
+<div id="modal-cierre-venta" class="suite-modal" style="display: none;">
     <div class="suite-modal-content">
         <!-- El ID del botón de cierre es clave para el JS -->
         <span class="close-modal" id="close-modal-cierre">×</span>

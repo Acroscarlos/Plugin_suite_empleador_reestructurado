@@ -52,20 +52,34 @@ if ( ! defined( 'ABSPATH' ) ) {
             </thead>
             <tbody>
                 <?php if ( isset( $clientes ) && ! empty( $clientes ) ) : ?>
-                    <?php foreach ( $clientes as $c ) : ?>
-                        <tr>
+					<?php foreach ( $clientes as $c ) : ?>
+						<tr>
                             <td class="font-mono"><?php echo esc_html( $c->rif_ci ); ?></td>
                             <td><strong><?php echo esc_html( $c->nombre_razon ); ?></strong></td>
+                            
                             <td>
                                 <?php echo esc_html( $c->telefono ); ?><br>
                                 <small style="color: #64748b;"><?php echo esc_html( $c->email ); ?></small>
                             </td>
-                            <td><?php echo esc_html( $c->ciudad ); ?></td>
+                            
+                            <td><?php echo esc_html( ucwords( strtolower( $c->ciudad ) ) ); ?></td>
+                            
                             <td>
-                                <!-- USO DE LA NUEVA ARQUITECTURA JS -->
-                                <button class="btn-modern-action small" onclick="SuiteCRM.openProfile(<?php echo intval( $c->id ); ?>)">
-                                    📂 Expediente
-                                </button>
+                                <div style="display: flex; gap: 8px;">
+                                    <button class="btn-modern-action small" onclick="SuiteCRM.openProfile(<?php echo intval( $c->id ); ?>)">📂 Expediente</button>
+                                    
+                                    <?php 
+                                    $wa_phone = preg_replace('/[^0-9]/', '', $c->telefono);
+                                    if ( ! empty( $wa_phone ) ) : 
+                                        if ( strlen( $wa_phone ) === 11 && strpos( $wa_phone, '0' ) === 0 ) {
+                                            $wa_phone = '58' . substr( $wa_phone, 1 );
+                                        } elseif ( strlen( $wa_phone ) === 10 ) {
+                                            $wa_phone = '58' . $wa_phone;
+                                        }
+                                    ?>
+                                        <a href="https://api.whatsapp.com/send?phone=<?php echo esc_attr( $wa_phone ); ?>" target="_blank" class="btn-modern-action small" style="color: #059669; border-color: #a7f3d0; background: #ecfdf5; text-decoration: none;">📱 WA</a>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -84,7 +98,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 <!-- ========================================================= -->
 
 <!-- Modal: Crear Nuevo Cliente -->
-<div id="modal-add-client" class="suite-modal">
+<div id="modal-add-client" class="suite-modal" style="display: none;">
     <div class="suite-modal-content">
         <span class="close-modal" onclick="jQuery('.suite-modal').fadeOut();">×</span>
         <h3 style="margin-top:0; color:#0f172a;">➕ Nuevo Cliente</h3>
@@ -118,7 +132,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 </div>
 
 <!-- Modal: Importar Clientes Masivamente -->
-<div id="modal-import-clients" class="suite-modal">
+<div id="modal-import-clients" class="suite-modal" style="display: none;">
     <div class="suite-modal-content">
         <span class="close-modal" onclick="jQuery('.suite-modal').fadeOut();">×</span>
         <h3 style="margin-top:0; color:#0f172a;">📥 Importar Clientes</h3>
@@ -131,7 +145,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 </div>
 
 <!-- Modal: Expediente / Perfil de Cliente -->
-<div id="modal-client-profile" class="suite-modal">
+<div id="modal-client-profile" class="suite-modal" style="display: none;">
     <div class="suite-modal-content large">
         <div class="modal-header-fixed">
             <h3 style="margin:0; font-size:20px; color:#0f172a;">📂 Expediente Cliente</h3>

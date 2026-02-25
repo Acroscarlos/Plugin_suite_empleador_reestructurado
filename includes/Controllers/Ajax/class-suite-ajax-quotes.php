@@ -247,3 +247,342 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
         }
     }
 }
+
+
+/**
+ * Endpoint para Imprimir Cotización en PDF/HTML (Sustituye a mod-impresion.php)
+ */
+class Suite_Ajax_Print_Quote extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_print_quote';
+    protected $required_capability = 'read';
+
+    public function handle_request() {
+        if ( ! isset( $_GET['nonce'] ) || ! wp_verify_nonce( $_GET['nonce'], 'suite_quote_nonce' ) ) {
+            wp_die( 'Enlace caducado o inválido por seguridad (CSRF).', 'Acceso Denegado', [ 'response' => 403 ] );
+        }
+        $this->process();
+    }
+
+    protected function process() {
+        if ( ! current_user_can( 'read' ) ) {
+            wp_die( 'Privilegios insuficientes.', 'Acceso Denegado', [ 'response' => 403 ] );
+        }
+
+        global $wpdb;
+        $id = isset( $_GET['id'] ) ? intval( $_GET['id'] ) : 0;
+
+        // 1. OBTENER DATOS PRINCIPALES
+        $cot = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_cotizaciones WHERE id = %d", $id ) );
+        if ( ! $cot ) wp_die( 'Cotización no encontrada.', 'Error', [ 'response' => 404 ] );
+
+        $items = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_cotizaciones_items WHERE cotizacion_id = %d", $id ) );
+
+        // 2. OBTENER DATOS EXTENDIDOS DEL CLIENTE
+        $cliente_extra = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_clientes WHERE id = %d", $cot->cliente_id ) );
+
+        // 3. DATOS VENDEDOR
+        $vendedor = get_userdata( $cot->vendedor_id );
+        $vendedor_nombre = $vendedor ? $vendedor->display_name : 'Equipo de Ventas';
+        $tel_db = get_user_meta($cot->vendedor_id, 'suite_telefono', true);
+        $vendedor_telefono = !empty($tel_db) ? $tel_db : "+58 424-844-2132";
+
+        // 4. LÓGICA DE MONEDA (USD vs BS)
+        $es_bolivares = ( $cot->moneda === 'BS' );
+        $simbolo = $es_bolivares ? 'Bs.' : '$';
+        $tasa_calc = $es_bolivares ? floatval( $cot->tasa_bcv ) : 1;
+
+        // 5. CÁLCULOS TOTALES
+        $subtotal_base = floatval( $cot->total_usd ) * $tasa_calc;
+        $descuento = 0; 
+        $base_imponible = $subtotal_base - $descuento;
+        $iva_pct = 0.16;
+        $monto_iva = $base_imponible * $iva_pct;
+        $total_final = $base_imponible + $monto_iva;
+
+        // Formateo
+        $subtotal_fmt = number_format( $subtotal_base, 2 );
+        $iva_fmt = number_format( $monto_iva, 2 );
+        $total_fmt = number_format( $total_final, 2 );
+
+        // LÓGICA DE LIMPIEZA DE DATOS
+        $validar_dato = function($val) {
+            return (!empty($val) && $val !== 'N/A' && $val !== 'N/D');
+        };
+
+        $show_dir = $validar_dato($cot->direccion_entrega) ? $cot->direccion_entrega : false;
+        
+        $ciudad_raw = isset($cliente_extra->ciudad) ? $cliente_extra->ciudad : '';
+        $estado_raw = isset($cliente_extra->estado) ? $cliente_extra->estado : '';
+        $show_ubicacion = trim("$ciudad_raw $estado_raw");
+        if(!$validar_dato($show_ubicacion)) $show_ubicacion = false;
+
+        $show_atencion = (isset($cliente_extra->contacto_persona) && $validar_dato($cliente_extra->contacto_persona)) ? $cliente_extra->contacto_persona : false;
+        $tel_raw = (isset($cliente_extra->telefono) && $validar_dato($cliente_extra->telefono)) ? "Telf: " . $cliente_extra->telefono : '';
+        $email_raw = (isset($cliente_extra->email) && $validar_dato($cliente_extra->email)) ? "Email: " . $cliente_extra->email : '';
+        $show_contacto = trim("$tel_raw $email_raw");
+        
+        if(empty($tel_raw) && empty($email_raw)) $show_contacto = false;
+
+		// --- INICIO HTML ---
+        ?>
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <title>Cotización #<?php echo esc_attr( $cot->codigo_cotizacion ); ?></title>
+            <style>
+                /* REGLAS MAESTRAS DE IMPRESIÓN Y COLORES */
+                * {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                    color-adjust: exact !important;
+                }
+                @media print {
+                    @page { margin: 1cm; size: letter portrait; }
+                    body { margin: 0; padding: 0; }
+                }
+                
+                /* TIPOGRAFÍA ÚNICA Y GLOBAL */
+                body { 
+                    font-family: Arial, Helvetica, sans-serif; 
+                    padding: 30px; 
+                    color: #555555; 
+                    font-size: 12px; 
+                    margin: 0;
+                }
+                
+                /* CLASES DE COLORES ESPECÍFICAS */
+                .text-gray { color: #555555 !important; }
+                .text-black-bold { color: #000000 !important; font-weight: bold !important; }
+                .text-red-bold { color: #d0121b !important; font-weight: bold !important; }
+                .bg-red-unit { background-color: #d0121b !important; color: #ffffff !important; }
+                
+                /* SEPARADORES */
+                .separator-red { border: none; border-top: 2px solid #d0121b; margin: 15px 0; }
+                .separator-light { border: none; border-top: 1px solid #e5e7eb; margin: 8px 0 12px 0; }
+                .separator-elegant { border: none; border-top: 1px solid #d1d5db; margin: 18px 0; }
+                
+                /* =========================================
+                   ENCABEZADO: LOGO (IZQ) / COTIZACIÓN (DER) 
+                   ========================================= */
+                .header-table { width: 100%; border-collapse: collapse; margin-bottom: 5px; }
+                .header-table td { vertical-align: top; }
+                
+                /* IZQUIERDA: LOGO Y EMPRESA */
+                .header-left { width: 55%; padding-right: 20px; text-align: left; }
+                .empresa-info-container img { height: 60px; margin-bottom: 8px; }
+                .empresa-info { font-size: 11px; line-height: 1.4; }
+                
+                /* DERECHA: COTIZACIÓN */
+                .header-right { width: 45%; text-align: right; }
+                .cotizacion-title { 
+                    margin: 0 0 5px 0; 
+                    font-size: 18px; /* Elegante y proporcionado */
+                    letter-spacing: 2px; 
+                    font-weight: bold;
+                    color: #000;
+					text-align: left;
+                }
+                .separator-header-right { border-bottom: 1px solid #d1d5db; margin: 5px 0 10px auto; width: 100%; }
+                
+                .cotizacion-datos { border-collapse: collapse; font-size: 12px; text-align: left; width: 100%; }
+                .cotizacion-datos td { padding: 3px 0; }
+                .cotizacion-datos td:first-child { width: 80px; } 
+                
+                /* =========================================
+                   DATOS DEL CLIENTE
+                   ========================================= */
+                .client-box { 
+                    border: 1px solid #d1d5db; 
+                    padding: 15px; 
+                    border-radius: 8px; /* Esquinas curvas */
+                    margin-bottom: 25px; /* Espaciado antes de la tabla */
+                }
+                .client-title { font-size: 13px; margin: 0; }
+                .client-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+                .client-table td { padding: 5px 0; vertical-align: top; border: none; }
+                
+                /* =========================================
+                   TABLA DE PRODUCTOS
+                   ========================================= */
+                .products-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 5px; }
+                /* Alineación forzada a la izquierda */
+                .products-table th, .products-table td { padding: 8px; text-align: left !important; }
+                .products-table th { font-weight: bold; border: 1px solid #d0121b; } 
+                .products-table td { border-bottom: 1px solid #f3f4f6; } 
+                
+                /* =========================================
+                   TOTALES Y FOOTER
+                   ========================================= */
+                .totales-table { width: 280px; float: right; border-collapse: collapse; font-size: 12px; }
+                .totales-table td { padding: 6px 10px; text-align: left; border: none; }
+                .totales-table td:last-child { text-align: right; }
+                
+                /* Fila del Gran Total */
+                .grand-total td { 
+                    font-size: 16px !important; 
+                    font-weight: bold !important; 
+                    color: #d0121b !important; 
+                    border-top: 1.5px solid #d0121b !important; /* Separador rojo del IVA al Total */
+                    padding-top: 10px;
+                    margin-top: 5px;
+                }
+                
+                .footer { text-align: center; font-style: italic; font-size: 12px; clear: both; width: 100%; padding-top: 5px; }
+            </style>
+        </head>
+        <body onload="window.print()">
+            
+            <table class="header-table">
+                <tr>
+                    <td class="header-left">
+                        <div class="empresa-info-container">
+                            <img src="https://mitiendaunit.com/wp-content/uploads/2025/09/LOGO-UNI-T-RENOVADO_Mesa-de-trabajo-1-2.png" alt="UNI-T">
+                            <div class="empresa-info text-gray">
+                                <strong class="text-black-bold">UNI-T VENEZUELA, C.A.</strong><br>
+                                C.C. Galerias Avila, nivel Feria, Local F67<br>
+                                Caracas, 1010, Venezuela.<br>
+                                R.I.F.: J-50174299-5<br>
+                                Web: www.mitiendaunit.com
+                            </div>
+                        </div>
+                    </td>
+
+                    <td class="header-right">
+                        <h2 class="cotizacion-title">COTIZACIÓN</h2>
+                        <div class="separator-header-right"></div>
+                        <table class="cotizacion-datos">
+                            <tr>
+                                <td class="text-black-bold">N°:</td>
+                                <td class="text-red-bold">#<?php echo esc_html( $cot->codigo_cotizacion ); ?></td>
+                            </tr>
+                            <tr>
+                                <td class="text-black-bold">Fecha:</td>
+                                <td class="text-gray"><?php echo date( 'd/m/Y', strtotime( $cot->fecha_emision ) ); ?></td>
+                            </tr>
+                            <tr>
+                                <td class="text-black-bold">Validez:</td>
+                                <td class="text-gray"><?php echo esc_html( $cot->validez_dias ); ?> Días</td>
+                            </tr>
+                            <tr>
+                                <td class="text-black-bold">Vendedor:</td>
+                                <td class="text-gray"><?php echo esc_html( $vendedor_nombre ); ?></td>
+                            </tr>
+                            <tr>
+                                <td class="text-black-bold">Teléfono:</td>
+                                <td class="text-gray"><?php echo esc_html( $vendedor_telefono ); ?></td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+
+            <hr class="separator-red">
+
+            <div class="client-box">
+                <div class="client-title text-red-bold">DATOS DEL CLIENTE</div>
+                <hr class="separator-light">
+                <table class="client-table">
+                    <tr>
+                        <td style="width: 50%;">
+                            <strong class="text-black-bold">RAZÓN SOCIAL:</strong> 
+                            <span class="text-black-bold"><?php echo esc_html( mb_strtoupper( $cot->cliente_nombre, 'UTF-8' ) ); ?></span>
+                        </td>
+                        <td style="width: 50%;">
+                            <strong class="text-black-bold">RIF/CI:</strong> 
+                            <span class="text-gray"><?php echo esc_html( mb_strtoupper( $cot->cliente_rif, 'UTF-8' ) ); ?></span>
+                        </td>
+                    </tr>
+                    <?php if ( $show_dir || $show_ubicacion ): ?>
+                    <tr>
+                        <?php if ( $show_dir ): ?>
+                            <td <?php echo !$show_ubicacion ? 'colspan="2"' : ''; ?>>
+                                <strong class="text-black-bold">DIRECCIÓN:</strong> 
+                                <span class="text-gray"><?php echo esc_html( mb_strtoupper( $show_dir, 'UTF-8' ) ); ?></span>
+                            </td>
+                        <?php endif; ?>
+                        <?php if ( $show_ubicacion ): ?>
+                            <td <?php echo !$show_dir ? 'colspan="2"' : ''; ?>>
+                                <strong class="text-black-bold">CIUDAD/ESTADO:</strong> 
+                                <span class="text-gray"><?php echo esc_html( mb_strtoupper( $show_ubicacion, 'UTF-8' ) ); ?></span>
+                            </td>
+                        <?php endif; ?>
+                    </tr>
+                    <?php endif; ?>
+                    <?php if ( $show_contacto ): ?>
+                    <tr>
+                        <td colspan="2">
+                            <strong class="text-black-bold">CONTACTO:</strong> 
+                            <span class="text-gray"><?php echo esc_html( mb_strtoupper( $show_contacto, 'UTF-8' ) ); ?></span>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+                </table>
+            </div>
+
+            <table class="products-table">
+                <thead>
+                    <tr>
+                        <th class="bg-red-unit" style="width: 33%;">DESCRIPCIÓN</th>
+                        <th class="bg-red-unit" style="width: 20%;">PRECIO POR UNIDAD</th>
+                        <th class="bg-red-unit" style="width: 10%;">CANTIDAD</th>
+                        <th class="bg-red-unit" style="width: 20%;">TIEMPO DE ENTREGA</th>
+                        <th class="bg-red-unit" style="width: 17%;">MONTO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $items as $item ): 
+                        $precio_unit = floatval($item->precio_unitario_usd) * $tasa_calc;
+                        $subtotal_item = floatval($item->subtotal_usd) * $tasa_calc;
+                    ?>
+                    <tr>
+                        <td>
+                            <strong class="text-black-bold"><?php echo esc_html( $item->sku ); ?></strong><br>
+                            <span class="text-gray"><?php echo esc_html( mb_strtoupper( $item->producto_nombre, 'UTF-8' ) ); ?></span>
+                        </td>
+                        <td class="text-gray"><?php echo $simbolo . ' ' . number_format( $precio_unit, 2 ); ?></td>
+                        <td class="text-gray"><?php echo intval( $item->cantidad ); ?></td>
+                        <td class="text-gray"><?php echo !empty($item->tiempo_entrega) ? esc_html( mb_strtoupper( $item->tiempo_entrega, 'UTF-8' ) ) : 'INMEDIATA'; ?></td>
+                        <td class="text-gray"><?php echo $simbolo . ' ' . number_format( $subtotal_item, 2 ); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <hr class="separator-elegant">
+
+            <table class="totales-table">
+                <tr>
+                    <td class="text-gray">Subtotal:</td>
+                    <td class="text-black-bold" style="width: 130px;"><?php echo $simbolo . ' ' . $subtotal_fmt; ?></td>
+                </tr>
+                <?php if ( $descuento > 0 ): ?>
+                <tr>
+                    <td class="text-gray">Descuento:</td>
+                    <td class="text-gray">- <?php echo $simbolo . ' ' . number_format( $descuento, 2 ); ?></td>
+                </tr>
+                <?php endif; ?>
+                <tr>
+                    <td class="text-gray">I.V.A. (16%):</td>
+                    <td class="text-black-bold"><?php echo $simbolo . ' ' . $iva_fmt; ?></td>
+                </tr>
+                <tr class="grand-total">
+                    <td>TOTAL:</td>
+                    <td><?php echo $simbolo . ' ' . $total_fmt; ?></td>
+                </tr>
+            </table>
+
+            <div style="clear: both;"></div>
+
+            <hr class="separator-elegant">
+
+            <div class="footer text-gray">
+                Gracias por su preferencia. Esta cotización está sujeta a disponibilidad de inventario.
+            </div>
+        </body>
+        </html>
+        <?php
+        exit;
+    }
+}

@@ -75,7 +75,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 <!-- ========================================================= -->
 <!-- MODAL: CONFIRMACIÓN DE DESPACHO / SUBIDA DE POD           -->
 <!-- ========================================================= -->
-<div id="modal-confirmar-despacho" class="suite-modal">
+<div id="modal-confirmar-despacho" class="suite-modal" style="display: none;">
     <div class="suite-modal-content">
         <span class="close-modal" onclick="jQuery('#modal-confirmar-despacho').fadeOut();">×</span>
         

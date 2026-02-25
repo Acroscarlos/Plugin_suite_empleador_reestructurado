@@ -139,13 +139,16 @@ const SuiteMarketing = (function($) {
     // ==========================================
     return {
         loadDashboard: function() {
-            // Utilizamos la ruta absoluta al endpoint REST de WordPress
-            const restUrl = '/wp-json/suite/v1/ventas-vs-alcance';
+            // Utilizamos la ruta dinámica al endpoint REST de WordPress
+            const restUrl = suite_vars.rest_url + 'suite/v1/ventas-vs-alcance';
 
-            // Usamos jQuery AJAX para aprovechar las cookies de sesión nativas de WP
+            // Usamos jQuery AJAX inyectando el Nonce nativo de la API REST
             $.ajax({
                 url: restUrl,
                 method: 'GET',
+                headers: { 
+                    'X-WP-Nonce': suite_vars.rest_nonce 
+                },
                 success: function(res) {
                     if (res.success && res.data) {
                         renderCharts(res.data);
@@ -153,10 +156,10 @@ const SuiteMarketing = (function($) {
                 },
                 error: function(err) {
                     if(err.status === 401 || err.status === 403) {
-                        alert('🔒 Acceso Denegado: Su rol no tiene permisos para ver analíticas.');
+                        alert('🔒 Acceso Denegado: Su rol no tiene permisos para ver analíticas o su sesión expiró.');
                     } else {
-                        $('#chart-canales-venta').parent().html('<p style="color:red;">Error al cargar datos.</p>');
-                        $('#chart-tendencia-ventas').parent().html('<p style="color:red;">Error al cargar datos.</p>');
+                        $('#chart-canales-venta').parent().html('<div style="padding:20px; color:#dc2626;">Error al cargar datos.</div>');
+                        $('#chart-tendencia-ventas').parent().html('<div style="padding:20px; color:#dc2626;">Error al cargar datos.</div>');
                     }
                 }
             });

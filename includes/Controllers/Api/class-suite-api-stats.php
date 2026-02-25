@@ -48,7 +48,7 @@ class Suite_API_Stats {
      *
      * @return bool|WP_Error
      */
-    public function check_permissions() {
+	public function check_permissions() {
         if ( ! is_user_logged_in() ) {
             return new WP_Error( 'rest_unauthorized', 'Debe iniciar sesión para acceder a la API.', [ 'status' => 401 ] );
         }
@@ -56,7 +56,8 @@ class Suite_API_Stats {
         $user = wp_get_current_user();
         $roles = (array) $user->roles;
 
-        if ( in_array( 'administrator', $roles ) || in_array( 'suite_marketing', $roles ) ) {
+        // VERIFICACIÓN CORREGIDA: Usa current_user_can() para Admin, y validación de rol para marketing
+        if ( current_user_can( 'manage_options' ) || in_array( 'suite_marketing', $roles ) ) {
             return true;
         }
 

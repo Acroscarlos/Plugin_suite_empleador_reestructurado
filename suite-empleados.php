@@ -69,6 +69,7 @@ function suite_empleados_init() {
     new Suite_Ajax_Quote_Save();
     new Suite_Ajax_Quote_History();
     new Suite_Ajax_Quote_Status();
+	new Suite_Ajax_Print_Quote();
 
     // Módulo 1: Tablero Kanban (Pedidos)
     new Suite_Ajax_Kanban_Data();

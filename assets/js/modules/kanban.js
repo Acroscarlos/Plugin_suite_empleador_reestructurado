@@ -18,7 +18,12 @@ const SuiteKanban = (function($) {
         let waBtnHtml = '';
         if (order.wa_phone) {
             let msg = encodeURIComponent(`Hola ${order.cliente_nombre}, le contactamos respecto a su pedido ${order.codigo_cotizacion}: ${suite_vars.ajax_url}?action=suite_print_quote&id=${order.id}`);
-            waBtnHtml = `<a href="https://api.whatsapp.com/send?phone=${order.wa_phone}&text=${msg}" target="_blank" class="kanban-wa-btn">📱 WA</a>`;
+            waBtnHtml = `<a href="https://api.whatsapp.com/send?phone=${order.wa_phone}&text=${msg}" target="_blank" class="btn-modern-action" style="padding: 4px; font-size:11px; text-decoration:none;">📱 WA</a>`;
+        }
+
+        let mobilePayBtn = '';
+        if (order.estado !== 'pagado' && order.estado !== 'despachado') {
+            mobilePayBtn = `<button type="button" class="btn-modern-action trigger-mobile-pay" data-id="${order.id}" data-col="${order.estado}" style="padding: 4px; font-size:11px; background:#10b981; color:white; border:none; cursor:pointer;">💰 Pagar</button>`;
         }
 
         return `
@@ -30,7 +35,8 @@ const SuiteKanban = (function($) {
                     <strong style="color: #059669; font-size:14px;">$${order.total_fmt}</strong>
                     <div style="display:flex; gap: 8px;">
                         ${waBtnHtml}
-                        <a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${order.id}" target="_blank" class="btn-modern-action" style="padding: 4px; font-size:11px;">🖨️</a>
+                        ${mobilePayBtn}
+                        <a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${order.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action" style="padding: 4px; font-size:11px; text-decoration:none;">🖨️</a>
                     </div>
                 </div>
             </div>
@@ -121,7 +127,7 @@ const SuiteKanban = (function($) {
     // ==========================================
     // LISTENERS DEL MODAL DE CIERRE DE VENTA
     // ==========================================
-    const bindModalEvents = function() {
+	const bindModalEvents = function() {
         
         // 1. Cerrar o cancelar Modal (Botón "X" o click por fuera)
         $('#close-modal-cierre').on('click', function() {
@@ -182,8 +188,30 @@ const SuiteKanban = (function($) {
                 btn.prop('disabled', false).text('Confirmar y Procesar Pago');
             });
         });
-    };
 
+        // 3. Trigger manual (Mobile) para "Pagar" sin arrastrar
+        $('#kb-col-emitida, #kb-col-proceso, #kb-col-pagado, #kb-col-despachado').on('click', '.trigger-mobile-pay', function(e) {
+            e.preventDefault();
+            const quoteId = $(this).data('id');
+            const col = $(this).data('col'); // Estado actual (ej: 'emitida')
+            
+            // Simular el objeto pendingDrop para evitar fallos lógicos
+            pendingDrop = { 
+                quoteId: quoteId, 
+                itemEl: $(this).closest('.kanban-card'), 
+                fromCol: document.getElementById('kb-col-' + col), 
+                toCol: document.getElementById('kb-col-pagado'), 
+                oldIndex: $(this).closest('.kanban-card').index()
+            };
+            
+            // Limpiar y preparar Modal
+            $('#modal-cierre-venta input, #modal-cierre-venta select').val('');
+            $('#cierre-quote-id').val(quoteId);
+            
+            // Mostrar Modal
+            $('#modal-cierre-venta').fadeIn();
+        });
+    };
     // ==========================================
     // API PÚBLICA (Métodos Revelados)
     // ==========================================

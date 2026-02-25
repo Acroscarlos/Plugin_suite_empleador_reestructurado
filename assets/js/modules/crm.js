@@ -30,7 +30,7 @@ const SuiteCRM = (function($) {
         return clean;
     };
 
-    /**
+	/**
      * Inicializa la Tabla de Clientes (DataTables) [3, 4]
      */
     const initDataTable = function() {
@@ -38,10 +38,25 @@ const SuiteCRM = (function($) {
             
             // Permisos visuales basados en el rol (Extraído de suite_vars)
             let tableDom = suite_vars.is_admin ? 'Blrtip' : 'lrtip';
+            
+            // --- INICIO DE LA CORRECCIÓN: Botones de Exportación ---
             let tableButtons = suite_vars.is_admin ? [
                 { extend: 'excelHtml5', text: 'Excel', className: 'btn-modern-action small' },
-                { extend: 'csvHtml5', text: 'CSV', className: 'btn-modern-action small' }
+                { 
+                    extend: 'csvHtml5', 
+                    text: 'CSV', 
+                    className: 'btn-modern-action small',
+                    exportOptions: {
+                        format: {
+                            body: function (data, row, column, node) {
+                                // Limpia acentos y caracteres diacríticos para la exportación CSV
+                                return data ? data.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : data;
+                            }
+                        }
+                    }
+                }
             ] : [];
+            // --- FIN DE LA CORRECCIÓN ---
 
             cliTable = $('#clientsTable').DataTable({
                 paging: true,
@@ -201,21 +216,24 @@ const SuiteCRM = (function($) {
                 $('#kpi-count').text(s.count);
                 $('#kpi-last').text(s.last);
 
-                // Llenar Historial de Compras
-                let hHtml = '';
-                if (h.length > 0) {
-                    h.forEach(r => {
-                        hHtml += `
-                            <tr>
-                                <td>${r.fecha}</td>
-                                <td><strong>${r.codigo}</strong></td>
-                                <td>$${r.total}</td>
-                                <td><a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${r.id}" target="_blank">📄 Imprimir</a></td>
-                            </tr>`;
-                    });
-                } else {
-                    hHtml = '<tr><td colspan="4" class="text-center text-gray-500">Sin compras registradas.</td></tr>';
-                }
+				// Llenar Historial de Compras
+				let hHtml = '';
+				if (h.length > 0) {
+					h.forEach(r => {
+						hHtml += `
+							<tr>
+								<td>${r.fecha}</td>
+								<td><strong>${r.codigo}</strong></td>
+								<td class="text-green">$${r.total}</td>
+								<td>
+									<a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${r.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small">📄 Imprimir</a>
+								</td>
+							</tr>
+						`;
+					});
+				} else {
+					hHtml = '<tr><td colspan="4" class="text-center text-gray-500 py-4">Sin compras registradas.</td></tr>';
+				}
                 
                 $('#prof-history-body').html(hHtml);
 

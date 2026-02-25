@@ -66,9 +66,11 @@ class Suite_Shortcode_Controller {
 
             // 6. Variables Globales de Entorno e Inyección de Nonce de Seguridad
             wp_localize_script( 'suite-api-js', 'suite_vars', [
-                'ajax_url' => admin_url( 'admin-ajax.php' ),
-                'nonce'    => wp_create_nonce( 'suite_quote_nonce' ),
-                'is_admin' => current_user_can( 'manage_options' )
+                'ajax_url'   => admin_url( 'admin-ajax.php' ),
+                'nonce'      => wp_create_nonce( 'suite_quote_nonce' ),
+                'is_admin'   => current_user_can( 'manage_options' ),
+                'rest_url'   => esc_url_raw( rest_url() ),
+                'rest_nonce' => wp_create_nonce( 'wp_rest' )
             ] );
         }
     }
