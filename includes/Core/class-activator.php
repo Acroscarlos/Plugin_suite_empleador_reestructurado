@@ -27,7 +27,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             velocidad_ventas FLOAT DEFAULT 0,
             precio DECIMAL(10,2) DEFAULT 0,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             UNIQUE KEY idx_sku (sku)
         ) $charset_collate;";
 
@@ -44,7 +44,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             contacto_persona VARCHAR(150),
             notas TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             UNIQUE KEY idx_rif (rif_ci)
         ) $charset_collate;";
 
@@ -70,7 +70,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             url_captura_pago TEXT,
             recibo_loyverse VARCHAR(100),
             pod_url TEXT,
-            PRIMARY KEY (id)
+            PRIMARY KEY  (id)
         ) $charset_collate;";
 
         // 4. Tabla Libro Mayor de Comisiones (Ledger)
@@ -82,7 +82,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             comision_ganada_usd DECIMAL(15,2) DEFAULT 0,
             estado_pago VARCHAR(20) DEFAULT 'pendiente',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             KEY idx_vendedor (vendedor_id)
         ) $charset_collate;";
 
@@ -96,7 +96,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             monto_premio DECIMAL(10,2) DEFAULT 0,
             asignado_manualmente TINYINT(1) DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             KEY idx_mes_anio (mes, anio)
         ) $charset_collate;";
 
@@ -110,7 +110,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             precio_unitario_usd DECIMAL(15,2),
             tiempo_entrega VARCHAR(100),
             subtotal_usd DECIMAL(15,2),
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             KEY idx_cotizacion (cotizacion_id)
         ) $charset_collate;";
 
@@ -122,7 +122,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             detalle TEXT,
             ip VARCHAR(45),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             KEY idx_usuario (usuario_id)
         ) $charset_collate;";
 
@@ -134,7 +134,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             stock_disponible INT DEFAULT 0,
             precio DECIMAL(10,2) DEFAULT 0,
             categoria VARCHAR(100) DEFAULT 'General',
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             KEY idx_fecha (fecha_snapshot),
             KEY idx_sku (sku)
         ) $charset_collate;";

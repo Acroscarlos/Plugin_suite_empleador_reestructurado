@@ -59,7 +59,7 @@ class Suite_Model_Client extends Suite_Model_Base {
      * @return object|null Objeto con los totales (total, count, first, last).
      */
     public function get_client_stats( $client_id ) {
-        $tabla_cotizaciones = $this->wpdb->prefix . 'suite_cotizaciones'; [6, 7]
+        $tabla_cotizaciones = $this->wpdb->prefix . 'suite_cotizaciones';
 
         $sql = $this->wpdb->prepare( 
             "SELECT 
@@ -72,7 +72,7 @@ class Suite_Model_Client extends Suite_Model_Base {
             intval( $client_id ) 
         );
 
-        return $this->wpdb->get_row( $sql ); [2]
+        return $this->wpdb->get_row( $sql );
     }
 
     /**
@@ -82,7 +82,7 @@ class Suite_Model_Client extends Suite_Model_Base {
      * @return array Array de objetos con las últimas 10 cotizaciones.
      */
     public function get_client_history( $client_id ) {
-        $tabla_cotizaciones = $this->wpdb->prefix . 'suite_cotizaciones'; [6, 7]
+        $tabla_cotizaciones = $this->wpdb->prefix . 'suite_cotizaciones';
 
         $sql = $this->wpdb->prepare( 
             "SELECT 
@@ -98,7 +98,7 @@ class Suite_Model_Client extends Suite_Model_Base {
             intval( $client_id ) 
         );
 
-        return $this->wpdb->get_results( $sql ); [3]
+        return $this->wpdb->get_results( $sql );
     }
 
 }
