@@ -21,7 +21,7 @@ class Suite_Model_Employee {
      *
      * @return array Lista de empleados con sus datos formateados.
      */
-    public function get_all_employees() {
+	public function get_all_employees() {
         // Obtenemos todos los usuarios excepto los suscriptores y clientes genéricos
         $args = [
             'role__not_in' => [ 'subscriber', 'customer' ],
@@ -44,7 +44,7 @@ class Suite_Model_Employee {
                 'nombre'     => $u->display_name,
                 'email'      => $u->user_email,
                 'telefono'   => ! empty( $telefono ) ? $telefono : '-',
-                'roles'      => $u->roles, // Array con los roles activos del usuario
+                'roles'      => array_values( $u->roles ), // CORRECCIÓN: Forzamos un array indexado limpio para JS
             ];
         }
 

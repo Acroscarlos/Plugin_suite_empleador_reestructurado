@@ -49,6 +49,8 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Models/class-suite-model-quote.php';
     require_once SUITE_PATH . 'includes/Models/class-suite-model-inventory.php';
     require_once SUITE_PATH . 'includes/Models/class-suite-model-commission.php';
+	require_once SUITE_PATH . 'includes/Models/class-suite-model-roles.php';    
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-employee.php'; 
 
     // Controladores Base
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-controller.php';
@@ -59,6 +61,8 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-kanban.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-commissions.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-logistics.php';
+	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-employees.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-roles.php';
 
     // Controladores API REST (Data Lake y Machine Learning)
     require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-stats.php';
@@ -75,6 +79,7 @@ function suite_empleados_init() {
     new Suite_Ajax_Client_Import();
     new Suite_Ajax_Client_Delete();
     new Suite_Ajax_Client_Profile();
+	new Suite_Ajax_Log_Export();
 
     // Módulo de Cotizaciones
     new Suite_Ajax_Quote_Save();
@@ -95,6 +100,14 @@ function suite_empleados_init() {
 
     // Módulo 5: Cerebro de Demanda (REST API)
     new Suite_API_Stats();
+	
+	// Módulo 6:--- NUEVO MÓDULO: GESTIÓN DE EQUIPO Y ROLES (RBAC) ---
+    new Suite_Ajax_Employee_List();
+    new Suite_Ajax_Employee_Save();
+    new Suite_Ajax_Employee_Delete();
+    new Suite_Ajax_Role_List();
+    new Suite_Ajax_Role_Save();
+    new Suite_Ajax_Role_Delete();
 
     // Gestor de la Vista Principal (Shortcode y encolado de assets)
     new Suite_Shortcode_Controller();
@@ -568,27 +581,59 @@ const SuiteCRM = (function($) {
     const initDataTable = function() {
         if ($('#clientsTable').length && !$.fn.DataTable.isDataTable('#clientsTable')) {
             
-            // Permisos visuales basados en el rol (Extraído de suite_vars)
-            let tableDom = suite_vars.is_admin ? 'Blrtip' : 'lrtip';
-            
-            // --- INICIO DE LA CORRECCIÓN: Botones de Exportación ---
-            let tableButtons = suite_vars.is_admin ? [
-                { extend: 'excelHtml5', text: 'Excel', className: 'btn-modern-action small' },
+			// ---------------------------------------------------------
+            // INICIO DE LA CORRECCIÓN QUIRÚRGICA: SEGURIDAD Y LOGS
+            // ---------------------------------------------------------
+
+            // Leemos la variable global de permisos (o suite_vars.is_admin como fallback)
+            const canExportData = suite_vars.can_export || suite_vars.is_admin;
+            let tableDom = canExportData ? 'Blrtip' : 'lrtip'; // Oculta botones si no hay permisos
+
+            // Array de botones con Secuestro de Clic (Interceptor)
+            let tableButtons = canExportData ? [
+                { 
+                    extend: 'excelHtml5', 
+                    text: 'Excel', 
+                    className: 'btn-modern-action small',
+                    action: function (e, dt, node, config) {
+                        let btnInstance = this;
+                        
+                        // 1. Llamada a la API para registrar el Log
+                        SuiteAPI.post('suite_log_export', { tabla: 'Clientes (Excel)' }).then(res => {
+                            if (res.success) {
+                                // 2. Ejecutamos la acción nativa de DataTables para descargar
+                                $.fn.dataTable.ext.buttons.excelHtml5.action.call(btnInstance, e, dt, node, config);
+                            }
+                        }).catch(err => {
+                            alert('⚠️ Acción bloqueada: No se pudo registrar la auditoría de seguridad.');
+                        });
+                    }
+                },
                 { 
                     extend: 'csvHtml5', 
                     text: 'CSV', 
                     className: 'btn-modern-action small',
+                    action: function (e, dt, node, config) {
+                        let btnInstance = this;
+                        
+                        SuiteAPI.post('suite_log_export', { tabla: 'Clientes (CSV)' }).then(res => {
+                            if (res.success) {
+                                $.fn.dataTable.ext.buttons.csvHtml5.action.call(btnInstance, e, dt, node, config);
+                            }
+                        }).catch(err => {
+                            alert('⚠️ Acción bloqueada: No se pudo registrar la auditoría de seguridad.');
+                        });
+                    },
                     exportOptions: {
                         format: {
                             body: function (data, row, column, node) {
-                                // Limpia acentos y caracteres diacríticos para la exportación CSV
+                                // Lógica para limpiar acentos intacta
                                 return data ? data.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : data;
                             }
                         }
                     }
                 }
             ] : [];
-            // --- FIN DE LA CORRECCIÓN ---
 
             cliTable = $('#clientsTable').DataTable({
                 paging: true,
@@ -804,6 +849,365 @@ const SuiteCRM = (function($) {
 
 })(jQuery);
 --- FIN DEL ARCHIVO: assets/js/modules/crm.js ---
+
+--- INICIO DEL ARCHIVO: assets/js/modules/employees.js ---
+/**
+ * SuiteEmployees - Módulo de Gestión de Empleados y Roles (RBAC)
+ * 
+ * Se encarga de inicializar las tablas de usuarios y perfiles,
+ * renderizar la matriz dinámica de capacidades y procesar el CRUD.
+ */
+const SuiteEmployees = (function($) {
+    'use strict';
+
+    // ==========================================
+    // VARIABLES PRIVADAS
+    // ==========================================
+    let empTable = null;
+    let roleTable = null;
+    let currentCapabilitiesDict = {}; // Almacena el diccionario devuelto por el Backend
+
+    const dtLanguage = { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json", "lengthMenu": "_MENU_" };
+
+    // ==========================================
+    // MÉTODOS PRIVADOS (Renders y Utilidades)
+    // ==========================================
+
+    /**
+     * Inicializa las tablas de DataTables
+     */
+    const initTables = function() {
+        if ($('#employeesTable').length && !$.fn.DataTable.isDataTable('#employeesTable')) {
+            empTable = $('#employeesTable').DataTable({
+                responsive: true,
+                language: dtLanguage,
+                dom: 'lrtip', // Sin botones de exportación por defecto
+                pageLength: 25
+            });
+        }
+
+        if ($('#rolesTable').length && !$.fn.DataTable.isDataTable('#rolesTable')) {
+            roleTable = $('#rolesTable').DataTable({
+                responsive: true,
+                language: dtLanguage,
+                dom: 'lrtip',
+                pageLength: 25
+            });
+        }
+    };
+
+    /**
+     * Dibuja la matriz de Checkboxes agrupada por módulos
+     */
+    const renderCapabilitiesMatrix = function() {
+        const container = $('#role-capabilities-matrix');
+        let html = '';
+
+        for (const [group, caps] of Object.entries(currentCapabilitiesDict)) {
+            html += `<div class="cap-group"><h4>Módulo: ${group}</h4>`;
+            
+            for (const [capKey, capLabel] of Object.entries(caps)) {
+                html += `
+                    <label class="cap-item">
+                        <input type="checkbox" name="role_caps[]" value="${capKey}"> 
+                        ${capLabel}
+                    </label>
+                `;
+            }
+            html += `</div>`;
+        }
+        
+        container.html(html);
+    };
+
+    /**
+     * Limpia los campos del Modal de Empleados para crear uno nuevo
+     */
+    const resetEmployeeModal = function() {
+        $('#emp-modal-title').text('Añadir Empleado');
+        $('#emp-id').val('0');
+        $('#emp-first-name, #emp-last-name, #emp-email, #emp-phone, #emp-password').val('');
+        $('#emp-role').val('');
+    };
+
+    /**
+     * Limpia los campos del Modal de Roles para crear uno nuevo
+     */
+    const resetRoleModal = function() {
+        $('#role-modal-title').text('Crear Nuevo Perfil');
+        $('#role-key-hidden, #role-display-name, #role-key').val('');
+        
+        // Desbloquea el Key (Solo se bloquea al editar para evitar inconsistencias)
+        $('#role-key').prop('readonly', false).css('background-color', '#fff');
+        
+        // Desmarca todos los checks
+        $('input[name="role_caps[]"]').prop('checked', false);
+    };
+
+    // ==========================================
+    // CARGA DE DATOS (AJAX)
+    // ==========================================
+
+    const loadEmployees = function() {
+        if (!empTable) return;
+        
+        SuiteAPI.post('suite_get_employees').then(res => {
+            if (res.success && res.data) {
+                empTable.clear();
+                
+                res.data.forEach(e => {
+                    // Determinar el rol principal y estilos visuales
+                    let roleKey = Array.isArray(e.roles) ? e.roles : (e.roles ? Object.keys(e.roles) : 'N/A');
+                    let roleDisplay = roleKey.replace('suite_', '').toUpperCase();
+                    let badgeClass = roleKey === 'administrator' ? 'pill-critico' : 'pill-neutral';
+
+                    // Convertimos la data a Base64 para pasarla segura al botón OnClick
+                    let safeData = btoa(unescape(encodeURIComponent(JSON.stringify(e))));
+                    
+                    let btnEdit = `<button class="btn-modern-action small" onclick="SuiteEmployees.editEmployee('${safeData}')">✏️ Editar</button>`;
+                    let btnDel = `<button class="btn-modern-action small" style="color:#dc2626; border-color:#fca5a5;" onclick="SuiteEmployees.deleteEmployee(${e.id})">🗑️ Borrar</button>`;
+                    
+                    empTable.row.add([
+                        `<strong>${e.nombre}</strong>`,
+                        e.email,
+                        e.telefono,
+                        `<span class="status-pill ${badgeClass}">${roleDisplay}</span>`,
+                        `<div style="display:flex; gap:8px;">${btnEdit} ${btnDel}</div>`
+                    ]);
+                });
+                
+                empTable.draw();
+            }
+        });
+    };
+
+    const loadRoles = function() {
+        if (!roleTable) return;
+
+        SuiteAPI.post('suite_get_roles').then(res => {
+            if (res.success && res.data) {
+                
+                const roles = res.data.roles;
+                currentCapabilitiesDict = res.data.diccionario;
+
+                roleTable.clear();
+                
+                // Limpiar y preparar el selector de roles del modal de Empleados
+                const selectRole = $('#emp-role');
+                selectRole.empty().append('<option value="">Seleccione un rol...</option>');
+
+                // Procesamos cada Rol devuelto
+                for (const [key, roleData] of Object.entries(roles)) {
+                    let name = roleData.name;
+                    let caps = roleData.capabilities; // Objeto { 'read': true, 'suite_view_crm': true }
+                    
+                    // Extraer solo las capabilities de la Suite para pintar los badges visuales
+                    let activeCaps = Object.keys(caps).filter(c => caps[c] && c.startsWith('suite_'));
+                    let capsBadges = `<div class="role-tags-container">` + activeCaps.map(c => `<span>${c}</span>`).join('') + `</div>`;
+
+                    let safeData = btoa(unescape(encodeURIComponent(JSON.stringify({key: key, name: name, activeCaps: activeCaps}))));
+
+                    let btnEdit = `<button class="btn-modern-action small" onclick="SuiteEmployees.editRole('${safeData}')">✏️ Editar</button>`;
+                    let btnDel = '';
+                    
+                    // Protección frontend para no mostrar botón de borrado en roles críticos
+                    if (!['administrator', 'subscriber', 'editor'].includes(key)) {
+                        btnDel = `<button class="btn-modern-action small" style="color:#dc2626; border-color:#fca5a5;" onclick="SuiteEmployees.deleteRole('${key}')">🗑️ Borrar</button>`;
+                    }
+
+                    roleTable.row.add([
+                        `<strong>${name}</strong><br><small class="font-mono text-gray-500">${key}</small>`,
+                        capsBadges || '<small class="text-gray-400">Sin permisos de Suite</small>',
+                        `<div style="display:flex; gap:8px;">${btnEdit} ${btnDel}</div>`
+                    ]);
+
+                    // Añadir la opción al desplegable
+                    selectRole.append(`<option value="${key}">${name}</option>`);
+                }
+                
+                roleTable.draw();
+                renderCapabilitiesMatrix(); // Pintamos la matriz de Checkboxes
+            }
+        });
+    };
+
+    // ==========================================
+    // LISTENERS DE FORMULARIOS (Guardar)
+    // ==========================================
+
+    const bindEvents = function() {
+
+        // Interceptar botones HTML originales "Nuevo" para limpiar formularios
+        $('button[onclick*="#modal-employee"]').on('click', resetEmployeeModal);
+        $('button[onclick*="#modal-role"]').on('click', resetRoleModal);
+
+        // Guardar Empleado
+        $('#btn-save-employee').on('click', function(e) {
+            e.preventDefault();
+            const btn = $(this);
+            
+            const payload = {
+                id: $('#emp-id').val(),
+                first_name: $('#emp-first-name').val().trim(),
+                last_name: $('#emp-last-name').val().trim(),
+                email: $('#emp-email').val().trim(),
+                telefono: $('#emp-phone').val().trim(),
+                password: $('#emp-password').val(),
+                role: $('#emp-role').val()
+            };
+
+            if (!payload.email || !payload.role) {
+                return alert('⚠️ El Correo Electrónico y el Rol son obligatorios.');
+            }
+
+            btn.prop('disabled', true).text('Procesando...');
+
+            SuiteAPI.post('suite_save_employee', payload).then(res => {
+                if (res.success) {
+                    alert('✅ ' + (res.data.message || 'Empleado guardado con éxito.'));
+                    $('#modal-employee').fadeOut();
+                    loadEmployees();
+                } else {
+                    alert('❌ Error: ' + (res.data.message || res.data));
+                }
+            }).catch(() => {
+                alert('❌ Error de red al intentar guardar el empleado.');
+            }).finally(() => {
+                btn.prop('disabled', false).text('💾 Guardar Empleado');
+            });
+        });
+
+        // Guardar Rol y Permisos
+        $('#btn-save-role').on('click', function(e) {
+            e.preventDefault();
+            const btn = $(this);
+
+            // Recolectar checkboxes marcados
+            const caps = [];
+            $('input[name="role_caps[]"]:checked').each(function() {
+                caps.push($(this).val());
+            });
+
+            // Usamos el hidden_key como fallback, o el input visible si es nuevo
+            const hiddenKey = $('#role-key-hidden').val();
+            const roleKey = hiddenKey ? hiddenKey : $('#role-key').val().trim().toLowerCase();
+
+            const payload = {
+                role_key: roleKey,
+                display_name: $('#role-display-name').val().trim(),
+                capabilities: caps
+            };
+
+            if (!payload.role_key || !payload.display_name) {
+                return alert('⚠️ El Nombre y el Identificador (Key) son obligatorios.');
+            }
+
+            btn.prop('disabled', true).text('Procesando...');
+
+            SuiteAPI.post('suite_save_role', payload).then(res => {
+                if (res.success) {
+                    alert('✅ Rol guardado y permisos aplicados con éxito.');
+                    $('#modal-role').fadeOut();
+                    loadRoles(); // Recarga la tabla y el select del otro modal
+                } else {
+                    alert('❌ Error: ' + (res.data.message || res.data));
+                }
+            }).catch(() => {
+                alert('❌ Error de red al intentar guardar el rol.');
+            }).finally(() => {
+                btn.prop('disabled', false).text('🛡️ Guardar Perfil y Permisos');
+            });
+        });
+    };
+
+    // ==========================================
+    // API PÚBLICA (Revelado)
+    // ==========================================
+    return {
+        init: function() {
+            initTables();
+            bindEvents();
+            
+            // Retraso ligero para permitir que la vista principal renderice
+            setTimeout(() => {
+                loadRoles(); // Cargar roles primero, ya que alimenta el Select de Empleados
+                loadEmployees();
+            }, 300);
+        },
+
+        // Expuestos para ser llamados desde los botones dinámicos en las Tablas
+        editEmployee: function(base64Data) {
+            const data = JSON.parse(decodeURIComponent(escape(atob(base64Data))));
+            
+            $('#emp-modal-title').text('Editar Empleado');
+            $('#emp-id').val(data.id);
+            
+            // Tratar de separar el nombre (Fase 1-C no retorna First/Last individualmente por compatibilidad)
+            let parts = data.nombre.split(' ');
+            $('#emp-first-name').val(parts || '');
+            $('#emp-last-name').val(parts.slice(1).join(' ') || '');
+            
+            $('#emp-email').val(data.email);
+            $('#emp-phone').val(data.telefono !== '-' ? data.telefono : '');
+            $('#emp-password').val(''); // Se deja vacío para no alterar
+            
+            // Seleccionar rol en el dropdown
+            let rKey = Array.isArray(data.roles) ? data.roles : (data.roles ? Object.keys(data.roles) : '');
+            $('#emp-role').val(rKey);
+
+            $('#modal-employee').fadeIn();
+        },
+
+        deleteEmployee: function(id) {
+            if (!confirm('¿Está seguro de eliminar a este empleado? Perderá el acceso al ERP inmediatamente.')) return;
+            
+            SuiteAPI.post('suite_delete_employee', { id: id }).then(res => {
+                if (res.success) {
+                    alert('✅ Empleado eliminado.');
+                    loadEmployees();
+                } else {
+                    alert('❌ Error: ' + (res.data.message || res.data));
+                }
+            });
+        },
+
+        editRole: function(base64Data) {
+            const data = JSON.parse(decodeURIComponent(escape(atob(base64Data))));
+            
+            $('#role-modal-title').text('Editar Perfil');
+            $('#role-key-hidden').val(data.key);
+            
+            // Bloqueamos el input del Key porque WP no permite renombrarlo de forma trivial
+            $('#role-key').val(data.key).prop('readonly', true).css('background-color', '#f1f5f9');
+            $('#role-display-name').val(data.name);
+
+            // Desmarcar todos y marcar solo los activos
+            $('input[name="role_caps[]"]').prop('checked', false);
+            if (data.activeCaps) {
+                data.activeCaps.forEach(cap => {
+                    $(`input[name="role_caps[]"][value="${cap}"]`).prop('checked', true);
+                });
+            }
+
+            $('#modal-role').fadeIn();
+        },
+
+        deleteRole: function(key) {
+            if (!confirm('¿Eliminar este perfil? Si existen usuarios asignados a este rol, perderán su nivel de acceso.')) return;
+            
+            SuiteAPI.post('suite_delete_role', { role_key: key }).then(res => {
+                if (res.success) {
+                    alert('✅ Perfil eliminado.');
+                    loadRoles();
+                } else {
+                    alert('❌ Error: ' + (res.data.message || res.data));
+                }
+            });
+        }
+    };
+
+})(jQuery);
+--- FIN DEL ARCHIVO: assets/js/modules/employees.js ---
 
 --- INICIO DEL ARCHIVO: assets/js/modules/index.php ---
 <?php
@@ -1458,10 +1862,65 @@ const SuiteQuoter = (function($) {
 	
     const bindEvents = function() {
         
-        // 1. CARACTERÍSTICA: RIF ATÓMICO Y ESTRICTO
+		// 1. CARACTERÍSTICA: RIF ATÓMICO Y ESTRICTO
         $('#cli-rif-number').on('input', function() {
             // Bloquea cualquier carácter que no sea número
             this.value = this.value.replace(/[^0-9]/g, '');
+        });
+
+        // 1.5 DETECCIÓN AUTOMÁTICA POR RIF (Auto-carga al perder el foco)
+        $('#cli-rif-number').on('blur', function() {
+            const numeroRif = $(this).val().trim();
+
+            // Validar longitud lógica (mayor a 5 caracteres)
+            if (numeroRif.length <= 5) return;
+
+            // Concatenar prefijo y número para formar el RIF completo en mayúsculas
+            const prefijo = $('#cli-rif-prefix').val();
+            const rifCompleto = (prefijo + numeroRif).toUpperCase();
+
+            // Mostrar un pequeño indicador visual de búsqueda
+            const inputField = $(this);
+            inputField.css('opacity', '0.6');
+
+            // Consultar a la base de datos (API)
+            SuiteAPI.post('suite_search_client_ajax', { term: rifCompleto }).then(res => {
+                if (res.success && res.data && res.data.length > 0) {
+
+                    // Buscar coincidencia EXACTA en los resultados devueltos
+                    const cliente = res.data.find(c => c.rif_ci.toUpperCase() === rifCompleto);
+
+                    if (cliente) {
+                        // Autocompletar campos del formulario
+                        $('#cli-nombre').val(cliente.nombre_razon);
+                        $('#cli-tel').val(cliente.telefono);
+                        $('#cli-email').val(cliente.email);
+                        $('#cli-dir').val(cliente.direccion);
+                        $('#cli-ciudad').val(cliente.ciudad);
+                        $('#cli-estado').val(cliente.estado);
+                        $('#cli-contacto').val(cliente.contacto_persona);
+
+                        // Bloquear formulario para prevenir mutaciones indeseadas
+                        lockClientForm(true);
+
+                        // Limpiar el buscador predictivo por seguridad
+                        $('#cli-search-predictive').val('');
+                        $('#cli-search-results').hide().empty();
+
+                        // Mostrar mensaje de éxito temporal (Feedback sutil)
+                        $('#rif-auto-feedback').remove(); // Limpiar si ya existe
+                        $('<div id="rif-auto-feedback" style="color: #059669; font-size: 12px; margin-top: 5px; font-weight: bold;">✅ Cliente detectado en la base de datos y cargado automáticamente.</div>')
+                            .insertAfter(inputField.parent())
+                            .delay(4000)
+                            .fadeOut(400, function() { $(this).remove(); });
+                    }
+                }
+            }).catch(err => {
+                // Fallo silencioso: Si hay error de red, dejamos que el vendedor siga llenando manual
+                console.warn('Auto-detección de RIF omitida por error de red.', err);
+            }).finally(() => {
+                inputField.css('opacity', '1');
+            });
         });
 
         // 2. BUSCADOR PREDICTIVO DE CLIENTES
@@ -1785,6 +2244,7 @@ class Suite_Shortcode_Controller {
             wp_enqueue_script( 'suite-commissions-js', SUITE_URL . 'assets/js/modules/commissions.js', ['suite-api-js'], SUITE_VERSION, true );
             wp_enqueue_script( 'suite-logistics-js', SUITE_URL . 'assets/js/modules/logistics.js', ['suite-api-js'], SUITE_VERSION, true );
             wp_enqueue_script( 'suite-marketing-js', SUITE_URL . 'assets/js/modules/marketing.js', ['suite-api-js', 'chart-js'], SUITE_VERSION, true );
+			wp_enqueue_script( 'suite-employees-js', SUITE_URL . 'assets/js/modules/employees.js', ['suite-api-js', 'dt-js'], SUITE_VERSION, true );
 
             // 5. Orquestador Principal (Carga al final)
             wp_enqueue_script( 'suite-main-js', SUITE_URL . 'assets/js/main.js', [
@@ -1793,21 +2253,29 @@ class Suite_Shortcode_Controller {
                 'suite-kanban-js', 
                 'suite-commissions-js', 
                 'suite-logistics-js', 
-                'suite-marketing-js'
+                'suite-marketing-js',
+				'suite-employees-js'
             ], SUITE_VERSION, true );
 
-            // 6. Variables Globales de Entorno e Inyección de Nonce de Seguridad
+			
+			// 6. Variables Globales de Entorno e Inyección de Nonce de Seguridad
+            $user_actual = wp_get_current_user();
+            $roles_actuales = (array) $user_actual->roles;
+            $is_gerente = in_array( 'suite_gerente', $roles_actuales ) || in_array( 'gerente', $roles_actuales );
+            $can_export = current_user_can( 'manage_options' ) || $is_gerente;			
+			
             wp_localize_script( 'suite-api-js', 'suite_vars', [
                 'ajax_url'   => admin_url( 'admin-ajax.php' ),
                 'nonce'      => wp_create_nonce( 'suite_quote_nonce' ),
                 'is_admin'   => current_user_can( 'manage_options' ),
                 'rest_url'   => esc_url_raw( rest_url() ),
-                'rest_nonce' => wp_create_nonce( 'wp_rest' )
+                'rest_nonce' => wp_create_nonce( 'wp_rest' ),
+				'can_export' => $can_export
             ] );
         }
     }
 
-    /**
+	/**
      * Renderiza el contenido del shortcode.
      */
     public function render_app( $atts ) {
@@ -1817,18 +2285,19 @@ class Suite_Shortcode_Controller {
             return '<div style="padding:20px; text-align:center; font-family:sans-serif;">🔒 Inicie sesión para acceder a la Intranet de RV Tech.</div>';
         }
 
-        // --- 2. CONTROL DE ROLES (RBAC) ---
-        $user = wp_get_current_user();
-        $roles = (array) $user->roles;
-        
-        $es_admin     = current_user_can( 'manage_options' );
-        $es_logistica = in_array( 'suite_logistica', $roles );
-        $es_vendedor  = in_array( 'suite_vendedor', $roles );
-        $es_marketing = in_array( 'suite_marketing', $roles );
+        // --- 2. CONTROL DE ROLES DINÁMICO (RBAC) ---
+        // Se abandona el chequeo estático de roles por validación de Capacidades (Capabilities)
+        $es_admin        = current_user_can( 'manage_options' );
+        $can_view_crm    = $es_admin || current_user_can( 'suite_view_crm' );
+        $can_view_kanban = $es_admin || current_user_can( 'suite_view_kanban' );
+        $can_view_comis  = $es_admin || current_user_can( 'suite_view_commissions' );
+        $can_view_logis  = $es_admin || current_user_can( 'suite_view_logistics' );
+        $can_view_bi     = $es_admin || current_user_can( 'suite_view_marketing' );
+        $can_manage_team = $es_admin || current_user_can( 'suite_manage_team' );
 
-        // Si no tiene ningún rol permitido, se bloquea el renderizado por completo
-        if ( ! $es_admin && ! $es_logistica && ! $es_vendedor && ! $es_marketing ) {
-            return '<div style="padding:20px; text-align:center; color:#dc2626; font-family:sans-serif;">⛔ Acceso Denegado. Contacte al administrador.</div>';
+        // Si no tiene ningún permiso, se bloquea el renderizado por completo
+        if ( ! $es_admin && ! $can_view_crm && ! $can_view_kanban && ! $can_view_comis && ! $can_view_logis && ! $can_view_bi && ! $can_manage_team ) {
+            return '<div style="padding:20px; text-align:center; color:#dc2626; font-family:sans-serif;">⛔ Acceso Denegado. Usted no tiene permisos asignados en el ERP.</div>';
         }
 
         // --- 3. PRE-CARGA DE DATOS PARA LAS VISTAS ---
@@ -1836,13 +2305,13 @@ class Suite_Shortcode_Controller {
         $pedidos_logistica = [];
 
         // Datos para el CRM
-        if ( $es_admin || $es_vendedor || $es_logistica ) {
+        if ( $can_view_crm || $can_view_logis ) {
             $clientModel = new Suite_Model_Client();
             $clientes    = $clientModel->get_all( 200 );
         }
 
         // Datos para Almacén (Logística)
-        if ( $es_admin || $es_logistica ) {
+        if ( $can_view_logis || $can_view_kanban ) {
             $quoteModel = new Suite_Model_Quote();
             $kanban_data = $quoteModel->get_kanban_orders( null, true );
             $pedidos_logistica = isset( $kanban_data['pagado'] ) ? $kanban_data['pagado'] : [];
@@ -1857,46 +2326,62 @@ class Suite_Shortcode_Controller {
         echo '<div class="suite-tabs-modern">';
         
         // Pestañas Operativas Generales (Ventas y Administración)
-        if ( $es_admin || $es_vendedor || $es_logistica ) {
+        if ( $can_view_crm ) {
             echo '<button class="tab-btn active" onclick="openSuiteTab(event, \'TabCli\')">👥 Clientes</button>';
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabPos\')">📝 Cotizador</button>';
+        }
+
+        if ( $can_view_kanban ) {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabKanban\')">📦 Pedidos</button>';
         }
         
         // Comisiones (Ventas)
-        if ( $es_admin || $es_vendedor ) {
+        if ( $can_view_comis ) {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabComisiones\')">🏆 Comisiones</button>';
         }
         
         // Pestaña Protegida: Logística
-        if ( $es_admin || $es_logistica ) {
+        if ( $can_view_logis ) {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabLogistica\')" style="color:#0369a1; font-weight:bold;">🚚 Logística</button>';
         }
         
         // Pestaña Protegida: BI & Marketing
-        if ( $es_admin || $es_marketing ) {
+        if ( $can_view_bi ) {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabMarketing\')" style="color:#dc2626; font-weight:bold;">📈 BI & Marketing</button>';
+        }
+		
+		// Pestaña Protegida: Gestión de Equipo (RBAC)
+        if ( $can_manage_team ) { 
+            echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabEquipo\')" style="color:#0f172a; font-weight:bold;">⚙️ Equipo y Accesos</button>';
         }
         
         echo '</div>'; // Fin menú de pestañas
 
         // B. CARGA DE VISTAS (Inyección de plantillas limpia y ordenada)
-        if ( $es_admin || $es_vendedor || $es_logistica ) {
+        if ( $can_view_crm ) {
             require SUITE_PATH . 'views/app/tab-clientes.php';
             require SUITE_PATH . 'views/app/tab-cotizador.php';
+        }
+
+        if ( $can_view_kanban ) {
             require SUITE_PATH . 'views/app/tab-kanban.php';
         }
         
-        if ( $es_admin || $es_vendedor ) {
+        if ( $can_view_comis ) {
             require SUITE_PATH . 'views/app/tab-comisiones.php';
         }
 
-        if ( $es_admin || $es_logistica ) {
+        if ( $can_view_logis ) {
             require SUITE_PATH . 'views/app/tab-logistica.php';
         }
         
-        if ( $es_admin || $es_marketing ) {
+        if ( $can_view_bi ) {
             require SUITE_PATH . 'views/app/tab-marketing.php';
+        }
+
+		// Nuevo Módulo de Equipo y Roles (RBAC)
+        if ( $can_manage_team ) { 
+            require SUITE_PATH . 'views/app/tab-equipo.php';
         }
 
         // C. INYECCIÓN DEL MOTOR JAVASCRIPT UNIFICADO
@@ -1912,6 +2397,7 @@ class Suite_Shortcode_Controller {
                 if (typeof SuiteCommissions !== "undefined") SuiteCommissions.init();
                 if (typeof SuiteLogistics !== "undefined") SuiteLogistics.init();
                 if (typeof SuiteMarketing !== "undefined") SuiteMarketing.init();
+				if (typeof SuiteEmployees !== "undefined") SuiteEmployees.init();
 
                 // 2. ENRUTADOR DE PESTAÑAS (Manejo de estado visual y recargas asíncronas)
                 window.openSuiteTab = function(evt, name) {
@@ -2160,6 +2646,53 @@ class Suite_Ajax_Client_Profile extends Suite_AJAX_Controller {
         ] );
     }
 }
+
+/**
+ * Controlador AJAX: Registro de Auditoría de Exportaciones
+ * 
+ * Registra en el log de la base de datos cada vez que un Administrador o Gerente
+ * exporta información sensible en formato CSV o Excel.
+ */
+class Suite_Ajax_Log_Export extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_log_export';
+    // Se requiere un nivel de acceso base, pero validaremos el rol exacto adentro
+    protected $required_capability = 'read'; 
+
+    protected function process() {
+        // 1. DOBLE BARRERA DE SEGURIDAD (Zero-Trust)
+        $user = wp_get_current_user();
+        $roles = (array) $user->roles;
+        
+        // Comprobar si es Administrador o tiene el rol personalizado de gerente
+        $is_admin = current_user_can( 'manage_options' );
+        $is_gerente = in_array( 'suite_gerente', $roles ) || in_array( 'gerente', $roles );
+
+        if ( ! $is_admin && ! $is_gerente ) {
+            $this->send_error( 'Acceso Denegado. Violación de seguridad registrada.', 403 );
+        }
+
+        // 2. RECIBIR DATOS
+        $tabla = isset( $_POST['tabla'] ) ? sanitize_text_field( $_POST['tabla'] ) : 'Desconocida';
+        
+        // 3. REGISTRAR EN LA TABLA DE AUDITORÍA
+        global $wpdb;
+        $table_logs = $wpdb->prefix . 'suite_logs';
+        
+        // La fecha y hora ('created_at') se insertan automáticamente por MySQL (CURRENT_TIMESTAMP) [2]
+        $wpdb->insert(
+            $table_logs,
+            [
+                'usuario_id' => get_current_user_id(),
+                'accion'     => 'exportacion_datos',
+                'detalle'    => "Exportó la tabla {$tabla} en formato CSV/Excel",
+                'ip'         => $_SERVER['REMOTE_ADDR']
+            ]
+        );
+
+        $this->send_success( 'Auditoría registrada.' );
+    }
+}
 --- FIN DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-client.php ---
 
 --- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-commissions.php ---
@@ -2314,6 +2847,125 @@ abstract class Suite_AJAX_Controller {
     }
 }
 --- FIN DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-controller.php ---
+
+--- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-employees.php ---
+<?php
+/**
+ * Controlador AJAX: Gestión de Empleados (FASE 2-A)
+ *
+ * Maneja las operaciones CRUD de los usuarios/empleados del ERP.
+ * Implementa seguridad estricta basada en capacidades (Zero-Trust).
+ *
+ * @package SuiteEmpleados\Controllers\Ajax
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+/**
+ * 1. Obtener lista de todos los empleados
+ */
+class Suite_Ajax_Employee_List extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_get_employees';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        // Zero-Trust Security: Barrera estricta de capacidades
+        if ( ! current_user_can('manage_options') && ! current_user_can('suite_manage_team') ) {
+            $this->send_error('Acceso denegado', 403);
+        }
+
+        $model = new Suite_Model_Employee();
+        $employees = $model->get_all_employees();
+
+        $this->send_success( $employees );
+    }
+}
+
+/**
+ * 2. Crear o Editar un Empleado
+ */
+class Suite_Ajax_Employee_Save extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_save_employee';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        // Zero-Trust Security: Barrera estricta de capacidades
+        if ( ! current_user_can('manage_options') && ! current_user_can('suite_manage_team') ) {
+            $this->send_error('Acceso denegado', 403);
+        }
+
+        // Recibir y mapear los datos del POST
+        $data = [
+            'ID'         => isset( $_POST['id'] ) ? intval( $_POST['id'] ) : 0,
+            'email'      => isset( $_POST['email'] ) ? sanitize_email( $_POST['email'] ) : '',
+            'password'   => isset( $_POST['password'] ) ? $_POST['password'] : '',
+            'first_name' => isset( $_POST['first_name'] ) ? sanitize_text_field( $_POST['first_name'] ) : '',
+            'last_name'  => isset( $_POST['last_name'] ) ? sanitize_text_field( $_POST['last_name'] ) : '',
+            'role'       => isset( $_POST['role'] ) ? sanitize_text_field( $_POST['role'] ) : '',
+            'telefono'   => isset( $_POST['telefono'] ) ? sanitize_text_field( $_POST['telefono'] ) : '',
+        ];
+
+        // Validaciones básicas de campos obligatorios
+        if ( empty( $data['email'] ) ) {
+            $this->send_error( 'El correo electrónico es obligatorio.' );
+        }
+
+        $model = new Suite_Model_Employee();
+        $result = $model->save_employee( $data );
+
+        // Manejo de errores devueltos por el Modelo
+        if ( is_wp_error( $result ) ) {
+            $this->send_error( $result->get_error_message() );
+        }
+
+        $this->send_success( [
+            'message' => 'Empleado guardado correctamente.',
+            'user_id' => $result
+        ] );
+    }
+}
+
+/**
+ * 3. Eliminar un Empleado
+ */
+class Suite_Ajax_Employee_Delete extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_delete_employee';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        // Zero-Trust Security: Barrera estricta de capacidades
+        if ( ! current_user_can('manage_options') && ! current_user_can('suite_manage_team') ) {
+            $this->send_error('Acceso denegado', 403);
+        }
+
+        $id = isset( $_POST['id'] ) ? intval( $_POST['id'] ) : 0;
+
+        if ( ! $id ) {
+            $this->send_error( 'ID de empleado inválido.' );
+        }
+
+        // Prevención de auto-eliminación
+        if ( get_current_user_id() === $id ) {
+            $this->send_error( 'Seguridad: No puedes eliminar tu propia cuenta desde el ERP.', 403 );
+        }
+
+        $model = new Suite_Model_Employee();
+        $result = $model->delete_employee( $id );
+
+        // Manejo de errores devueltos por el Modelo
+        if ( is_wp_error( $result ) ) {
+            $this->send_error( $result->get_error_message() );
+        }
+
+        $this->send_success( 'Empleado eliminado correctamente.' );
+    }
+}
+--- FIN DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-employees.php ---
 
 --- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-kanban.php ---
 <?php
@@ -3199,6 +3851,110 @@ class Suite_Ajax_Print_Quote extends Suite_AJAX_Controller {
 }
 --- FIN DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-quotes.php ---
 
+--- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-roles.php ---
+<?php
+/**
+ * Controlador AJAX: Gestión de Roles y Permisos Dinámicos (FASE 2-B)
+ *
+ * Maneja las peticiones del frontend para listar, crear, editar y eliminar 
+ * roles personalizados (RBAC) basándose en las Capacidades (Capabilities).
+ *
+ * @package SuiteEmpleados\Controllers\Ajax
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+/**
+ * 1. Obtener Lista de Roles y el Diccionario de Capacidades
+ */
+class Suite_Ajax_Role_List extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_get_roles';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        // Zero-Trust Security: Barrera estricta de capacidades
+        if ( ! current_user_can( 'manage_options' ) && ! current_user_can( 'suite_manage_team' ) ) {
+            $this->send_error( 'Acceso denegado', 403 );
+        }
+
+        $model = new Suite_Model_Roles();
+
+        $this->send_success( [
+            'roles'       => $model->get_all_roles(),
+            'diccionario' => $model->get_capabilities_dictionary()
+        ] );
+    }
+}
+
+/**
+ * 2. Crear o Actualizar un Rol (y sus Capacidades)
+ */
+class Suite_Ajax_Role_Save extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_save_role';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        // Zero-Trust Security: Barrera estricta de capacidades
+        if ( ! current_user_can( 'manage_options' ) && ! current_user_can( 'suite_manage_team' ) ) {
+            $this->send_error( 'Acceso denegado', 403 );
+        }
+
+        $role_key     = isset( $_POST['role_key'] ) ? sanitize_key( $_POST['role_key'] ) : '';
+        $display_name = isset( $_POST['display_name'] ) ? sanitize_text_field( $_POST['display_name'] ) : '';
+        // AJAX puede enviar arrays si se estructuran correctamente en el FormData o Payload
+        $capabilities = isset( $_POST['capabilities'] ) && is_array( $_POST['capabilities'] ) ? $_POST['capabilities'] : [];
+
+        if ( empty( $role_key ) || empty( $display_name ) ) {
+            $this->send_error( 'El identificador del rol y el nombre a mostrar son obligatorios.' );
+        }
+
+        $model = new Suite_Model_Roles();
+        $result = $model->create_or_update_role( $role_key, $display_name, $capabilities );
+
+        if ( is_wp_error( $result ) ) {
+            $this->send_error( $result->get_error_message() );
+        }
+
+        $this->send_success( 'Rol guardado y permisos actualizados correctamente.' );
+    }
+}
+
+/**
+ * 3. Eliminar un Rol
+ */
+class Suite_Ajax_Role_Delete extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_delete_role';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        // Zero-Trust Security: Barrera estricta de capacidades
+        if ( ! current_user_can( 'manage_options' ) && ! current_user_can( 'suite_manage_team' ) ) {
+            $this->send_error( 'Acceso denegado', 403 );
+        }
+
+        $role_key = isset( $_POST['role_key'] ) ? sanitize_key( $_POST['role_key'] ) : '';
+
+        if ( empty( $role_key ) ) {
+            $this->send_error( 'Identificador del rol no válido.' );
+        }
+
+        $model = new Suite_Model_Roles();
+        $result = $model->delete_role( $role_key );
+
+        if ( is_wp_error( $result ) ) {
+            $this->send_error( $result->get_error_message(), 403 ); // 403 si intentó borrar rol protegido
+        }
+
+        $this->send_success( 'Rol eliminado del sistema.' );
+    }
+}
+--- FIN DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-roles.php ---
+
 --- INICIO DEL ARCHIVO: includes/Controllers/Ajax/index.php ---
 <?php
 // Silence is golden.
@@ -4049,6 +4805,203 @@ class Suite_Model_Commission extends Suite_Model_Base {
 }
 --- FIN DEL ARCHIVO: includes/Models/class-suite-model-commission.php ---
 
+--- INICIO DEL ARCHIVO: includes/Models/class-suite-model-employee.php ---
+<?php
+/**
+ * Modelo de Base de Datos: Gestor de Empleados (Usuarios)
+ *
+ * Actúa como un Wrapper de las funciones nativas de WordPress para la gestión 
+ * de usuarios (WP_User, wp_insert_user, get_users). Maneja la lógica de negocio
+ * del CRUD de empleados del ERP.
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Model_Employee {
+
+    /**
+     * Obtiene todos los empleados registrados en el ERP.
+     * Excluye a los usuarios con rol 'subscriber' puro y trae el teléfono de los metadatos.
+     *
+     * @return array Lista de empleados con sus datos formateados.
+     */
+    public function get_all_employees() {
+        // Obtenemos todos los usuarios excepto los suscriptores y clientes genéricos
+        $args = [
+            'role__not_in' => [ 'subscriber', 'customer' ],
+            'orderby'      => 'display_name',
+            'order'        => 'ASC'
+        ];
+
+        $users = get_users( $args );
+        $employees = [];
+
+        foreach ( $users as $u ) {
+            // Obtener el meta_key 'suite_telefono'. Si no existe, buscamos el fallback 'billing_phone'.
+            $telefono = get_user_meta( $u->ID, 'suite_telefono', true );
+            if ( empty( $telefono ) ) {
+                $telefono = get_user_meta( $u->ID, 'billing_phone', true );
+            }
+
+            $employees[] = [
+                'id'         => $u->ID,
+                'nombre'     => $u->display_name,
+                'email'      => $u->user_email,
+                'telefono'   => ! empty( $telefono ) ? $telefono : '-',
+                'roles'      => $u->roles, // Array con los roles activos del usuario
+            ];
+        }
+
+        return $employees;
+    }
+
+    /**
+     * Obtiene los datos detallados de un empleado en específico.
+     *
+     * @param int $id ID del usuario.
+     * @return array|false Datos del empleado o false si no existe.
+     */
+    public function get_employee( $id ) {
+        $user = get_userdata( intval( $id ) );
+
+        if ( ! $user ) {
+            return false;
+        }
+
+        $telefono = get_user_meta( $user->ID, 'suite_telefono', true );
+        if ( empty( $telefono ) ) {
+            $telefono = get_user_meta( $user->ID, 'billing_phone', true );
+        }
+
+        return [
+            'id'         => $user->ID,
+            'nombre'     => $user->display_name,
+            'first_name' => $user->first_name,
+            'last_name'  => $user->last_name,
+            'email'      => $user->user_email,
+            'telefono'   => $telefono,
+            'roles'      => $user->roles
+        ];
+    }
+
+    /**
+     * Crea o actualiza un empleado en la base de datos de WordPress.
+     *
+     * @param array $data Array con los campos: ID (opcional), email, password, first_name, last_name, role, telefono.
+     * @return int|WP_Error El ID del usuario guardado o un objeto de error.
+     */
+    public function save_employee( $data ) {
+        $id         = isset( $data['ID'] ) ? intval( $data['ID'] ) : 0;
+        $email      = sanitize_email( $data['email'] );
+        $password   = isset( $data['password'] ) ? $data['password'] : '';
+        $first_name = isset( $data['first_name'] ) ? sanitize_text_field( $data['first_name'] ) : '';
+        $last_name  = isset( $data['last_name'] ) ? sanitize_text_field( $data['last_name'] ) : '';
+        $role       = isset( $data['role'] ) ? sanitize_text_field( $data['role'] ) : '';
+        $telefono   = isset( $data['telefono'] ) ? sanitize_text_field( $data['telefono'] ) : '';
+
+        if ( empty( $email ) ) {
+            return new WP_Error( 'empty_email', 'El correo electrónico es obligatorio.' );
+        }
+
+        // Preparar arreglo para wp_insert_user / wp_update_user
+        $user_data = [
+            'user_email' => $email,
+            'first_name' => $first_name,
+            'last_name'  => $last_name,
+            'role'       => $role
+        ];
+
+        // Construir Display Name automáticamente si hay datos
+        $display_name = trim( $first_name . ' ' . $last_name );
+        if ( ! empty( $display_name ) ) {
+            $user_data['display_name'] = $display_name;
+        }
+
+        // Lógica dividida: Actualización vs Creación
+        if ( $id > 0 ) {
+            $user_data['ID'] = $id;
+
+            // Seguridad: Prevenir que un Administrador se quite su propio rol por accidente
+            $current_user_id = get_current_user_id();
+            if ( $id === $current_user_id && $role !== 'administrator' ) {
+                $user_obj = get_userdata( $id );
+                if ( in_array( 'administrator', (array) $user_obj->roles, true ) ) {
+                    return new WP_Error( 'self_demotion', 'Seguridad: No puedes quitarte el rol de Administrador a ti mismo.' );
+                }
+            }
+
+            // Solo actualizamos la contraseña si se envió una nueva
+            if ( ! empty( $password ) ) {
+                $user_data['user_pass'] = $password;
+            }
+
+        } else {
+            // Es un usuario nuevo
+            if ( username_exists( $email ) || email_exists( $email ) ) {
+                return new WP_Error( 'user_exists', 'El correo electrónico ya está registrado en el sistema.' );
+            }
+
+            if ( empty( $password ) ) {
+                return new WP_Error( 'empty_password', 'La contraseña es obligatoria para crear nuevos usuarios.' );
+            }
+
+            // Usamos el email como nombre de usuario de login
+            $user_data['user_login'] = $email;
+            $user_data['user_pass']  = $password;
+        }
+
+        // wp_insert_user maneja tanto INSERT como UPDATE (si se envía el 'ID' en el array)
+        $user_id = wp_insert_user( $user_data );
+
+        if ( is_wp_error( $user_id ) ) {
+            return $user_id; // Retorna el error al controlador
+        }
+
+        // Guardar la Meta Data (Teléfono usado en impresiones PDF del ERP)
+        update_user_meta( $user_id, 'suite_telefono', $telefono );
+        
+        // Opcional: Respaldar en 'billing_phone' por compatibilidad con código Legacy
+        update_user_meta( $user_id, 'billing_phone', $telefono );
+
+        return $user_id;
+    }
+
+    /**
+     * Elimina a un empleado del sistema.
+     *
+     * @param int $id ID del usuario a eliminar.
+     * @param int|null $reassign ID de otro usuario al que se le reasignarán los posts/datos (opcional).
+     * @return true|WP_Error
+     */
+    public function delete_employee( $id, $reassign = null ) {
+        $id = intval( $id );
+
+        // Seguridad: Evitar auto-eliminación
+        if ( $id === get_current_user_id() ) {
+            return new WP_Error( 'self_deletion', 'Seguridad: No puedes eliminar tu propia cuenta activa.' );
+        }
+
+        // wp_delete_user requiere incluir manualmente el archivo de administración de usuarios en el frontend o AJAX
+        if ( ! function_exists( 'wp_delete_user' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/user.php';
+        }
+
+        $deleted = wp_delete_user( $id, $reassign );
+
+        if ( $deleted ) {
+            return true;
+        }
+
+        return new WP_Error( 'delete_failed', 'Fallo interno al intentar eliminar al empleado.' );
+    }
+
+}
+--- FIN DEL ARCHIVO: includes/Models/class-suite-model-employee.php ---
+
 --- INICIO DEL ARCHIVO: includes/Models/class-suite-model-inventory.php ---
 <?php
 /**
@@ -4385,6 +5338,156 @@ class Suite_Model_Quote extends Suite_Model_Base {
 }
 --- FIN DEL ARCHIVO: includes/Models/class-suite-model-quote.php ---
 
+--- INICIO DEL ARCHIVO: includes/Models/class-suite-model-roles.php ---
+<?php
+/**
+ * Modelo de Base de Datos: Gestor Dinámico de Roles y Permisos
+ *
+ * Actúa como un Wrapper (envoltura) de la clase global WP_Roles de WordPress.
+ * Permite gestionar roles personalizados y asignar capacidades (Capabilities)
+ * de forma dinámica para el ERP.
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Model_Roles {
+
+    /**
+     * Devuelve el diccionario maestro de capacidades del ERP agrupadas por módulos.
+     * Este array alimenta la matriz de checkboxes en la interfaz de usuario.
+     *
+     * @return array
+     */
+    public function get_capabilities_dictionary() {
+        return [
+            'crm' => [
+                'suite_view_crm'       => 'Ver Clientes y Cotizar',
+                'suite_manage_clients' => 'Crear, Editar y Eliminar Clientes',
+                'suite_change_status'  => 'Cambiar Estados (Kanban)'
+            ],
+            'logistica' => [
+                'suite_view_logistics' => 'Ver Almacén y Despacho',
+                'suite_print_picking'  => 'Imprimir Hoja de Picking',
+                'suite_upload_pod'     => 'Subir Comprobante de Entrega (POD)'
+            ],
+            'admin' => [
+                'suite_export_data'    => 'Exportar a Excel/CSV',
+                'suite_view_marketing' => 'Ver Analíticas y Marketing (BI)',
+                'suite_manage_team'    => 'Gestionar Empleados y Roles'
+            ]
+        ];
+    }
+
+    /**
+     * Obtiene todos los roles registrados en el sistema WordPress.
+     *
+     * @return array Array de roles.
+     */
+    public function get_all_roles() {
+        global $wp_roles;
+        
+        // Asegurar que la clase global esté instanciada
+        if ( ! isset( $wp_roles ) ) {
+            $wp_roles = wp_roles();
+        }
+
+        return $wp_roles->roles;
+    }
+
+    /**
+     * Crea un rol nuevo o actualiza uno existente (Nombre y Capacidades).
+     *
+     * @param string $role_key Identificador único (slug) del rol (ej. 'vendedor_senior').
+     * @param string $display_name Nombre público del rol (ej. 'Vendedor Senior').
+     * @param array $capabilities_array Array simple con los keys de las capacidades activadas.
+     * @return true|WP_Error
+     */
+    public function create_or_update_role( $role_key, $display_name, $capabilities_array ) {
+        global $wp_roles;
+
+        if ( ! isset( $wp_roles ) ) {
+            $wp_roles = wp_roles();
+        }
+
+        $role_key     = sanitize_key( $role_key );
+        $display_name = sanitize_text_field( $display_name );
+        $role_obj     = get_role( $role_key );
+
+        if ( ! $role_obj ) {
+            // 1. CREACIÓN: El rol no existe, usar add_role
+            $role_obj = add_role( $role_key, $display_name );
+            if ( ! $role_obj ) {
+                return new WP_Error( 'role_creation_failed', 'Error interno al intentar crear el rol.' );
+            }
+        } else {
+            // 2. ACTUALIZACIÓN DE NOMBRE: WordPress no tiene función nativa para renombrar. 
+            // Se debe actualizar directamente en el array global y guardar en la BD.
+            $wp_roles->roles[ $role_key ]['name'] = $display_name;
+            $wp_roles->role_names[ $role_key ]    = $display_name;
+            update_option( $wp_roles->role_key, $wp_roles->roles );
+        }
+
+        // 3. LIMPIEZA DE CAPACIDADES: Revocar todas las capacidades específicas de la Suite
+        // Esto garantiza que si el usuario desmarcó un checkbox, el permiso se elimine.
+        $dictionary = $this->get_capabilities_dictionary();
+        foreach ( $dictionary as $group => $caps ) {
+            foreach ( $caps as $cap_key => $cap_label ) {
+                $role_obj->remove_cap( $cap_key );
+            }
+        }
+
+        // 4. ASIGNACIÓN: Otorgar las capacidades recibidas en el payload
+        if ( is_array( $capabilities_array ) && ! empty( $capabilities_array ) ) {
+            foreach ( $capabilities_array as $cap ) {
+                $role_obj->add_cap( sanitize_key( $cap ) );
+            }
+        }
+
+        // 5. PERMISOS BASE OBLIGATORIOS
+        $role_obj->add_cap( 'read' );         // Necesario para entrar al wp-admin/intranet
+        $role_obj->add_cap( 'suite_access' ); // Bandera general de pertenencia al ERP
+
+        return true;
+    }
+
+    /**
+     * Elimina un rol del sistema.
+     * Posee una barrera de seguridad para no destruir roles críticos.
+     *
+     * @param string $role_key Identificador único del rol.
+     * @return true|WP_Error
+     */
+    public function delete_role( $role_key ) {
+        $role_key = sanitize_key( $role_key );
+
+        // BARRERA DE SEGURIDAD: Prohibido borrar roles críticos
+        $protected_roles = [ 'administrator', 'subscriber', 'editor', 'author', 'contributor' ];
+        
+        if ( in_array( $role_key, $protected_roles, true ) ) {
+            return new WP_Error( 'protected_role', 'Seguridad: No se permite eliminar los roles nativos del núcleo de WordPress.' );
+        }
+
+        $role_obj = get_role( $role_key );
+        
+        if ( ! $role_obj ) {
+            return new WP_Error( 'role_not_found', 'El rol que intenta eliminar no existe.' );
+        }
+
+        // TODO: (Opcional Arquitectónico) Verificar si existen usuarios con este rol antes de borrarlo
+        // y pasarlos a un rol "subscriber" temporal.
+
+        remove_role( $role_key );
+
+        return true;
+    }
+
+}
+--- FIN DEL ARCHIVO: includes/Models/class-suite-model-roles.php ---
+
 --- INICIO DEL ARCHIVO: includes/Models/index.php ---
 <?php
 // Silence is golden.
@@ -4553,75 +5656,253 @@ if ( ! defined( 'ABSPATH' ) ) {
 </div>
 
 <!-- Modal: Expediente / Perfil de Cliente -->
+<style>
+/* =========================================================
+   RECUPERACIÓN: MODAL INMERSIVO DEL PERFIL DEL CLIENTE
+   ========================================================= */
+#modal-client-profile .suite-modal-content.large {
+    max-width: 1200px;
+    width: 95%;
+    height: 90vh; /* Pantalla completa */
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: #f8fafc;
+    border-radius: 16px;
+}
+
+#modal-client-profile .modal-header-fixed {
+    padding: 20px 30px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #ffffff;
+    position: relative;
+    border-radius: 16px 16px 0 0;
+}
+
+#modal-client-profile .close-modal-float {
+    position: absolute;
+    top: 20px;
+    right: 25px;
+    font-size: 32px;
+    font-weight: bold;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1;
+}
+
+#modal-client-profile .close-modal-float:hover {
+    color: #dc2626;
+    transform: scale(1.1);
+}
+
+#modal-client-profile .modal-body-scroll {
+    display: flex;
+    flex: 1;
+    overflow-y: auto;
+    padding: 30px;
+    gap: 30px;
+}
+
+/* Columna Izquierda */
+#modal-client-profile .profile-left {
+    flex: 0 0 380px;
+    background: #ffffff;
+    padding: 25px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+}
+
+/* Columna Derecha */
+#modal-client-profile .profile-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+/* Tarjetas KPI */
+#modal-client-profile .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+#modal-client-profile .kpi-card {
+    padding: 25px;
+    border-radius: 16px;
+    color: white;
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+
+#modal-client-profile .kpi-card.kpi-total { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
+#modal-client-profile .kpi-card.kpi-count { background: linear-gradient(135deg, #0284c7 0%, #3b82f6 100%); }
+#modal-client-profile .kpi-card.kpi-last  { background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%); }
+
+#modal-client-profile .kpi-card small {
+    font-size: 13px;
+    text-transform: uppercase;
+    font-weight: 600;
+    opacity: 0.9;
+    margin-bottom: 5px;
+    display: block;
+}
+
+#modal-client-profile .kpi-card strong {
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1.2;
+}
+
+/* Historial */
+#modal-client-profile .history-container {
+    flex: 1;
+    background: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#modal-client-profile .history-header {
+    padding: 20px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 15px;
+}
+
+#modal-client-profile .history-scroll {
+    flex: 1;
+    overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+    #modal-client-profile .modal-body-scroll { flex-direction: column; }
+    #modal-client-profile .profile-left { flex: auto; }
+    #modal-client-profile .suite-modal-content.large { height: 100%; width: 100%; border-radius: 0; max-height: 100vh; }
+}
+</style>
+
 <div id="modal-client-profile" class="suite-modal" style="display: none;">
     <div class="suite-modal-content large">
+
         <div class="modal-header-fixed">
-            <h3 style="margin:0; font-size:20px; color:#0f172a;">📂 Expediente Cliente</h3>
-            <span class="close-modal" onclick="jQuery('.suite-modal').fadeOut();">×</span>
+            <h3 id="cli-profile-name" style="margin:0; color:#0f172a; font-size: 22px;">📂 Expediente del Cliente</h3>
+            <span class="close-modal-float" onclick="jQuery('#modal-client-profile').fadeOut();">&times;</span>
         </div>
+
         <div class="modal-body-scroll">
-            
-            <!-- Izquierda: Formulario de Datos -->
             <div class="profile-left">
+                <h4 style="margin:0 0 15px 0; color:#475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; font-size: 14px;">📋 Información de Contacto</h4>
+
                 <input type="hidden" id="prof-id">
-                <label>Razón Social</label>
-                <input type="text" id="prof-nombre" class="widefat">
-                
-                <div class="form-group-row">
-                    <div style="flex:1"><label>RIF/CI</label><input type="text" id="prof-rif" class="widefat"></div>
-                    <div style="flex:1"><label>Teléfono</label><input type="text" id="prof-tel" class="widefat"></div>
+
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex: 1;">
+                        <label>RIF/CI</label>
+                        <input type="text" id="prof-rif" class="widefat" readonly style="background-color: #f1f5f9; cursor: not-allowed;" title="El RIF no puede ser modificado">
+                    </div>
+                    <div style="flex: 2;">
+                        <label>Razón Social</label>
+                        <input type="text" id="prof-nombre" class="widefat">
+                    </div>
                 </div>
-                
-                <label>Email</label>
-                <input type="text" id="prof-email" class="widefat">
-                
-                <label>Dirección</label>
+
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex: 1;">
+                        <label>Teléfono</label>
+                        <input type="text" id="prof-tel" class="widefat">
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Email</label>
+                        <input type="email" id="prof-email" class="widefat">
+                    </div>
+                </div>
+
+                <label>Dirección Física</label>
                 <input type="text" id="prof-dir" class="widefat">
-                
-                <div class="form-group-row">
-                    <div style="flex:1"><label>Ciudad</label><input type="text" id="prof-ciudad" class="widefat"></div>
-                    <div style="flex:1"><label>Estado</label><input type="text" id="prof-estado" class="widefat"></div>
+
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex: 1;">
+                        <label>Ciudad</label>
+                        <input type="text" id="prof-ciudad" class="widefat">
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Estado</label>
+                        <input type="text" id="prof-estado" class="widefat">
+                    </div>
                 </div>
-                
-                <label>Contacto Persona</label>
+
+                <label>Persona de Contacto</label>
                 <input type="text" id="prof-contacto" class="widefat">
-                
+
                 <label>📝 Notas Internas</label>
-                <textarea id="prof-notas" class="widefat" rows="3"></textarea>
-                
-                <button class="btn-save-big" id="btn-update-profile" style="margin-bottom:10px; background-color:#0f172a;">Guardar Cambios</button>
-                <?php if ( $es_admin ) : ?>
-                <button class="btn-modern-action" id="btn-delete-profile" style="width:100%; justify-content:center; color:#dc2626; border-color:#fca5a5; background:#fef2f2;">🗑️ Eliminar Cliente</button>
-                <?php endif; ?>
-            </div>
-            
-            <!-- Derecha: KPIs e Historial -->
-            <div class="profile-right">
-                <div class="kpi-row">
-                    <div class="kpi-card"><small>Total Gastado</small><strong id="kpi-total">$0.00</strong></div>
-                    <div class="kpi-card"><small>Cotizaciones</small><strong id="kpi-count">0</strong></div>
-                    <div class="kpi-card"><small>Última Compra</small><strong id="kpi-last">-</strong></div>
+                <textarea id="prof-notas" class="widefat" rows="3" placeholder="Añadir observaciones sobre este cliente..."></textarea>
+
+                <div style="display:flex; gap:10px; margin-top: auto; padding-top: 15px;">
+                    <button id="btn-update-profile" class="btn-save-big" style="flex:2;">💾 Guardar Cambios</button>
+                    <?php if ( $es_admin ) : ?>
+                    <button id="btn-delete-profile" class="btn-modern-action" style="flex:1; color:#dc2626; border-color:#fca5a5; justify-content: center; background:#fef2f2;">🗑️ Eliminar</button>
+                    <?php endif; ?>
                 </div>
-                
-                <h4>📜 Historial de Cotizaciones</h4>
+            </div>
+
+            <div class="profile-right">
+                <div class="kpi-row" id="cli-profile-kpi-compras">
+                    <div class="kpi-card kpi-total">
+                        <small>💰 Total Gastado</small>
+                        <strong id="kpi-total">$0.00</strong>
+                    </div>
+                    <div class="kpi-card kpi-count">
+                        <small>🛒 Total Operaciones</small>
+                        <strong id="kpi-count">0</strong>
+                    </div>
+                    <div class="kpi-card kpi-last">
+                        <small>📅 Última Compra</small>
+                        <strong id="kpi-last">-</strong>
+                    </div>
+                </div>
+
                 <div class="history-container">
-                    <div class="history-scroll suite-table-responsive" style="border:none;">
-                        <table class="suite-modern-table">
+                    <div class="history-header">
+                        📜 Historial de Cotizaciones y Pedidos
+                    </div>
+                    <div class="history-scroll">
+                        <table class="suite-modern-table" id="cli-history-table" style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr>
-                                    <th>Fecha</th>
-                                    <th>Código</th>
-                                    <th>Total</th>
-                                    <th>Acción</th>
+                                    <th style="position: sticky; top: 0; z-index: 2; background: #f8fafc;">Fecha</th>
+                                    <th style="position: sticky; top: 0; z-index: 2; background: #f8fafc;">Código</th>
+                                    <th style="position: sticky; top: 0; z-index: 2; background: #f8fafc;">Total</th>
+                                    <th style="position: sticky; top: 0; z-index: 2; background: #f8fafc;">Acción</th>
                                 </tr>
                             </thead>
-                            <!-- JS inyectará las filas aquí -->
-                            <tbody id="prof-history-body"></tbody>
+                            <tbody id="prof-history-body">
+                                <tr><td colspan="4" style="text-align: center; padding: 30px; color: #94a3b8;">Cargando datos del cliente...</td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
             </div>
-            
         </div>
     </div>
 </div>
@@ -4725,7 +6006,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 $tasa_bcv_actual = get_option( 'suite_tasa_bcv', 1.00 ); 
 ?>
-<div id="TabPos" class="suite-tab-content">
+<div id="TabPos" class="suite-tab-content" style="display: none;">
     <div style="display: flex; flex-wrap: wrap; gap: 25px;">
         
         <!-- COLUMNA IZQUIERDA: PRODUCTOS Y CARRITO -->
@@ -4859,6 +6140,280 @@ $tasa_bcv_actual = get_option( 'suite_tasa_bcv', 1.00 );
     </div>
 </div>
 --- FIN DEL ARCHIVO: views/app/tab-cotizador.php ---
+
+--- INICIO DEL ARCHIVO: views/app/tab-equipo.php ---
+<?php
+/**
+ * Vista: Pestaña de Gestión de Equipo y Roles (RBAC) - Fase 3
+ * 
+ * @package SuiteEmpleados\Views\App
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+?>
+<style>
+/* =========================================================
+   ESTILOS: SUB-PESTAÑAS Y MATRIZ DE PERMISOS (RBAC)
+   ========================================================= */
+.equipo-subtabs {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.equipo-subtab-btn {
+    padding: 12px 20px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-weight: 600;
+    font-size: 14px;
+    color: #64748b;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.3s;
+}
+
+.equipo-subtab-btn:hover {
+    color: #0f172a;
+}
+
+.equipo-subtab-btn.active {
+    color: #0073aa;
+    border-bottom-color: #0073aa;
+}
+
+.equipo-section {
+    display: none;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.equipo-section.active {
+    display: block;
+}
+
+/* MATRIZ DE CAPABILIDADES (GRID) */
+.cap-matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 15px;
+    margin-top: 10px;
+    max-height: 350px;
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
+.cap-group {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.cap-group h4 {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    color: #0f172a;
+    text-transform: uppercase;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 6px;
+}
+
+.cap-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    color: #475569;
+}
+
+.cap-item:last-child {
+    margin-bottom: 0;
+}
+
+.cap-item input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: #0073aa;
+}
+
+.role-tags-container span {
+    display: inline-block;
+    background: #e0f2fe;
+    color: #0369a1;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    margin: 2px;
+    font-weight: 600;
+}
+</style>
+
+<!-- CONTENEDOR PRINCIPAL DE LA PESTAÑA -->
+<div id="TabEquipo" class="suite-tab-content" style="display: none;">
+    
+    <div class="suite-header-modern" style="padding-bottom: 0; border-bottom: none;">
+        <h2 style="margin:0; font-size: 22px; color: #0f172a;">👥 Gestión de Equipo y Permisos</h2>
+    </div>
+    
+    <!-- SUB-PESTAÑAS -->
+    <div class="equipo-subtabs" style="padding: 0 25px;">
+        <button class="equipo-subtab-btn active" onclick="toggleEquipoView('empleados', this)">👥 Lista de Empleados</button>
+        <button class="equipo-subtab-btn" onclick="toggleEquipoView('roles', this)">🛡️ Perfiles y Permisos</button>
+    </div>
+    
+    <div style="padding: 0 25px 25px 25px;">
+        
+        <!-- ==========================================
+             SECCIÓN 1: EMPLEADOS
+             ========================================== -->
+        <div id="sec-empleados" class="equipo-section active">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 20px; align-items: center;">
+                <p style="margin: 0; color: #64748b; font-size: 14px;">Administre los accesos de su equipo de trabajo al ERP.</p>
+                <button class="btn-save-big" style="width: auto; padding: 10px 20px;" onclick="jQuery('#modal-employee').fadeIn();">➕ Nuevo Empleado</button>
+            </div>
+            
+            <div class="suite-table-responsive">
+                <table class="suite-modern-table" id="employeesTable" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Email / Usuario</th>
+                            <th>Teléfono</th>
+                            <th>Rol Asignado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="employees-tbody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             SECCIÓN 2: ROLES (RBAC)
+             ========================================== -->
+        <div id="sec-roles" class="equipo-section">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 20px; align-items: center;">
+                <p style="margin: 0; color: #64748b; font-size: 14px;">Cree perfiles personalizados y asigne capacidades específicas de los módulos.</p>
+                <button class="btn-save-big" style="width: auto; padding: 10px 20px;" onclick="jQuery('#modal-role').fadeIn();">➕ Crear Nuevo Perfil</button>
+            </div>
+            
+            <div class="suite-table-responsive">
+                <table class="suite-modern-table" id="rolesTable" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Perfil</th>
+                            <th style="width: 55%;">Permisos Activos</th>
+                            <th style="width: 20%;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="roles-tbody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ==========================================
+     MODAL: CRUD DE EMPLEADOS
+     ========================================== -->
+<div id="modal-employee" class="suite-modal">
+    <div class="suite-modal-content">
+        <span class="close-modal" onclick="jQuery('#modal-employee').fadeOut();">&times;</span>
+        <h3 id="emp-modal-title" style="margin-top:0; color:#0f172a;">Añadir Empleado</h3>
+        
+        <input type="hidden" id="emp-id" value="0">
+        
+        <div class="form-group-row">
+            <div>
+                <label>Nombre</label>
+                <input type="text" id="emp-first-name" class="widefat" placeholder="Ej: Juan">
+            </div>
+            <div>
+                <label>Apellido</label>
+                <input type="text" id="emp-last-name" class="widefat" placeholder="Ej: Pérez">
+            </div>
+        </div>
+        
+        <label>Correo Electrónico (Usuario de Acceso) *</label>
+        <input type="email" id="emp-email" class="widefat" placeholder="juan@mitiendaunit.com">
+        
+        <div class="form-group-row">
+            <div>
+                <label>Teléfono (Para PDF) *</label>
+                <input type="text" id="emp-phone" class="widefat" placeholder="Ej: +58 412 1234567">
+            </div>
+            <div>
+                <label>Contraseña <small style="font-weight:normal; color:#64748b;">(Dejar en blanco para no cambiar)</small></label>
+                <input type="password" id="emp-password" class="widefat" placeholder="••••••••">
+            </div>
+        </div>
+        
+        <label>Rol / Perfil de Acceso *</label>
+        <select id="emp-role" class="widefat">
+            <option value="">Seleccione un rol...</option>
+            <!-- JS inyectará opciones aquí -->
+        </select>
+        
+        <button type="button" id="btn-save-employee" class="btn-save-big" style="margin-top: 15px;">💾 Guardar Empleado</button>
+    </div>
+</div>
+
+<!-- ==========================================
+     MODAL: CRUD DE ROLES (MATRIZ DE PERMISOS)
+     ========================================== -->
+<div id="modal-role" class="suite-modal">
+    <div class="suite-modal-content" style="max-width: 700px;">
+        <span class="close-modal" onclick="jQuery('#modal-role').fadeOut();">&times;</span>
+        <h3 id="role-modal-title" style="margin-top:0; color:#0f172a;">Crear Nuevo Perfil</h3>
+        
+        <!-- El Key original se usa de referencia para actualizar, o se deja vacío para crear uno nuevo -->
+        <input type="hidden" id="role-key-hidden" value="">
+        
+        <div class="form-group-row">
+            <div>
+                <label>Nombre del Perfil *</label>
+                <input type="text" id="role-display-name" class="widefat" placeholder="Ej: Vendedor Senior">
+            </div>
+            <div>
+                <label>Identificador del Sistema (Key) *</label>
+                <input type="text" id="role-key" class="widefat" placeholder="ej: vendedor_senior" title="Solo minúsculas y guiones bajos" oninput="this.value = this.value.replace(/[^a-z_]/g, '')">
+            </div>
+        </div>
+        
+        <label style="margin-top: 10px; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px;">Asignación de Permisos (Capabilities)</label>
+        
+        <!-- CONTENEDOR DINÁMICO DE CHECKBOXES -->
+        <div id="role-capabilities-matrix" class="cap-matrix-grid">
+            <div style="color: #94a3b8; font-size: 13px;">Cargando matriz de permisos...</div>
+        </div>
+        
+        <button type="button" id="btn-save-role" class="btn-save-big" style="margin-top: 25px;">🛡️ Guardar Perfil y Permisos</button>
+    </div>
+</div>
+
+<!-- Pequeño script inline para el manejo exclusivo visual de las Sub-pestañas -->
+<script>
+function toggleEquipoView(section, btn) {
+    // Manejo de botones
+    jQuery('.equipo-subtab-btn').removeClass('active');
+    jQuery(btn).addClass('active');
+    
+    // Manejo de secciones
+    jQuery('.equipo-section').removeClass('active').hide();
+    jQuery('#sec-' + section).fadeIn().addClass('active');
+}
+</script>
+--- FIN DEL ARCHIVO: views/app/tab-equipo.php ---
 
 --- INICIO DEL ARCHIVO: views/app/tab-historial.php ---
 <?php
@@ -5253,10 +6808,271 @@ if ( ! defined( 'ABSPATH' ) ) {
 <?php
 /**
  * Archivo: views/components/modal-cliente.php
- * Proposito: ...
+ * Proposito: Modal inmersivo a pantalla completa (Legacy Layout)
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
+?>
+<style>
+/* =========================================================
+   RECUPERACIÓN: MODAL INMERSIVO DEL PERFIL DEL CLIENTE 
+   ========================================================= */
+#modal-client-profile .suite-modal-content.large {
+    max-width: 1200px;
+    width: 95%;
+    height: 90vh; /* Pantalla completa */
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: #f8fafc;
+    border-radius: 16px;
+}
+
+#modal-client-profile .modal-header-fixed {
+    padding: 20px 30px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #ffffff;
+    position: relative;
+    border-radius: 16px 16px 0 0;
+}
+
+/* Botón flotante y visible de cerrar */
+#modal-client-profile .close-modal-float {
+    position: absolute;
+    top: 20px;
+    right: 25px;
+    font-size: 32px;
+    font-weight: bold;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1;
+}
+
+#modal-client-profile .close-modal-float:hover {
+    color: #dc2626;
+    transform: scale(1.1);
+}
+
+/* Layout a 2 columnas con Flexbox */
+#modal-client-profile .modal-body-scroll {
+    display: flex;
+    flex: 1;
+    overflow-y: auto;
+    padding: 30px;
+    gap: 30px;
+}
+
+/* Columna Izquierda: Datos y Acciones */
+#modal-client-profile .profile-left {
+    flex: 0 0 380px;
+    background: #ffffff;
+    padding: 25px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+}
+
+/* Columna Derecha: KPIs e Historial */
+#modal-client-profile .profile-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+/* Tarjetas KPI (Estilo Legacy Recuperado) */
+#modal-client-profile .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+#modal-client-profile .kpi-card {
+    padding: 25px;
+    border-radius: 16px;
+    color: white;
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Fondos Degradados */
+#modal-client-profile .kpi-card.kpi-total { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
+#modal-client-profile .kpi-card.kpi-count { background: linear-gradient(135deg, #0284c7 0%, #3b82f6 100%); }
+#modal-client-profile .kpi-card.kpi-last  { background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%); }
+
+#modal-client-profile .kpi-card small { 
+    font-size: 13px; 
+    text-transform: uppercase; 
+    font-weight: 600; 
+    opacity: 0.9; 
+    margin-bottom: 5px; 
+    display: block;
+}
+
+#modal-client-profile .kpi-card strong { 
+    font-size: 34px; 
+    font-weight: 800; 
+    letter-spacing: -1px; 
+    line-height: 1.2;
+}
+
+/* Contenedor del Historial */
+#modal-client-profile .history-container {
+    flex: 1;
+    background: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#modal-client-profile .history-header {
+    padding: 20px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 15px;
+}
+
+#modal-client-profile .history-scroll {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* Mobile Responsive */
+@media (max-width: 900px) {
+    #modal-client-profile .modal-body-scroll { flex-direction: column; }
+    #modal-client-profile .profile-left { flex: auto; }
+    #modal-client-profile .suite-modal-content.large { height: 100%; width: 100%; border-radius: 0; max-height: 100vh; }
+}
+</style>
+
+<!-- El ID corresponde estrictamente con el archivo crm.js de la V12 -->
+<div id="modal-client-profile" class="suite-modal" style="display: none;">
+    <div class="suite-modal-content large">
+        
+        <!-- CABECERA -->
+        <div class="modal-header-fixed">
+            <h3 id="cli-profile-name" style="margin:0; color:#0f172a; font-size: 22px;">📂 Expediente del Cliente</h3>
+            <span class="close-modal-float" onclick="jQuery('#modal-client-profile').fadeOut();">&times;</span>
+        </div>
+        
+        <div class="modal-body-scroll">
+            <!-- COLUMNA IZQUIERDA: DATOS DE CONTACTO (Formulario Mapeado a crm.js) -->
+            <div class="profile-left">
+                <h4 style="margin:0 0 15px 0; color:#475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; font-size: 14px;">📋 Información de Contacto</h4>
+                
+                <input type="hidden" id="prof-id">
+                
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex: 1;">
+                        <label>RIF/CI</label>
+                        <input type="text" id="prof-rif" class="widefat" readonly style="background-color: #f1f5f9; cursor: not-allowed;" title="El RIF no puede ser modificado">
+                    </div>
+                    <div style="flex: 2;">
+                        <label>Razón Social</label>
+                        <input type="text" id="prof-nombre" class="widefat">
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex: 1;">
+                        <label>Teléfono</label>
+                        <input type="text" id="prof-tel" class="widefat">
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Email</label>
+                        <input type="email" id="prof-email" class="widefat">
+                    </div>
+                </div>
+                
+                <label>Dirección Física</label>
+                <input type="text" id="prof-dir" class="widefat">
+                
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex: 1;">
+                        <label>Ciudad</label>
+                        <input type="text" id="prof-ciudad" class="widefat">
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Estado</label>
+                        <input type="text" id="prof-estado" class="widefat">
+                    </div>
+                </div>
+                
+                <label>Persona de Contacto</label>
+                <input type="text" id="prof-contacto" class="widefat">
+                
+                <label>📝 Notas Internas</label>
+                <textarea id="prof-notas" class="widefat" rows="3" placeholder="Añadir observaciones sobre este cliente..."></textarea>
+                
+                <div style="display:flex; gap:10px; margin-top: auto; padding-top: 15px;">
+                    <button id="btn-update-profile" class="btn-save-big" style="flex:2;">💾 Guardar Cambios</button>
+                    <button id="btn-delete-profile" class="btn-modern-action" style="flex:1; color:#dc2626; border-color:#fca5a5; justify-content: center;">🗑️ Eliminar</button>
+                </div>
+            </div>
+
+            <!-- COLUMNA DERECHA: KPIs Y TABLA -->
+            <div class="profile-right">
+                
+                <!-- Tarjetas KPI Gigantes -->
+                <div class="kpi-row" id="cli-profile-kpi-compras">
+                    <div class="kpi-card kpi-total">
+                        <small>💰 Total Gastado</small>
+                        <strong id="kpi-total">$0.00</strong>
+                    </div>
+                    <div class="kpi-card kpi-count">
+                        <small>🛒 Total Operaciones</small>
+                        <strong id="kpi-count">0</strong>
+                    </div>
+                    <div class="kpi-card kpi-last">
+                        <small>📅 Última Compra</small>
+                        <strong id="kpi-last">-</strong>
+                    </div>
+                </div>
+                
+                <!-- Pestaña de Historial -->
+                <div class="history-container">
+                    <div class="history-header">
+                        📜 Historial de Cotizaciones y Pedidos
+                    </div>
+                    <div class="history-scroll">
+                        <table class="suite-modern-table" id="cli-history-table">
+                            <thead>
+                                <tr>
+                                    <th style="position: sticky; top: 0; z-index: 2;">Fecha</th>
+                                    <th style="position: sticky; top: 0; z-index: 2;">Código</th>
+                                    <th style="position: sticky; top: 0; z-index: 2;">Total</th>
+                                    <th style="position: sticky; top: 0; z-index: 2;">Acción</th>
+                                </tr>
+                            </thead>
+                            <!-- El tbody coincide estrictamente con la inyección de crm.js -->
+                            <tbody id="prof-history-body">
+                                <tr><td colspan="4" style="text-align: center; padding: 30px; color: #94a3b8;">Cargando datos del cliente...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 --- FIN DEL ARCHIVO: views/components/modal-cliente.php ---
 
 --- INICIO DEL ARCHIVO: views/components/table-skeleton.php ---

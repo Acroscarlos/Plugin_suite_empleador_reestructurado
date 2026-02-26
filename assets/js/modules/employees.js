@@ -95,7 +95,7 @@ const SuiteEmployees = (function($) {
     // CARGA DE DATOS (AJAX)
     // ==========================================
 
-    const loadEmployees = function() {
+	const loadEmployees = function() {
         if (!empTable) return;
         
         SuiteAPI.post('suite_get_employees').then(res => {
@@ -104,8 +104,9 @@ const SuiteEmployees = (function($) {
                 
                 res.data.forEach(e => {
                     // Determinar el rol principal y estilos visuales
-                    let roleKey = Array.isArray(e.roles) ? e.roles : (e.roles ? Object.keys(e.roles) : 'N/A');
-                    let roleDisplay = roleKey.replace('suite_', '').toUpperCase();
+                    // CORRECCIÓN: Extraemos el índice [0] si es array para garantizar que roleKey sea un texto puro
+                    let roleKey = (Array.isArray(e.roles) && e.roles.length > 0) ? e.roles[0] : (e.roles ? Object.keys(e.roles)[0] : 'N/A');
+                    let roleDisplay = (typeof roleKey === 'string') ? roleKey.replace('suite_', '').toUpperCase() : 'N/A';
                     let badgeClass = roleKey === 'administrator' ? 'pill-critico' : 'pill-neutral';
 
                     // Convertimos la data a Base64 para pasarla segura al botón OnClick
@@ -127,7 +128,8 @@ const SuiteEmployees = (function($) {
             }
         });
     };
-
+	
+	
     const loadRoles = function() {
         if (!roleTable) return;
 
@@ -283,7 +285,7 @@ const SuiteEmployees = (function($) {
         },
 
         // Expuestos para ser llamados desde los botones dinámicos en las Tablas
-        editEmployee: function(base64Data) {
+		editEmployee: function(base64Data) {
             const data = JSON.parse(decodeURIComponent(escape(atob(base64Data))));
             
             $('#emp-modal-title').text('Editar Empleado');
@@ -291,7 +293,8 @@ const SuiteEmployees = (function($) {
             
             // Tratar de separar el nombre (Fase 1-C no retorna First/Last individualmente por compatibilidad)
             let parts = data.nombre.split(' ');
-            $('#emp-first-name').val(parts || '');
+            // CORRECCIÓN: Asignamos parts[0] para asegurar que tome solo el primer string y no el array completo
+            $('#emp-first-name').val(parts[0] || '');
             $('#emp-last-name').val(parts.slice(1).join(' ') || '');
             
             $('#emp-email').val(data.email);
@@ -299,7 +302,8 @@ const SuiteEmployees = (function($) {
             $('#emp-password').val(''); // Se deja vacío para no alterar
             
             // Seleccionar rol en el dropdown
-            let rKey = Array.isArray(data.roles) ? data.roles : (data.roles ? Object.keys(data.roles) : '');
+            // CORRECCIÓN: Extraemos el índice [0] del array para que jQuery seleccione correctamente el <option>
+            let rKey = (Array.isArray(data.roles) && data.roles.length > 0) ? data.roles[0] : (data.roles ? Object.keys(data.roles)[0] : '');
             $('#emp-role').val(rKey);
 
             $('#modal-employee').fadeIn();

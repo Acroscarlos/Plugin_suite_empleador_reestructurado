@@ -84,7 +84,7 @@ class Suite_Shortcode_Controller {
         }
     }
 
-    /**
+	/**
      * Renderiza el contenido del shortcode.
      */
     public function render_app( $atts ) {
@@ -94,18 +94,19 @@ class Suite_Shortcode_Controller {
             return '<div style="padding:20px; text-align:center; font-family:sans-serif;">🔒 Inicie sesión para acceder a la Intranet de RV Tech.</div>';
         }
 
-        // --- 2. CONTROL DE ROLES (RBAC) ---
-        $user = wp_get_current_user();
-        $roles = (array) $user->roles;
-        
-        $es_admin     = current_user_can( 'manage_options' );
-        $es_logistica = in_array( 'suite_logistica', $roles );
-        $es_vendedor  = in_array( 'suite_vendedor', $roles );
-        $es_marketing = in_array( 'suite_marketing', $roles );
+        // --- 2. CONTROL DE ROLES DINÁMICO (RBAC) ---
+        // Se abandona el chequeo estático de roles por validación de Capacidades (Capabilities)
+        $es_admin        = current_user_can( 'manage_options' );
+        $can_view_crm    = $es_admin || current_user_can( 'suite_view_crm' );
+        $can_view_kanban = $es_admin || current_user_can( 'suite_view_kanban' );
+        $can_view_comis  = $es_admin || current_user_can( 'suite_view_commissions' );
+        $can_view_logis  = $es_admin || current_user_can( 'suite_view_logistics' );
+        $can_view_bi     = $es_admin || current_user_can( 'suite_view_marketing' );
+        $can_manage_team = $es_admin || current_user_can( 'suite_manage_team' );
 
-        // Si no tiene ningún rol permitido, se bloquea el renderizado por completo
-        if ( ! $es_admin && ! $es_logistica && ! $es_vendedor && ! $es_marketing ) {
-            return '<div style="padding:20px; text-align:center; color:#dc2626; font-family:sans-serif;">⛔ Acceso Denegado. Contacte al administrador.</div>';
+        // Si no tiene ningún permiso, se bloquea el renderizado por completo
+        if ( ! $es_admin && ! $can_view_crm && ! $can_view_kanban && ! $can_view_comis && ! $can_view_logis && ! $can_view_bi && ! $can_manage_team ) {
+            return '<div style="padding:20px; text-align:center; color:#dc2626; font-family:sans-serif;">⛔ Acceso Denegado. Usted no tiene permisos asignados en el ERP.</div>';
         }
 
         // --- 3. PRE-CARGA DE DATOS PARA LAS VISTAS ---
@@ -113,13 +114,13 @@ class Suite_Shortcode_Controller {
         $pedidos_logistica = [];
 
         // Datos para el CRM
-        if ( $es_admin || $es_vendedor || $es_logistica ) {
+        if ( $can_view_crm || $can_view_logis ) {
             $clientModel = new Suite_Model_Client();
             $clientes    = $clientModel->get_all( 200 );
         }
 
         // Datos para Almacén (Logística)
-        if ( $es_admin || $es_logistica ) {
+        if ( $can_view_logis || $can_view_kanban ) {
             $quoteModel = new Suite_Model_Quote();
             $kanban_data = $quoteModel->get_kanban_orders( null, true );
             $pedidos_logistica = isset( $kanban_data['pagado'] ) ? $kanban_data['pagado'] : [];
@@ -134,55 +135,61 @@ class Suite_Shortcode_Controller {
         echo '<div class="suite-tabs-modern">';
         
         // Pestañas Operativas Generales (Ventas y Administración)
-        if ( $es_admin || $es_vendedor || $es_logistica ) {
+        if ( $can_view_crm ) {
             echo '<button class="tab-btn active" onclick="openSuiteTab(event, \'TabCli\')">👥 Clientes</button>';
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabPos\')">📝 Cotizador</button>';
+        }
+
+        if ( $can_view_kanban ) {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabKanban\')">📦 Pedidos</button>';
         }
         
         // Comisiones (Ventas)
-        if ( $es_admin || $es_vendedor ) {
+        if ( $can_view_comis ) {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabComisiones\')">🏆 Comisiones</button>';
         }
         
         // Pestaña Protegida: Logística
-        if ( $es_admin || $es_logistica ) {
+        if ( $can_view_logis ) {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabLogistica\')" style="color:#0369a1; font-weight:bold;">🚚 Logística</button>';
         }
         
         // Pestaña Protegida: BI & Marketing
-        if ( $es_admin || $es_marketing ) {
+        if ( $can_view_bi ) {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabMarketing\')" style="color:#dc2626; font-weight:bold;">📈 BI & Marketing</button>';
         }
 		
 		// Pestaña Protegida: Gestión de Equipo (RBAC)
-        if ( $es_admin ) { 
+        if ( $can_manage_team ) { 
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabEquipo\')" style="color:#0f172a; font-weight:bold;">⚙️ Equipo y Accesos</button>';
         }
         
         echo '</div>'; // Fin menú de pestañas
 
         // B. CARGA DE VISTAS (Inyección de plantillas limpia y ordenada)
-        if ( $es_admin || $es_vendedor || $es_logistica ) {
+        if ( $can_view_crm ) {
             require SUITE_PATH . 'views/app/tab-clientes.php';
             require SUITE_PATH . 'views/app/tab-cotizador.php';
+        }
+
+        if ( $can_view_kanban ) {
             require SUITE_PATH . 'views/app/tab-kanban.php';
         }
         
-        if ( $es_admin || $es_vendedor ) {
+        if ( $can_view_comis ) {
             require SUITE_PATH . 'views/app/tab-comisiones.php';
         }
 
-        if ( $es_admin || $es_logistica ) {
+        if ( $can_view_logis ) {
             require SUITE_PATH . 'views/app/tab-logistica.php';
         }
         
-        if ( $es_admin || $es_marketing ) {
+        if ( $can_view_bi ) {
             require SUITE_PATH . 'views/app/tab-marketing.php';
         }
 
 		// Nuevo Módulo de Equipo y Roles (RBAC)
-        if ( $es_admin ) { // (Nota: Más adelante cambiaremos esto por $can_manage_team)
+        if ( $can_manage_team ) { 
             require SUITE_PATH . 'views/app/tab-equipo.php';
         }
 
