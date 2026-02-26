@@ -53,6 +53,7 @@ class Suite_Shortcode_Controller {
             wp_enqueue_script( 'suite-commissions-js', SUITE_URL . 'assets/js/modules/commissions.js', ['suite-api-js'], SUITE_VERSION, true );
             wp_enqueue_script( 'suite-logistics-js', SUITE_URL . 'assets/js/modules/logistics.js', ['suite-api-js'], SUITE_VERSION, true );
             wp_enqueue_script( 'suite-marketing-js', SUITE_URL . 'assets/js/modules/marketing.js', ['suite-api-js', 'chart-js'], SUITE_VERSION, true );
+			wp_enqueue_script( 'suite-employees-js', SUITE_URL . 'assets/js/modules/employees.js', ['suite-api-js', 'dt-js'], SUITE_VERSION, true );
 
             // 5. Orquestador Principal (Carga al final)
             wp_enqueue_script( 'suite-main-js', SUITE_URL . 'assets/js/main.js', [
@@ -61,16 +62,24 @@ class Suite_Shortcode_Controller {
                 'suite-kanban-js', 
                 'suite-commissions-js', 
                 'suite-logistics-js', 
-                'suite-marketing-js'
+                'suite-marketing-js',
+				'suite-employees-js'
             ], SUITE_VERSION, true );
 
-            // 6. Variables Globales de Entorno e Inyección de Nonce de Seguridad
+			
+			// 6. Variables Globales de Entorno e Inyección de Nonce de Seguridad
+            $user_actual = wp_get_current_user();
+            $roles_actuales = (array) $user_actual->roles;
+            $is_gerente = in_array( 'suite_gerente', $roles_actuales ) || in_array( 'gerente', $roles_actuales );
+            $can_export = current_user_can( 'manage_options' ) || $is_gerente;			
+			
             wp_localize_script( 'suite-api-js', 'suite_vars', [
                 'ajax_url'   => admin_url( 'admin-ajax.php' ),
                 'nonce'      => wp_create_nonce( 'suite_quote_nonce' ),
                 'is_admin'   => current_user_can( 'manage_options' ),
                 'rest_url'   => esc_url_raw( rest_url() ),
-                'rest_nonce' => wp_create_nonce( 'wp_rest' )
+                'rest_nonce' => wp_create_nonce( 'wp_rest' ),
+				'can_export' => $can_export
             ] );
         }
     }
@@ -145,6 +154,11 @@ class Suite_Shortcode_Controller {
         if ( $es_admin || $es_marketing ) {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabMarketing\')" style="color:#dc2626; font-weight:bold;">📈 BI & Marketing</button>';
         }
+		
+		// Pestaña Protegida: Gestión de Equipo (RBAC)
+        if ( $es_admin ) { 
+            echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabEquipo\')" style="color:#0f172a; font-weight:bold;">⚙️ Equipo y Accesos</button>';
+        }
         
         echo '</div>'; // Fin menú de pestañas
 
@@ -167,6 +181,11 @@ class Suite_Shortcode_Controller {
             require SUITE_PATH . 'views/app/tab-marketing.php';
         }
 
+		// Nuevo Módulo de Equipo y Roles (RBAC)
+        if ( $es_admin ) { // (Nota: Más adelante cambiaremos esto por $can_manage_team)
+            require SUITE_PATH . 'views/app/tab-equipo.php';
+        }
+
         // C. INYECCIÓN DEL MOTOR JAVASCRIPT UNIFICADO
         // Se inicializan dinámicamente solo los módulos que el usuario haya descargado (según permisos)
         ?>
@@ -180,6 +199,7 @@ class Suite_Shortcode_Controller {
                 if (typeof SuiteCommissions !== "undefined") SuiteCommissions.init();
                 if (typeof SuiteLogistics !== "undefined") SuiteLogistics.init();
                 if (typeof SuiteMarketing !== "undefined") SuiteMarketing.init();
+				if (typeof SuiteEmployees !== "undefined") SuiteEmployees.init();
 
                 // 2. ENRUTADOR DE PESTAÑAS (Manejo de estado visual y recargas asíncronas)
                 window.openSuiteTab = function(evt, name) {

@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 $tasa_bcv_actual = get_option( 'suite_tasa_bcv', 1.00 ); 
 ?>
-<div id="TabPos" class="suite-tab-content">
+<div id="TabPos" class="suite-tab-content" style="display: none;">
     <div style="display: flex; flex-wrap: wrap; gap: 25px;">
         
         <!-- COLUMNA IZQUIERDA: PRODUCTOS Y CARRITO -->

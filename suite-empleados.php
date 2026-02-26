@@ -38,6 +38,8 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Models/class-suite-model-quote.php';
     require_once SUITE_PATH . 'includes/Models/class-suite-model-inventory.php';
     require_once SUITE_PATH . 'includes/Models/class-suite-model-commission.php';
+	require_once SUITE_PATH . 'includes/Models/class-suite-model-roles.php';    
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-employee.php'; 
 
     // Controladores Base
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-controller.php';
@@ -48,6 +50,8 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-kanban.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-commissions.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-logistics.php';
+	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-employees.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-roles.php';
 
     // Controladores API REST (Data Lake y Machine Learning)
     require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-stats.php';
@@ -64,6 +68,7 @@ function suite_empleados_init() {
     new Suite_Ajax_Client_Import();
     new Suite_Ajax_Client_Delete();
     new Suite_Ajax_Client_Profile();
+	new Suite_Ajax_Log_Export();
 
     // Módulo de Cotizaciones
     new Suite_Ajax_Quote_Save();
@@ -84,6 +89,14 @@ function suite_empleados_init() {
 
     // Módulo 5: Cerebro de Demanda (REST API)
     new Suite_API_Stats();
+	
+	// Módulo 6:--- NUEVO MÓDULO: GESTIÓN DE EQUIPO Y ROLES (RBAC) ---
+    new Suite_Ajax_Employee_List();
+    new Suite_Ajax_Employee_Save();
+    new Suite_Ajax_Employee_Delete();
+    new Suite_Ajax_Role_List();
+    new Suite_Ajax_Role_Save();
+    new Suite_Ajax_Role_Delete();
 
     // Gestor de la Vista Principal (Shortcode y encolado de assets)
     new Suite_Shortcode_Controller();

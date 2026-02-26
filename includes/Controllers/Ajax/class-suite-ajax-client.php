@@ -205,3 +205,50 @@ class Suite_Ajax_Client_Profile extends Suite_AJAX_Controller {
         ] );
     }
 }
+
+/**
+ * Controlador AJAX: Registro de Auditoría de Exportaciones
+ * 
+ * Registra en el log de la base de datos cada vez que un Administrador o Gerente
+ * exporta información sensible en formato CSV o Excel.
+ */
+class Suite_Ajax_Log_Export extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_log_export';
+    // Se requiere un nivel de acceso base, pero validaremos el rol exacto adentro
+    protected $required_capability = 'read'; 
+
+    protected function process() {
+        // 1. DOBLE BARRERA DE SEGURIDAD (Zero-Trust)
+        $user = wp_get_current_user();
+        $roles = (array) $user->roles;
+        
+        // Comprobar si es Administrador o tiene el rol personalizado de gerente
+        $is_admin = current_user_can( 'manage_options' );
+        $is_gerente = in_array( 'suite_gerente', $roles ) || in_array( 'gerente', $roles );
+
+        if ( ! $is_admin && ! $is_gerente ) {
+            $this->send_error( 'Acceso Denegado. Violación de seguridad registrada.', 403 );
+        }
+
+        // 2. RECIBIR DATOS
+        $tabla = isset( $_POST['tabla'] ) ? sanitize_text_field( $_POST['tabla'] ) : 'Desconocida';
+        
+        // 3. REGISTRAR EN LA TABLA DE AUDITORÍA
+        global $wpdb;
+        $table_logs = $wpdb->prefix . 'suite_logs';
+        
+        // La fecha y hora ('created_at') se insertan automáticamente por MySQL (CURRENT_TIMESTAMP) [2]
+        $wpdb->insert(
+            $table_logs,
+            [
+                'usuario_id' => get_current_user_id(),
+                'accion'     => 'exportacion_datos',
+                'detalle'    => "Exportó la tabla {$tabla} en formato CSV/Excel",
+                'ip'         => $_SERVER['REMOTE_ADDR']
+            ]
+        );
+
+        $this->send_success( 'Auditoría registrada.' );
+    }
+}

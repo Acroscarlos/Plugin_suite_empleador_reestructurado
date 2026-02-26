@@ -36,27 +36,59 @@ const SuiteCRM = (function($) {
     const initDataTable = function() {
         if ($('#clientsTable').length && !$.fn.DataTable.isDataTable('#clientsTable')) {
             
-            // Permisos visuales basados en el rol (Extraído de suite_vars)
-            let tableDom = suite_vars.is_admin ? 'Blrtip' : 'lrtip';
-            
-            // --- INICIO DE LA CORRECCIÓN: Botones de Exportación ---
-            let tableButtons = suite_vars.is_admin ? [
-                { extend: 'excelHtml5', text: 'Excel', className: 'btn-modern-action small' },
+			// ---------------------------------------------------------
+            // INICIO DE LA CORRECCIÓN QUIRÚRGICA: SEGURIDAD Y LOGS
+            // ---------------------------------------------------------
+
+            // Leemos la variable global de permisos (o suite_vars.is_admin como fallback)
+            const canExportData = suite_vars.can_export || suite_vars.is_admin;
+            let tableDom = canExportData ? 'Blrtip' : 'lrtip'; // Oculta botones si no hay permisos
+
+            // Array de botones con Secuestro de Clic (Interceptor)
+            let tableButtons = canExportData ? [
+                { 
+                    extend: 'excelHtml5', 
+                    text: 'Excel', 
+                    className: 'btn-modern-action small',
+                    action: function (e, dt, node, config) {
+                        let btnInstance = this;
+                        
+                        // 1. Llamada a la API para registrar el Log
+                        SuiteAPI.post('suite_log_export', { tabla: 'Clientes (Excel)' }).then(res => {
+                            if (res.success) {
+                                // 2. Ejecutamos la acción nativa de DataTables para descargar
+                                $.fn.dataTable.ext.buttons.excelHtml5.action.call(btnInstance, e, dt, node, config);
+                            }
+                        }).catch(err => {
+                            alert('⚠️ Acción bloqueada: No se pudo registrar la auditoría de seguridad.');
+                        });
+                    }
+                },
                 { 
                     extend: 'csvHtml5', 
                     text: 'CSV', 
                     className: 'btn-modern-action small',
+                    action: function (e, dt, node, config) {
+                        let btnInstance = this;
+                        
+                        SuiteAPI.post('suite_log_export', { tabla: 'Clientes (CSV)' }).then(res => {
+                            if (res.success) {
+                                $.fn.dataTable.ext.buttons.csvHtml5.action.call(btnInstance, e, dt, node, config);
+                            }
+                        }).catch(err => {
+                            alert('⚠️ Acción bloqueada: No se pudo registrar la auditoría de seguridad.');
+                        });
+                    },
                     exportOptions: {
                         format: {
                             body: function (data, row, column, node) {
-                                // Limpia acentos y caracteres diacríticos para la exportación CSV
+                                // Lógica para limpiar acentos intacta
                                 return data ? data.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : data;
                             }
                         }
                     }
                 }
             ] : [];
-            // --- FIN DE LA CORRECCIÓN ---
 
             cliTable = $('#clientsTable').DataTable({
                 paging: true,

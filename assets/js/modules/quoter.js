@@ -122,10 +122,65 @@ const SuiteQuoter = (function($) {
 	
     const bindEvents = function() {
         
-        // 1. CARACTERÍSTICA: RIF ATÓMICO Y ESTRICTO
+		// 1. CARACTERÍSTICA: RIF ATÓMICO Y ESTRICTO
         $('#cli-rif-number').on('input', function() {
             // Bloquea cualquier carácter que no sea número
             this.value = this.value.replace(/[^0-9]/g, '');
+        });
+
+        // 1.5 DETECCIÓN AUTOMÁTICA POR RIF (Auto-carga al perder el foco)
+        $('#cli-rif-number').on('blur', function() {
+            const numeroRif = $(this).val().trim();
+
+            // Validar longitud lógica (mayor a 5 caracteres)
+            if (numeroRif.length <= 5) return;
+
+            // Concatenar prefijo y número para formar el RIF completo en mayúsculas
+            const prefijo = $('#cli-rif-prefix').val();
+            const rifCompleto = (prefijo + numeroRif).toUpperCase();
+
+            // Mostrar un pequeño indicador visual de búsqueda
+            const inputField = $(this);
+            inputField.css('opacity', '0.6');
+
+            // Consultar a la base de datos (API)
+            SuiteAPI.post('suite_search_client_ajax', { term: rifCompleto }).then(res => {
+                if (res.success && res.data && res.data.length > 0) {
+
+                    // Buscar coincidencia EXACTA en los resultados devueltos
+                    const cliente = res.data.find(c => c.rif_ci.toUpperCase() === rifCompleto);
+
+                    if (cliente) {
+                        // Autocompletar campos del formulario
+                        $('#cli-nombre').val(cliente.nombre_razon);
+                        $('#cli-tel').val(cliente.telefono);
+                        $('#cli-email').val(cliente.email);
+                        $('#cli-dir').val(cliente.direccion);
+                        $('#cli-ciudad').val(cliente.ciudad);
+                        $('#cli-estado').val(cliente.estado);
+                        $('#cli-contacto').val(cliente.contacto_persona);
+
+                        // Bloquear formulario para prevenir mutaciones indeseadas
+                        lockClientForm(true);
+
+                        // Limpiar el buscador predictivo por seguridad
+                        $('#cli-search-predictive').val('');
+                        $('#cli-search-results').hide().empty();
+
+                        // Mostrar mensaje de éxito temporal (Feedback sutil)
+                        $('#rif-auto-feedback').remove(); // Limpiar si ya existe
+                        $('<div id="rif-auto-feedback" style="color: #059669; font-size: 12px; margin-top: 5px; font-weight: bold;">✅ Cliente detectado en la base de datos y cargado automáticamente.</div>')
+                            .insertAfter(inputField.parent())
+                            .delay(4000)
+                            .fadeOut(400, function() { $(this).remove(); });
+                    }
+                }
+            }).catch(err => {
+                // Fallo silencioso: Si hay error de red, dejamos que el vendedor siga llenando manual
+                console.warn('Auto-detección de RIF omitida por error de red.', err);
+            }).finally(() => {
+                inputField.css('opacity', '1');
+            });
         });
 
         // 2. BUSCADOR PREDICTIVO DE CLIENTES
