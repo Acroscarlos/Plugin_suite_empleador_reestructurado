@@ -42,6 +42,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     .col-emitida .kanban-column-header { border-bottom-color: #f59e0b; }
     .col-proceso .kanban-column-header { border-bottom-color: #3b82f6; }
     .col-pagado .kanban-column-header { border-bottom-color: #10b981; }
+	.col-por_enviar .kanban-column-header { border-bottom-color: #f97316; }
     .col-despachado .kanban-column-header { border-bottom-color: #8b5cf6; }
 
     .kanban-column-body {
@@ -144,7 +145,16 @@ if ( ! defined( 'ABSPATH' ) ) {
             </div>
             <div class="kanban-column-body" id="kb-col-pagado" data-status="pagado"></div>
         </div>
-
+		
+        <!-- Columna Nueva: Facturado / Pagado -->
+		<div class="kanban-column-wrapper col-por_enviar">
+            <div class="kanban-column-header">
+                <span>🟠 Por Enviar</span>
+                <span class="count-badge pill-neutral" id="count-por_enviar">0</span>
+            </div>
+            <div class="kanban-column-body" id="kb-col-por_enviar" data-status="por_enviar"></div>
+        </div>
+		
         <!-- Columna 4: Despachado -->
         <div class="kanban-column-wrapper col-despachado">
             <div class="kanban-column-header">
@@ -209,8 +219,15 @@ if ( ! defined( 'ABSPATH' ) ) {
             <option value="Encomienda Zoom">Encomienda Nacional (Zoom)</option>
         </select>
 
-        <label>N° de Recibo Loyverse *</label>
-        <input type="text" id="cierre-loyverse" class="widefat" placeholder="Ej: 1-1005 (Obligatorio)">
+	
+		<label>N° de Factura / Nota de Entrega *</label>
+		<div style="display: flex; gap: 8px; margin-bottom: 10px;">
+			<select id="cierre-recibo-prefijo" class="widefat" style="width: 80px; margin-bottom: 0;">
+				<option value="F">F</option>
+				<option value="NE">NE</option>
+			</select>
+			<input type="text" id="cierre-loyverse" class="widefat" placeholder="Ej: 1005 (Solo números)" style="flex: 1; margin-bottom: 0;" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+		</div>		
 
         <label>Link de Captura de Pago / Soporte</label>
         <input type="url" id="cierre-captura" class="widefat" placeholder="https://drive.google.com/... o Imgur">

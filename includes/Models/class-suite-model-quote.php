@@ -151,7 +151,7 @@ class Suite_Model_Quote extends Suite_Model_Base {
     /**
      * Obtiene los pedidos agrupados por estado (Kanban)
      */
-    public function get_kanban_orders( $vendedor_id = null, $is_admin = false ) {
+	public function get_kanban_orders( $vendedor_id = null, $is_admin = false ) {
         $tabla_cli = $this->wpdb->prefix . 'suite_clientes';
         
         $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, cli.nombre_razon AS cliente_nombre 
@@ -163,7 +163,8 @@ class Suite_Model_Quote extends Suite_Model_Base {
         
         $resultados = $this->wpdb->get_results( $sql );
         
-        $kanban_data = [ 'emitida' => [], 'proceso' => [], 'pagado' => [], 'despachado' => [] ];
+        // AGREGADO: Únicamente la llave 'por_enviar'
+        $kanban_data = [ 'emitida' => [], 'proceso' => [], 'pagado' => [], 'por_enviar' => [], 'despachado' => [] ];
         
         foreach ( $resultados as $row ) {
             $estado = empty( $row->estado ) ? 'emitida' : strtolower( $row->estado );

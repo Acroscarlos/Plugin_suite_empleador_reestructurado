@@ -123,7 +123,7 @@ class Suite_Shortcode_Controller {
         if ( $can_view_logis || $can_view_kanban ) {
             $quoteModel = new Suite_Model_Quote();
             $kanban_data = $quoteModel->get_kanban_orders( null, true );
-            $pedidos_logistica = isset( $kanban_data['pagado'] ) ? $kanban_data['pagado'] : [];
+            $pedidos_logistica = isset( $kanban_data['por_enviar'] ) ? $kanban_data['por_enviar'] : [];
         }
 
         // --- 4. RENDERIZADO DEL HTML Y COMPONENTES ---

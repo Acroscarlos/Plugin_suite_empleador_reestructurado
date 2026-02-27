@@ -20,14 +20,17 @@ class Suite_Ajax_Kanban_Data extends Suite_AJAX_Controller {
     protected $action_name = 'suite_get_kanban_data';
     protected $required_capability = 'read';
 
-    protected function process() {
+	protected function process() {
         $user_id = get_current_user_id();
         $user = wp_get_current_user();
         
         // Row-Level Security (Control de Accesos Módulo 2)
         $is_admin = current_user_can( 'manage_options' );
         $is_logistica = in_array( 'suite_logistica', (array) $user->roles );
-        $tiene_acceso_global = ( $is_admin || $is_logistica );
+        // AGREGADO: Validación de gerente consultando directamente el objeto $user
+        $is_gerente = in_array( 'suite_gerente', (array) $user->roles ) || in_array( 'gerente', (array) $user->roles );
+        
+        $tiene_acceso_global = ( $is_admin || $is_logistica || $is_gerente );
 
         $quote_model = new Suite_Model_Quote();
         

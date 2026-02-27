@@ -51,6 +51,8 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Models/class-suite-model-commission.php';
 	require_once SUITE_PATH . 'includes/Models/class-suite-model-roles.php';    
     require_once SUITE_PATH . 'includes/Models/class-suite-model-employee.php'; 
+	require_once SUITE_PATH . 'includes/Models/class-suite-model-product.php';
+
 
     // Controladores Base
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-controller.php';
@@ -63,9 +65,11 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-logistics.php';
 	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-employees.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-roles.php';
-
+	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-products.php';
     // Controladores API REST (Data Lake y Machine Learning)
     require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-stats.php';
+	// Controladores de la API REST
+	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-sync.php';
 
     // Controlador del Administrador / Frontend (Shortcodes y Vistas)
     require_once SUITE_PATH . 'includes/Controllers/Admin/class-suite-shortcode-controller.php';
@@ -86,7 +90,7 @@ function suite_empleados_init() {
     new Suite_Ajax_Quote_History();
     new Suite_Ajax_Quote_Status();
 	new Suite_Ajax_Print_Quote();
-
+	new Suite_Ajax_Get_Products();
     // Módulo 1: Tablero Kanban (Pedidos)
     new Suite_Ajax_Kanban_Data();
     new Suite_Ajax_Kanban_Status();
@@ -100,6 +104,7 @@ function suite_empleados_init() {
 
     // Módulo 5: Cerebro de Demanda (REST API)
     new Suite_API_Stats();
+	new Suite_API_Sync();
 	
 	// Módulo 6:--- NUEVO MÓDULO: GESTIÓN DE EQUIPO Y ROLES (RBAC) ---
     new Suite_Ajax_Employee_List();
@@ -948,7 +953,7 @@ const SuiteEmployees = (function($) {
     // CARGA DE DATOS (AJAX)
     // ==========================================
 
-    const loadEmployees = function() {
+	const loadEmployees = function() {
         if (!empTable) return;
         
         SuiteAPI.post('suite_get_employees').then(res => {
@@ -957,8 +962,9 @@ const SuiteEmployees = (function($) {
                 
                 res.data.forEach(e => {
                     // Determinar el rol principal y estilos visuales
-                    let roleKey = Array.isArray(e.roles) ? e.roles : (e.roles ? Object.keys(e.roles) : 'N/A');
-                    let roleDisplay = roleKey.replace('suite_', '').toUpperCase();
+                    // CORRECCIÓN: Extraemos el índice [0] si es array para garantizar que roleKey sea un texto puro
+                    let roleKey = (Array.isArray(e.roles) && e.roles.length > 0) ? e.roles[0] : (e.roles ? Object.keys(e.roles)[0] : 'N/A');
+                    let roleDisplay = (typeof roleKey === 'string') ? roleKey.replace('suite_', '').toUpperCase() : 'N/A';
                     let badgeClass = roleKey === 'administrator' ? 'pill-critico' : 'pill-neutral';
 
                     // Convertimos la data a Base64 para pasarla segura al botón OnClick
@@ -980,7 +986,8 @@ const SuiteEmployees = (function($) {
             }
         });
     };
-
+	
+	
     const loadRoles = function() {
         if (!roleTable) return;
 
@@ -1136,7 +1143,7 @@ const SuiteEmployees = (function($) {
         },
 
         // Expuestos para ser llamados desde los botones dinámicos en las Tablas
-        editEmployee: function(base64Data) {
+		editEmployee: function(base64Data) {
             const data = JSON.parse(decodeURIComponent(escape(atob(base64Data))));
             
             $('#emp-modal-title').text('Editar Empleado');
@@ -1144,7 +1151,8 @@ const SuiteEmployees = (function($) {
             
             // Tratar de separar el nombre (Fase 1-C no retorna First/Last individualmente por compatibilidad)
             let parts = data.nombre.split(' ');
-            $('#emp-first-name').val(parts || '');
+            // CORRECCIÓN: Asignamos parts[0] para asegurar que tome solo el primer string y no el array completo
+            $('#emp-first-name').val(parts[0] || '');
             $('#emp-last-name').val(parts.slice(1).join(' ') || '');
             
             $('#emp-email').val(data.email);
@@ -1152,7 +1160,8 @@ const SuiteEmployees = (function($) {
             $('#emp-password').val(''); // Se deja vacío para no alterar
             
             // Seleccionar rol en el dropdown
-            let rKey = Array.isArray(data.roles) ? data.roles : (data.roles ? Object.keys(data.roles) : '');
+            // CORRECCIÓN: Extraemos el índice [0] del array para que jQuery seleccione correctamente el <option>
+            let rKey = (Array.isArray(data.roles) && data.roles.length > 0) ? data.roles[0] : (data.roles ? Object.keys(data.roles)[0] : '');
             $('#emp-role').val(rKey);
 
             $('#modal-employee').fadeIn();
@@ -3260,6 +3269,38 @@ class Suite_Ajax_Print_Picking extends Suite_AJAX_Controller {
 }
 --- FIN DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-logistics.php ---
 
+--- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-products.php ---
+<?php
+/**
+ * Controlador AJAX: Búsqueda de Productos (Cotizador)
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Ajax_Get_Products extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_search_pos';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        $term = isset( $_POST['term'] ) ? sanitize_text_field( $_POST['term'] ) : '';
+
+        // Detenemos peticiones vacías por seguridad y rendimiento
+        if ( empty( $term ) || strlen( $term ) < 3 ) {
+            $this->send_success( [] );
+        }
+
+        // Importante: No es necesario requerir el archivo del modelo aquí si ya lo cargamos en suite-empleados.php
+        $product_model = new Suite_Model_Product();
+        $resultados = $product_model->get_products_with_csv_prices( $term );
+
+        $this->send_success( $resultados );
+    }
+}
+--- FIN DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-products.php ---
+
 --- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-quotes.php ---
 <?php
 /**
@@ -4119,6 +4160,183 @@ class Suite_API_Stats {
 }
 --- FIN DEL ARCHIVO: includes/Controllers/Api/class-suite-api-stats.php ---
 
+--- INICIO DEL ARCHIVO: includes/Controllers/Api/class-suite-api-sync.php ---
+<?php
+/**
+ * Controlador API REST: Sincronización Segura de Archivos (FASE 1)
+ *
+ * Endpoint que recibe y valida los archivos CSV generados por el servidor
+ * externo de procesamiento de datos, asegurando la integridad del ecosistema WordPress.
+ *
+ * @package SuiteEmpleados\Controllers\Api
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_API_Sync {
+
+    /**
+     * Constructor: Registra la inicialización de la API REST
+     */
+    public function __construct() {
+        add_action( 'rest_api_init', [ $this, 'register_routes' ] );
+    }
+
+    /**
+     * Define el namespace y el endpoint
+     */
+    public function register_routes() {
+        register_rest_route( 'suite/v1', '/sync-csv', [
+            'methods'             => WP_REST_Server::CREATABLE, // Equivalente a POST
+            'callback'            => [ $this, 'process_sync' ],
+            'permission_callback' => [ $this, 'check_permissions' ]
+        ] );
+    }
+
+    /**
+     * Middleware de Seguridad: Validación de Token
+     * Protege el endpoint validando un header personalizado (Zero-Trust)
+     *
+     * @param WP_REST_Request $request
+     * @return true|WP_Error
+     */
+    public function check_permissions( WP_REST_Request $request ) {
+        // La API de WordPress normaliza los headers a minúsculas
+        $token_enviado = $request->get_header( 'x-suite-sync-token' );
+
+        if ( ! defined( 'SUITE_SYNC_SECRET' ) ) {
+            return new WP_Error( 
+                'rest_forbidden', 
+                'Configuración incompleta: La constante SUITE_SYNC_SECRET no está definida en el servidor wp-config.php.', 
+                [ 'status' => 500 ] 
+            );
+        }
+
+        if ( empty( $token_enviado ) ) {
+            return new WP_Error( 
+                'rest_unauthorized', 
+                'Acceso Denegado: Header X-Suite-Sync-Token ausente.', 
+                [ 'status' => 401 ] 
+            );
+        }
+
+        // Validación blindada contra ataques de tiempo (Timing Attacks)
+        if ( ! hash_equals( SUITE_SYNC_SECRET, $token_enviado ) ) {
+            // Logueamos la intrusión para auditoría
+            if ( function_exists('suite_record_log') ) {
+                suite_record_log( 'violacion_api', 'Intento de acceso al endpoint sync-csv con token inválido desde IP: ' . $_SERVER['REMOTE_ADDR'] );
+            }
+
+            return new WP_Error( 
+                'rest_unauthorized', 
+                'Acceso Denegado: Token de sincronización inválido.', 
+                [ 'status' => 401 ] 
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * Lógica de Procesamiento: Validación estricta y guardado de archivos
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function process_sync( WP_REST_Request $request ) {
+        $files = $request->get_file_params();
+
+        // 1. Validar presencia de archivos
+        if ( empty( $files['reporte_final'] ) || empty( $files['precios'] ) ) {
+            return new WP_REST_Response( [
+                'success' => false,
+                'message' => 'Faltan archivos requeridos. Se esperan los campos "reporte_final" y "precios".'
+            ], 400 );
+        }
+
+        $file_reporte = $files['reporte_final'];
+        $file_precios = $files['precios'];
+
+        // 2. Validar estructura, mime type y extensiones
+        $val_reporte = $this->validate_csv( $file_reporte );
+        if ( is_wp_error( $val_reporte ) ) {
+            return new WP_REST_Response( [ 'success' => false, 'message' => 'Error en reporte_final: ' . $val_reporte->get_error_message() ], 400 );
+        }
+
+        $val_precios = $this->validate_csv( $file_precios );
+        if ( is_wp_error( $val_precios ) ) {
+            return new WP_REST_Response( [ 'success' => false, 'message' => 'Error en precios: ' . $val_precios->get_error_message() ], 400 );
+        }
+
+        // 3. Preparar el directorio de destino
+        $output_dir = SUITE_PATH . 'output/';
+        if ( ! file_exists( $output_dir ) ) {
+            wp_mkdir_p( $output_dir );
+            
+            // Prevención de ejecución (Defense in Depth)
+            file_put_contents( $output_dir . 'index.php', '<?php // Silence is golden.' );
+            file_put_contents( $output_dir . '.htaccess', 'Deny from all' );
+        }
+
+        // 4. Guardar archivos (Sobrescribiendo cualquier nombre original para evitar Directory Traversal)
+        // Al forzar el nombre de destino ("reporte_final.csv"), anulamos inyecciones como "../../../script.php"
+        $path_reporte = $output_dir . 'reporte_final.csv';
+        $path_precios = $output_dir . 'precios.csv';
+
+        $move_reporte = move_uploaded_file( $file_reporte['tmp_name'], $path_reporte );
+        $move_precios = move_uploaded_file( $file_precios['tmp_name'], $path_precios );
+
+        if ( $move_reporte && $move_precios ) {
+            return new WP_REST_Response( [
+                'success' => true,
+                'message' => 'Sincronización de CSVs ejecutada correctamente.'
+            ], 200 );
+        } else {
+            return new WP_REST_Response( [
+                'success' => false,
+                'message' => 'Error de sistema de archivos al intentar guardar los CSVs.'
+            ], 500 );
+        }
+    }
+
+    /**
+     * Validador estricto de archivos CSV
+     * Previene subida de código malicioso enmascarado
+     *
+     * @param array $file Array del archivo desde $_FILES
+     * @return true|WP_Error
+     */
+    private function validate_csv( $file ) {
+        // Chequeo de error de subida de PHP
+        if ( $file['error'] !== UPLOAD_ERR_OK ) {
+            return new WP_Error( 'upload_error', 'Código de error interno: ' . $file['error'] );
+        }
+
+        // Validación de Extensión
+        $ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        if ( $ext !== 'csv' ) {
+            return new WP_Error( 'invalid_ext', 'La extensión del archivo debe ser .csv' );
+        }
+
+        // Validación de Tipo MIME Real (Leyendo los bytes del archivo, no la cabecera HTTP)
+        if ( function_exists( 'finfo_open' ) ) {
+            $finfo = finfo_open( FILEINFO_MIME_TYPE );
+            $mime_real = finfo_file( $finfo, $file['tmp_name'] );
+            finfo_close( $finfo );
+
+            $mimes_permitidos = [ 'text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel' ];
+            if ( ! in_array( $mime_real, $mimes_permitidos, true ) ) {
+                return new WP_Error( 'invalid_mime', 'Fallo de seguridad: El contenido real del archivo no coincide con texto plano o CSV. (Detectado: ' . $mime_real . ')' );
+            }
+        }
+
+        return true;
+    }
+}
+--- FIN DEL ARCHIVO: includes/Controllers/Api/class-suite-api-sync.php ---
+
 --- INICIO DEL ARCHIVO: includes/Controllers/Api/index.php ---
 <?php
 // Silence is golden.
@@ -4829,7 +5047,7 @@ class Suite_Model_Employee {
      *
      * @return array Lista de empleados con sus datos formateados.
      */
-    public function get_all_employees() {
+	public function get_all_employees() {
         // Obtenemos todos los usuarios excepto los suscriptores y clientes genéricos
         $args = [
             'role__not_in' => [ 'subscriber', 'customer' ],
@@ -4852,7 +5070,7 @@ class Suite_Model_Employee {
                 'nombre'     => $u->display_name,
                 'email'      => $u->user_email,
                 'telefono'   => ! empty( $telefono ) ? $telefono : '-',
-                'roles'      => $u->roles, // Array con los roles activos del usuario
+                'roles'      => array_values( $u->roles ), // CORRECCIÓN: Forzamos un array indexado limpio para JS
             ];
         }
 
@@ -5090,6 +5308,121 @@ class Suite_Model_Inventory extends Suite_Model_Base {
     }
 }
 --- FIN DEL ARCHIVO: includes/Models/class-suite-model-inventory.php ---
+
+--- INICIO DEL ARCHIVO: includes/Models/class-suite-model-product.php ---
+<?php
+/**
+ * Modelo de Base de Datos: Productos y Precios
+ *
+ * Extrae la metadata de WooCommerce y la cruza con los precios (precios.csv)
+ * y el inventario en tiempo real (reporte_final.csv).
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Model_Product {
+
+    public function get_products_with_csv_prices( $term = '' ) {
+        global $wpdb;
+
+        // 1. CONSULTA SQL OPTIMIZADA A WOOCOMMERCE
+        $sql = "SELECT p.ID, p.post_title AS nombre, pm.meta_value AS sku
+                FROM {$wpdb->posts} p
+                LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_sku'
+                WHERE p.post_type = 'product' AND p.post_status = 'publish'";
+
+        if ( ! empty( $term ) ) {
+            $like = '%' . $wpdb->esc_like( $term ) . '%';
+            $sql .= $wpdb->prepare( " AND (p.post_title LIKE %s OR pm.meta_value LIKE %s)", $like, $like );
+        }
+
+        $sql .= " LIMIT 50"; // Límite de seguridad
+        $woo_products = $wpdb->get_results( $sql );
+
+        if ( empty( $woo_products ) ) {
+            return [];
+        }
+
+        // 2. PROCESAMIENTO DEL CSV DE PRECIOS
+        $csv_prices = [];
+        $csv_path_precios = SUITE_PATH . 'output/precios.csv';
+
+        if ( file_exists( $csv_path_precios ) && ( $handle = fopen( $csv_path_precios, 'r' ) ) !== false ) {
+            fgetcsv( $handle, 1000, ',' ); // Saltamos la cabecera
+
+            while ( ( $data = fgetcsv( $handle, 1000, ',' ) ) !== false ) {
+                $sku = isset( $data[0] ) ? trim( $data[0] ) : '';
+                
+                // Limpieza numérica estricta (Convierte "12.018,00" -> 12018.00)
+                $precio_raw = isset( $data[1] ) ? trim( $data[1] ) : '0';
+                $precio_raw = str_replace( '"', '', $precio_raw ); 
+                $precio_raw = str_replace( '.', '', $precio_raw ); 
+                $precio_raw = str_replace( ',', '.', $precio_raw ); 
+                $precio_float = floatval( $precio_raw );
+
+                if ( ! empty( $sku ) ) {
+                    $csv_prices[ strtoupper( $sku ) ] = $precio_float;
+                }
+            }
+            fclose( $handle );
+        }
+
+        // 3. PROCESAMIENTO DEL CSV DE INVENTARIO (reporte_final.csv)
+        $csv_inventory = [];
+        $csv_path_inventario = SUITE_PATH . 'output/reporte_final.csv';
+
+        if ( file_exists( $csv_path_inventario ) && ( $handle2 = fopen( $csv_path_inventario, 'r' ) ) !== false ) {
+            fgetcsv( $handle2, 1000, ',' ); // Saltamos la cabecera
+
+            while ( ( $data2 = fgetcsv( $handle2, 1000, ',' ) ) !== false ) {
+                $sku = isset( $data2[0] ) ? trim( $data2[0] ) : '';
+                
+                // Extraemos Stock Total (Columna 3) y Disponibilidad Galerías (Columna 8)
+                $stock_total = isset( $data2[3] ) ? trim( $data2[3] ) : '0';
+                $stock_gale  = isset( $data2[8] ) ? trim( $data2[8] ) : '0';
+
+                if ( ! empty( $sku ) ) {
+                    // Usamos intval(floatval()) para manejar casos donde el CSV diga "20.0" limpiándolo a "20"
+                    $csv_inventory[ strtoupper( $sku ) ] = [
+                        'total' => intval( floatval( $stock_total ) ),
+                        'gale'  => intval( floatval( $stock_gale ) )
+                    ];
+                }
+            }
+            fclose( $handle2 );
+        }
+
+        // 4. EL CRUCE TRIPLE (MERGE) EN MEMORIA
+        $final_products = [];
+
+        foreach ( $woo_products as $prod ) {
+            $sku_clean = ! empty( $prod->sku ) ? strtoupper( trim( $prod->sku ) ) : '';
+
+            // Regla de Negocio de Precios: Si existe en CSV usar precio, si no, es 0.00
+            $precio = ( $sku_clean && isset( $csv_prices[ $sku_clean ] ) ) ? $csv_prices[ $sku_clean ] : 0.00;
+
+            // Regla de Negocio de Inventario: Si existe el SKU extraemos stocks, sino 'N/D'
+            $stock_total = ( $sku_clean && isset( $csv_inventory[ $sku_clean ] ) ) ? $csv_inventory[ $sku_clean ]['total'] : 'N/D';
+            $stock_gale  = ( $sku_clean && isset( $csv_inventory[ $sku_clean ] ) ) ? $csv_inventory[ $sku_clean ]['gale']  : 'N/D';
+
+            $final_products[] = [
+                'id'          => $prod->ID,
+                'nombre'      => esc_html( $prod->nombre ),
+                'sku'         => $sku_clean ? $sku_clean : 'N/A',
+                'precio'      => number_format( $precio, 2, '.', '' ),
+                'stock_gale'  => (string) $stock_gale,
+                'stock_total' => (string) $stock_total
+            ];
+        }
+
+        return $final_products;
+    }
+}
+--- FIN DEL ARCHIVO: includes/Models/class-suite-model-product.php ---
 
 --- INICIO DEL ARCHIVO: includes/Models/class-suite-model-quote.php ---
 <?php

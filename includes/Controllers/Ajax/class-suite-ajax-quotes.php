@@ -206,19 +206,36 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
             $this->send_error( 'Candado de Inmutabilidad 🔒: Este pedido ya ha sido procesado y no puede ser modificado.', 403 );
         }
 
-        $estados_validos = ['emitida', 'proceso', 'pagado', 'anulado', 'despachado'];
+		// CORRECCIÓN 1: Se agregó 'por_enviar' al array de estados válidos
+        $estados_validos = ['emitida', 'proceso', 'pagado', 'por_enviar', 'anulado', 'despachado'];
         if ( ! in_array( $new_status, $estados_validos ) ) {
             $this->send_error( 'Estado no válido.', 400 );
         }
 
         // 3. MÓDULO 4: CAPTURAR DATOS DE CIERRE DE VENTA
         if ( $new_status === 'pagado' ) {
+            $recibo = isset($_POST['recibo_loyverse']) ? sanitize_text_field($_POST['recibo_loyverse']) : '';
+            
+            // CORRECCIÓN 2: Validar Unicidad del Recibo en la Base de Datos
+            if ( ! empty( $recibo ) ) {
+                global $wpdb;
+                $tabla_cot = $wpdb->prefix . 'suite_cotizaciones';
+                
+                // Buscamos si el recibo ya existe en OTRO pedido distinto al que estamos procesando
+                $existe = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$tabla_cot} WHERE recibo_loyverse = %s AND id != %d", $recibo, $quote_id ) );
+                
+                if ( $existe ) {
+                    $this->send_error( 'El número de recibo o factura (' . esc_html($recibo) . ') ya está asignado al pedido #' . $existe . '. No se permiten duplicados.', 400 );
+                    return; // Detenemos la ejecución inmediatamente
+                }
+            }
+
             $extra_data = [
                 'canal_venta'      => isset($_POST['canal_venta']) ? sanitize_text_field($_POST['canal_venta']) : '',
                 'metodo_pago'      => isset($_POST['metodo_pago']) ? sanitize_text_field($_POST['metodo_pago']) : '',
                 'metodo_entrega'   => isset($_POST['metodo_entrega']) ? sanitize_text_field($_POST['metodo_entrega']) : '',
                 'url_captura_pago' => isset($_POST['url_captura']) ? esc_url_raw($_POST['url_captura']) : '',
-                'recibo_loyverse'  => isset($_POST['recibo_loyverse']) ? sanitize_text_field($_POST['recibo_loyverse']) : '',
+                'recibo_loyverse'  => $recibo,
             ];
             $quote_model->update( $quote_id, $extra_data );
         }

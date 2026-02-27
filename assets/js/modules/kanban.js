@@ -22,7 +22,7 @@ const SuiteKanban = (function($) {
         }
 
         let mobilePayBtn = '';
-        if (order.estado !== 'pagado' && order.estado !== 'despachado') {
+		if (order.estado !== 'pagado' && order.estado !== 'despachado' && order.estado !== 'por_enviar') {			
             mobilePayBtn = `<button type="button" class="btn-modern-action trigger-mobile-pay" data-id="${order.id}" data-col="${order.estado}" style="padding: 4px; font-size:11px; background:#10b981; color:white; border:none; cursor:pointer;">💰 Pagar</button>`;
         }
 
@@ -62,7 +62,7 @@ const SuiteKanban = (function($) {
                 group: 'kanban', 
                 animation: 150,
                 ghostClass: 'kanban-ghost',
-                onEnd: function (evt) {
+				onEnd: function (evt) {
                     const itemEl = evt.item;  
                     const toCol = evt.to;     
                     const fromCol = evt.from; 
@@ -72,22 +72,43 @@ const SuiteKanban = (function($) {
 
                     const quoteId = itemEl.getAttribute('data-id');
                     const newStatus = toCol.getAttribute('data-status');
+                    const oldStatus = fromCol.getAttribute('data-status'); // <-- AGREGADO: Necesario para validar de dónde viene
+
+                    // ----------------------------------------------------
+                    // CANDADO MÓDULO 2: SECUENCIA ESTRICTA DE ESTADOS
+                    // ----------------------------------------------------
+                    const isMoveValid = function(oldS, newS) {
+                        if (oldS === 'emitida' && newS === 'proceso') return true;
+                        if (oldS === 'proceso' && (newS === 'emitida' || newS === 'pagado')) return true;
+                        if (oldS === 'pagado' && newS === 'por_enviar') return true; // Avanza a Logística
+                        if (oldS === 'por_enviar' && newS === 'pagado') return true; // Excepción: Retrocede de Logística a Facturado
+                        // 'despachado' está prohibido por Drag & Drop (solo desde el panel logístico)
+                        return false; 
+                    };
+
+                    if (!isMoveValid(oldStatus, newStatus)) {
+                        alert('⛔ Movimiento no permitido. Debe respetar la secuencia lógica (Pendiente ↔️ En Proceso ➡️ Facturado ↔️ Por Enviar).');
+                        revertCard(itemEl, fromCol, oldIndex); // Esta función ya la tienes en tu JS para devolver la tarjeta
+                        return;
+                    }
 
                     // ----------------------------------------------------
                     // INTERCEPTOR MÓDULO 4: Cierre de Venta
                     // ----------------------------------------------------
-                    if (newStatus === 'pagado') {
+                    // PROTECCIÓN: Solo abrimos el modal si la tarjeta AVANZA desde "proceso" a "pagado"
+                    if (newStatus === 'pagado' && oldStatus === 'proceso') {
                         // 1. Guardar contexto en memoria para no perder la tarjeta
                         pendingDrop = { quoteId, itemEl, fromCol, toCol, oldIndex };
                         
                         // 2. Limpiar modal anterior y setear ID oculto
                         $('#modal-cierre-venta input, #modal-cierre-venta select').val('');
+						$('#cierre-recibo-prefijo').val('F');
                         $('#cierre-quote-id').val(quoteId);
                         
                         // 3. Abrir Modal (No enviamos AJAX aún)
                         $('#modal-cierre-venta').fadeIn();
                     } else {
-                        // Si es otro estado (ej. de Pagado a Despachado), enviar directo
+                        // Si es otro estado (ej. de Emitida a Proceso, o de Pagado a Por Enviar), enviar directo
                         updateCounters();
                         updateOrderStatus(quoteId, newStatus, itemEl, fromCol, oldIndex);
                     }
@@ -145,6 +166,11 @@ const SuiteKanban = (function($) {
             e.preventDefault();
             if (!pendingDrop) return;
 
+		// 1. Limpieza y ensamblaje de Factura/Nota de entrega
+            const rawNumber = $('#cierre-loyverse').val().replace(/[^0-9]/g, '');
+            const prefix = $('#cierre-recibo-prefijo').val();
+            const finalReceipt = rawNumber ? (prefix + rawNumber) : '';
+
             // Recolectar datos (NOTA: Se removió la propiedad 'action' redundante)
             const payload = {
                 id: pendingDrop.quoteId,
@@ -152,13 +178,13 @@ const SuiteKanban = (function($) {
                 canal_venta: $('#cierre-canal').val(),
                 metodo_pago: $('#cierre-pago').val(),
                 metodo_entrega: $('#cierre-entrega').val(),
-                recibo_loyverse: $('#cierre-loyverse').val().trim(),
+                recibo_loyverse: finalReceipt, // Aquí inyectamos el recibo ensamblado (Ej: "F1005")
                 url_captura: $('#cierre-captura').val().trim()
             };
 
-            // Validar obligatorios
-            if (!payload.canal_venta || !payload.metodo_pago || !payload.metodo_entrega || !payload.recibo_loyverse) {
-                return alert('⚠️ Por favor complete todos los campos obligatorios (*).');
+            // Validar obligatorios (Nota: Validamos !rawNumber para asegurar que escribieron los dígitos)
+            if (!payload.canal_venta || !payload.metodo_pago || !payload.metodo_entrega || !rawNumber) {
+                return alert('⚠️ Por favor complete todos los campos obligatorios y asegúrese de ingresar el número de recibo.');
             }
 
             const btn = $(this);
@@ -206,6 +232,7 @@ const SuiteKanban = (function($) {
             
             // Limpiar y preparar Modal
             $('#modal-cierre-venta input, #modal-cierre-venta select').val('');
+			$('#cierre-recibo-prefijo').val('F');
             $('#cierre-quote-id').val(quoteId);
             
             // Mostrar Modal
@@ -224,7 +251,7 @@ const SuiteKanban = (function($) {
                     const data = res.data;
                     $('.kanban-column-body').empty(); 
                     
-                    const columnasPermitidas = ['emitida', 'proceso', 'pagado', 'despachado'];
+                    const columnasPermitidas = ['emitida', 'proceso', 'pagado', 'por_enviar', 'despachado'];
                     
                     columnasPermitidas.forEach(status => {
                         let colHtml = '';

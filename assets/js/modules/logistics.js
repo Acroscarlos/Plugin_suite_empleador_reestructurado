@@ -16,7 +16,7 @@ const SuiteLogistics = (function($) {
     const bindEvents = function() {
         
         // Procesar subida del comprobante
-        $('#btn-procesar-despacho').on('click', function(e) {
+		$('#btn-procesar-despacho').on('click', function(e) {
             e.preventDefault();
 
             const fileInput = $('#log-pod-file').prop('files');
@@ -29,7 +29,7 @@ const SuiteLogistics = (function($) {
 
             // Instanciar FormData para envío de archivos (Multipart)
             const fd = new FormData();
-            fd.append('pod_file', fileInput);
+            fd.append('pod_file', fileInput[0]); // <--- ÚNICA CORRECCIÓN: Agregar [0] aquí
             fd.append('quote_id', currentQuoteId);
 
             SuiteAPI.postForm('suite_upload_pod', fd).then(res => {

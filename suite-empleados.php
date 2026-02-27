@@ -40,6 +40,8 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Models/class-suite-model-commission.php';
 	require_once SUITE_PATH . 'includes/Models/class-suite-model-roles.php';    
     require_once SUITE_PATH . 'includes/Models/class-suite-model-employee.php'; 
+	require_once SUITE_PATH . 'includes/Models/class-suite-model-product.php';
+
 
     // Controladores Base
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-controller.php';
@@ -52,9 +54,11 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-logistics.php';
 	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-employees.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-roles.php';
-
+	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-products.php';
     // Controladores API REST (Data Lake y Machine Learning)
     require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-stats.php';
+	// Controladores de la API REST
+	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-sync.php';
 
     // Controlador del Administrador / Frontend (Shortcodes y Vistas)
     require_once SUITE_PATH . 'includes/Controllers/Admin/class-suite-shortcode-controller.php';
@@ -75,7 +79,7 @@ function suite_empleados_init() {
     new Suite_Ajax_Quote_History();
     new Suite_Ajax_Quote_Status();
 	new Suite_Ajax_Print_Quote();
-
+	new Suite_Ajax_Get_Products();
     // Módulo 1: Tablero Kanban (Pedidos)
     new Suite_Ajax_Kanban_Data();
     new Suite_Ajax_Kanban_Status();
@@ -89,6 +93,7 @@ function suite_empleados_init() {
 
     // Módulo 5: Cerebro de Demanda (REST API)
     new Suite_API_Stats();
+	new Suite_API_Sync();
 	
 	// Módulo 6:--- NUEVO MÓDULO: GESTIÓN DE EQUIPO Y ROLES (RBAC) ---
     new Suite_Ajax_Employee_List();
