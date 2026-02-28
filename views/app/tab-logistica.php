@@ -60,12 +60,6 @@ if ( ! defined( 'ABSPATH' ) ) {
                         </td>
                     </tr>
                     <?php endforeach; ?>
-                <?php else: ?>
-                    <tr>
-                        <td colspan="5" class="text-center" style="padding: 40px 0; color: #94a3b8;">
-                            🎉 No hay pedidos pendientes por despachar en este momento.
-                        </td>
-                    </tr>
                 <?php endif; ?>
             </tbody>
         </table>

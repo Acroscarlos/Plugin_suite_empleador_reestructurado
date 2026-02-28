@@ -83,10 +83,6 @@ if ( ! defined( 'ABSPATH' ) ) {
                             </td>
                         </tr>
                     <?php endforeach; ?>
-                <?php else : ?>
-                    <tr>
-                        <td colspan="5" class="text-center">No hay clientes registrados en la base de datos.</td>
-                    </tr>
                 <?php endif; ?>
             </tbody>
         </table>

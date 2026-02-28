@@ -49,6 +49,7 @@ class Suite_Shortcode_Controller {
             // 4. Módulos Funcionales (Dependen del Core)
             wp_enqueue_script( 'suite-crm-js', SUITE_URL . 'assets/js/modules/crm.js', ['suite-api-js', 'dt-js'], SUITE_VERSION, true );
             wp_enqueue_script( 'suite-quoter-js', SUITE_URL . 'assets/js/modules/quoter.js', ['suite-api-js', 'suite-state-js'], SUITE_VERSION, true );
+			wp_enqueue_script( 'suite-historial-js', SUITE_URL . 'assets/js/modules/historial.js', ['suite-api-js', 'dt-js', 'suite-quoter-js'], SUITE_VERSION, true );
             wp_enqueue_script( 'suite-kanban-js', SUITE_URL . 'assets/js/modules/kanban.js', ['suite-api-js', 'sortable-js'], SUITE_VERSION, true );
             wp_enqueue_script( 'suite-commissions-js', SUITE_URL . 'assets/js/modules/commissions.js', ['suite-api-js'], SUITE_VERSION, true );
             wp_enqueue_script( 'suite-logistics-js', SUITE_URL . 'assets/js/modules/logistics.js', ['suite-api-js'], SUITE_VERSION, true );
@@ -58,7 +59,8 @@ class Suite_Shortcode_Controller {
             // 5. Orquestador Principal (Carga al final)
             wp_enqueue_script( 'suite-main-js', SUITE_URL . 'assets/js/main.js', [
                 'suite-crm-js', 
-                'suite-quoter-js', 
+                'suite-quoter-js',
+				'suite-historial-js',
                 'suite-kanban-js', 
                 'suite-commissions-js', 
                 'suite-logistics-js', 
@@ -138,6 +140,8 @@ class Suite_Shortcode_Controller {
         if ( $can_view_crm ) {
             echo '<button class="tab-btn active" onclick="openSuiteTab(event, \'TabCli\')">👥 Clientes</button>';
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabPos\')">📝 Cotizador</button>';
+			echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabHistorial\')">📜 Historial</button>';
+
         }
 
         if ( $can_view_kanban ) {
@@ -170,6 +174,7 @@ class Suite_Shortcode_Controller {
         if ( $can_view_crm ) {
             require SUITE_PATH . 'views/app/tab-clientes.php';
             require SUITE_PATH . 'views/app/tab-cotizador.php';
+			require SUITE_PATH . 'views/app/tab-historial.php';
         }
 
         if ( $can_view_kanban ) {
@@ -207,6 +212,7 @@ class Suite_Shortcode_Controller {
                 if (typeof SuiteLogistics !== "undefined") SuiteLogistics.init();
                 if (typeof SuiteMarketing !== "undefined") SuiteMarketing.init();
 				if (typeof SuiteEmployees !== "undefined") SuiteEmployees.init();
+				if (typeof SuiteHistorial !== "undefined") SuiteHistorial.init();
 
                 // 2. ENRUTADOR DE PESTAÑAS (Manejo de estado visual y recargas asíncronas)
                 window.openSuiteTab = function(evt, name) {
@@ -228,6 +234,9 @@ class Suite_Shortcode_Controller {
                     }
                     if (name === "TabMarketing" && typeof SuiteMarketing !== "undefined") {
                         SuiteMarketing.loadDashboard();
+                    }
+					if (name === "TabHistorial" && typeof SuiteHistorial !== "undefined") {
+                        SuiteHistorial.refresh(); // <--- AGREGADO: Refresca el historial al abrir la pestaña
                     }
                 };
 

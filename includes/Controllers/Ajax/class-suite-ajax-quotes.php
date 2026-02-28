@@ -23,6 +23,7 @@ class Suite_Ajax_Quote_Save extends Suite_AJAX_Controller {
     protected function process() {
         // 1. Recibir datos del frontend
         $client_data = [
+			'vendedor_id'      => get_current_user_id(),
             'rif_ci'           => isset( $_POST['rif'] ) ? $_POST['rif'] : '',
             'nombre_razon'     => sanitize_text_field( $_POST['nombre'] ),
             'direccion'        => sanitize_textarea_field( $_POST['direccion'] ),
@@ -624,5 +625,48 @@ class Suite_Ajax_Print_Quote extends Suite_AJAX_Controller {
         </html>
         <?php
         exit;
+    }
+}
+
+
+
+/**
+ * 4. Endpoint para Obtener Detalles de Cotización (Acción: Clonar)
+ */
+class Suite_Ajax_Quote_Details extends Suite_AJAX_Controller {
+    protected $action_name = 'suite_get_quote_details_ajax';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        global $wpdb;
+        $quote_id = isset( $_POST['id'] ) ? intval( $_POST['id'] ) : 0;
+
+        if ( ! $quote_id ) {
+            $this->send_error( 'ID de cotización inválido.' );
+        }
+
+        $user = wp_get_current_user();
+        $is_admin = current_user_can( 'manage_options' ) || in_array( 'suite_gerente', (array) $user->roles );
+        $user_id = get_current_user_id();
+
+        $cotizacion = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_cotizaciones WHERE id = %d", $quote_id ) );
+
+        if ( ! $cotizacion ) {
+            $this->send_error( 'Cotización no encontrada.' );
+        }
+
+        // Validación RLS: Zero-Trust para clonación
+        if ( ! $is_admin && intval( $cotizacion->vendedor_id ) !== $user_id ) {
+            $this->send_error( 'Acceso denegado. No puede clonar una cotización que no le pertenece.', 403 );
+        }
+
+        $items = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_cotizaciones_items WHERE cotizacion_id = %d", $quote_id ) );
+        $cliente = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_clientes WHERE id = %d", $cotizacion->cliente_id ) );
+
+        $this->send_success( [
+            'cotizacion' => $cotizacion,
+            'items'      => $items,
+            'cliente'    => $cliente
+        ] );
     }
 }
