@@ -91,14 +91,23 @@ class Suite_Model_Quote extends Suite_Model_Base {
             }
 
             // 2. Procesar inserciones en memoria
-            foreach ( $items as $item ) {
+			foreach ( $items as $item ) {
                 $sku = sanitize_text_field( $item['sku'] );
                 $qty = intval( $item['qty'] );
-                $safe_price = floatval( $item['price'] ); // Fallback
+                $safe_price = floatval( $item['price'] ); // Precio introducido por el vendedor
 
                 if ( ! in_array( strtoupper( $sku ), ['MANUAL', 'GENERICO'] ) ) {
                     if ( isset( $precios_db[ strtoupper($sku) ] ) ) {
-                        $safe_price = $precios_db[ strtoupper($sku) ];
+                        
+                        $precio_minimo_db = floatval( $precios_db[ strtoupper($sku) ] );
+                        
+                        // CANDADO INTELIGENTE: 
+                        // Solo forzamos el precio de la BD si el vendedor lo puso más barato.
+                        // Si el vendedor lo puso más caro, se respeta su $safe_price original.
+                        if ( $safe_price < $precio_minimo_db ) {
+                            $safe_price = $precio_minimo_db;
+                        }
+
                     } else {
                         throw new Exception( "El producto con SKU '{$sku}' no existe en el catálogo." );
                     }

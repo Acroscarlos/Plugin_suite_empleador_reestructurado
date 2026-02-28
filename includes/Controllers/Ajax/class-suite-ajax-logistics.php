@@ -70,7 +70,7 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
             $wpdb->update(
                 $tabla_cot,
                 [ 
-                    'pod_url' => escapeshellurl( $file_url ), // sanitizamos URL
+                    'pod_url' => esc_url_raw( $file_url ), // sanitizamos URL
                     'estado'  => 'despachado' 
                 ],
                 [ 'id' => $quote_id ],
@@ -79,8 +79,8 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
             );
 
             // DESCUENTO DE INVENTARIO LOGÍSTICO (Si aplica en tu flujo)
-            $quote_model = new Suite_Model_Quote();
-            $quote_model->process_inventory_discount( $quote_id );
+            //$quote_model = new Suite_Model_Quote();
+            //$quote_model->process_inventory_discount( $quote_id );
 
             $this->send_success( [
                 'message' => 'Comprobante subido y pedido despachado correctamente.',
