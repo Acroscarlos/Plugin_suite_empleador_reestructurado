@@ -217,8 +217,12 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
             if ( function_exists('suite_record_log') ) {
                 suite_record_log( 'logistica_inversa', "Logística Inversa: El Administrador (ID: " . get_current_user_id() . ") revirtió el pedido #{$quote_id} de 'despachado' a 'proceso'." );
             }
-            
-            // Nota de Arquitectura: Si el módulo descuenta inventario físico al llegar a 'despachado', 
+
+            // --- NUEVO: REVERSO CONTABLE EN EL LEDGER ---
+            $commission_model = new Suite_Model_Commission();
+            $commission_model->reverse_commission( $quote_id );
+
+            // Nota de Arquitectura: Si el módulo descuenta inventario físico al llegar a 'despachado',
             // este es el punto exacto para invocar una función que restaure dicho stock.
         }
         // --- FIN INYECCIÓN ---

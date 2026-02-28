@@ -89,15 +89,27 @@ class Suite_Ajax_Freeze_Commissions extends Suite_AJAX_Controller {
         // 2. Congelamiento Masivo y Atómico (Update Bulk)
         $updated = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$tabla_ledger} 
-                 SET estado_pago = 'pagado' 
+                "UPDATE {$tabla_ledger}
+                 SET estado_pago = 'pagado'
                  WHERE estado_pago = 'pendiente' AND created_at <= %s",
                 $fecha_corte
             )
         );
 
         if ( $updated !== false ) {
+            // --- NUEVO: ADJUDICACIÓN DE PREMIOS GAMIFICACIÓN ---
+            // Extraemos el mes y año en base a la fecha del corte que se acaba de congelar
+            $timestamp_corte = strtotime( $fecha_corte );
+            $mes_corte = (int) date( 'm', $timestamp_corte );
+            $anio_corte = (int) date( 'Y', $timestamp_corte );
+            
+            // Adjudicamos los premios (Nacerán como "pendientes" y se liquidarán en el siguiente cierre)
+            $commission_model = new Suite_Model_Commission();
+            $commission_model->award_monthly_prizes( $mes_corte, $anio_corte );
+
             // Opcional: Escribir en la tabla Logs de Auditoría
+            
+            
             if ( function_exists('suite_record_log') ) {
                 suite_record_log('cierre_mes', "Se ejecutó el Cierre Contable de Comisiones. ({$updated} registros congelados hasta: {$fecha_corte}).");
             }

@@ -90,14 +90,14 @@ const SuiteCRM = (function($) {
                 }
             ] : [];
 
-            cliTable = $('#clientsTable').DataTable({
-                paging: true,
-                pageLength: 25,
-                responsive: true,
-                dom: tableDom,
-                buttons: tableButtons,
-                language: dtLanguage
-            });
+			cliTable = $('#clientsTable').DataTable({
+				paging: true,
+				pageLength: 25,
+				responsive: true,
+				dom: tableDom,
+				buttons: tableButtons,
+				language: dtLanguage
+			});
 
             // Buscador personalizado
             $('#clients-table-search').on('keyup', function() { 

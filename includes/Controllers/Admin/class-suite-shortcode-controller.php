@@ -213,30 +213,43 @@ class Suite_Shortcode_Controller {
                 if (typeof SuiteMarketing !== "undefined") SuiteMarketing.init();
 				if (typeof SuiteEmployees !== "undefined") SuiteEmployees.init();
 				if (typeof SuiteHistorial !== "undefined") SuiteHistorial.init();
-
-                // 2. ENRUTADOR DE PESTAÑAS (Manejo de estado visual y recargas asíncronas)
+				
+				
+				
+				// 2. ENRUTADOR DE PESTAÑAS BLINDADO (Soporta Eventos, Nodos DOM y Objetos jQuery)
                 window.openSuiteTab = function(evt, name) {
                     
-                    // Resetear la vista actual
+                    // A. Normalización de parámetros
+                    let tabId = typeof name === 'string' ? name : (typeof evt === 'string' ? evt : '');
+                    let btnObj = typeof evt === 'object' ? evt : (typeof name === 'object' ? name : null);
+
+                    if (!tabId) return; // Si por alguna razón no hay ID de pestaña, abortamos silenciosamente
+
+                    // B. Transición Visual de Pestañas
                     $(".suite-tab-content").removeClass("active").hide();
                     $(".tab-btn").removeClass("active");
+                    $("#" + tabId).fadeIn().addClass("active");
                     
-                    // Activar la nueva pestaña
-                    $("#" + name).fadeIn().addClass("active");
-                    evt.currentTarget.classList.add("active");
+                    // C. Asignación segura de la clase 'active' al botón
+                    if (btnObj) {
+                        // Extraemos el elemento ya sea de un Evento nativo, o usamos el objeto directo
+                        let targetElement = btnObj.currentTarget || btnObj.target || btnObj;
+                        // Lo envolvemos en jQuery para asignarle la clase sin riesgo de errores
+                        $(targetElement).addClass("active");
+                    }
                     
-                    // Disparar las recargas de datos contextuales según la pestaña que se abra
-                    if (name === "TabKanban" && typeof SuiteKanban !== "undefined") {
+                    // D. Disparar las recargas de datos contextuales según la pestaña
+                    if (tabId === "TabKanban" && typeof SuiteKanban !== "undefined") {
                         SuiteKanban.loadBoard();
                     }
-                    if (name === "TabComisiones" && typeof SuiteCommissions !== "undefined") {
+                    if (tabId === "TabComisiones" && typeof SuiteCommissions !== "undefined") {
                         SuiteCommissions.loadDashboard();
                     }
-                    if (name === "TabMarketing" && typeof SuiteMarketing !== "undefined") {
+                    if (tabId === "TabMarketing" && typeof SuiteMarketing !== "undefined") {
                         SuiteMarketing.loadDashboard();
                     }
-					if (name === "TabHistorial" && typeof SuiteHistorial !== "undefined") {
-                        SuiteHistorial.refresh(); // <--- AGREGADO: Refresca el historial al abrir la pestaña
+                    if (tabId === "TabHistorial" && typeof SuiteHistorial !== "undefined") {
+                        SuiteHistorial.refresh(); 
                     }
                 };
 

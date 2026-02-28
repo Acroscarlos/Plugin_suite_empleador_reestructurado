@@ -687,14 +687,14 @@ const SuiteCRM = (function($) {
                 }
             ] : [];
 
-            cliTable = $('#clientsTable').DataTable({
-                paging: true,
-                pageLength: 25,
-                responsive: true,
-                dom: tableDom,
-                buttons: tableButtons,
-                language: dtLanguage
-            });
+			cliTable = $('#clientsTable').DataTable({
+				paging: true,
+				pageLength: 25,
+				responsive: true,
+				dom: tableDom,
+				buttons: tableButtons,
+				language: dtLanguage
+			});
 
             // Buscador personalizado
             $('#clients-table-search').on('keyup', function() { 
@@ -1401,6 +1401,84 @@ const SuiteHistorial = (function($) {
 // Silence is golden.
 --- FIN DEL ARCHIVO: assets/js/modules/index.php ---
 
+--- INICIO DEL ARCHIVO: assets/js/modules/inventory.js ---
+/**
+ * SuiteInventory - Módulo de Lectura Dinámica de Inventario (CSV)
+ * Aplica lógica de visibilidad y formateo condicional basado en Roles (Zero-Trust UI).
+ */
+const SuiteInventory = (function($) {
+    'use strict';
+    let table = null;
+
+    const initTable = function() {
+        if ($('#inventoryTable').length && !$.fn.DataTable.isDataTable('#inventoryTable')) {
+            // Lectura estricta del perfil desde la inyección de WP
+            const isMarketing = suite_vars.is_marketing === '1' || suite_vars.is_marketing === true;
+
+            table = $('#inventoryTable').DataTable({
+                responsive: true,
+                language: { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json" },
+                columns: [
+                    { data: 'sku' },
+                    { data: 'nombre' },
+                    { data: 'status' },
+                    // Ocultamos estas columnas a Marketing (pero los vendedores las ven)
+                    { data: 'stock_total', visible: !isMarketing },
+                    { data: 'disponibilidad_galerias', visible: !isMarketing },
+                    { data: 'disponibilidad_millennium', visible: !isMarketing },
+                    { 
+                        data: 'cantidad_en_transito',
+                        render: function(data, type, row) {
+                            if (type === 'display') {
+                                let qty = parseInt(data) || 0;
+                                
+                                // REGLA ESPECIAL PARA MARKETING (Binario)
+                                if (isMarketing) {
+                                    return qty > 0 
+                                        ? '<span class="status-pill pill-neutral" style="background:#e0f2fe; color:#0369a1;">Orden en tránsito</span>' 
+                                        : '';
+                                }
+                                
+                                // REGLA PARA VENDEDORES (Número exacto + Badge si viene en camino)
+                                let badge = qty > 0 ? ` <span style="font-size:10px; color:#0284c7;">(En tránsito)</span>` : '';
+                                return `<strong>${qty}</strong>${badge}`;
+                            }
+                            return data;
+                        }
+                    }
+                ]
+            });
+        }
+    };
+
+    const loadInventory = function() {
+        if (!table) return;
+        
+        // Bloquear UI mientras carga
+        $('#inventoryTable tbody').html('<tr><td colspan="7" style="text-align:center;">Cargando inventario desde el Data Lake...</td></tr>');
+
+        SuiteAPI.post('suite_get_inventory').then(res => {
+            if (res.success && res.data) {
+                table.clear();
+                table.rows.add(res.data);
+                table.draw();
+            } else {
+                alert('⚠️ Error: ' + (res.data.message || 'No se pudo leer el CSV.'));
+            }
+        }).catch(() => {
+            alert('❌ Ocurrió un error de red al intentar descargar el inventario.');
+        });
+    };
+
+    return {
+        init: function() {
+            initTable();
+            loadInventory();
+        }
+    };
+})(jQuery);
+--- FIN DEL ARCHIVO: assets/js/modules/inventory.js ---
+
 --- INICIO DEL ARCHIVO: assets/js/modules/kanban.js ---
 /**
  * SuiteKanban - Módulo visual y lógico del Tablero de Pedidos
@@ -1640,7 +1718,7 @@ const SuiteKanban = (function($) {
             // Simular el objeto pendingDrop para evitar fallos lógicos
             pendingDrop = { 
                 quoteId: quoteId, 
-                itemEl: $(this).closest('.kanban-card'), 
+                itemEl: $(this).closest('.kanban-card')[0], 
                 fromCol: document.getElementById('kb-col-' + col), 
                 toCol: document.getElementById('kb-col-pagado'), 
                 oldIndex: $(this).closest('.kanban-card').index()
@@ -2661,30 +2739,43 @@ class Suite_Shortcode_Controller {
                 if (typeof SuiteMarketing !== "undefined") SuiteMarketing.init();
 				if (typeof SuiteEmployees !== "undefined") SuiteEmployees.init();
 				if (typeof SuiteHistorial !== "undefined") SuiteHistorial.init();
-
-                // 2. ENRUTADOR DE PESTAÑAS (Manejo de estado visual y recargas asíncronas)
+				
+				
+				
+				// 2. ENRUTADOR DE PESTAÑAS BLINDADO (Soporta Eventos, Nodos DOM y Objetos jQuery)
                 window.openSuiteTab = function(evt, name) {
                     
-                    // Resetear la vista actual
+                    // A. Normalización de parámetros
+                    let tabId = typeof name === 'string' ? name : (typeof evt === 'string' ? evt : '');
+                    let btnObj = typeof evt === 'object' ? evt : (typeof name === 'object' ? name : null);
+
+                    if (!tabId) return; // Si por alguna razón no hay ID de pestaña, abortamos silenciosamente
+
+                    // B. Transición Visual de Pestañas
                     $(".suite-tab-content").removeClass("active").hide();
                     $(".tab-btn").removeClass("active");
+                    $("#" + tabId).fadeIn().addClass("active");
                     
-                    // Activar la nueva pestaña
-                    $("#" + name).fadeIn().addClass("active");
-                    evt.currentTarget.classList.add("active");
+                    // C. Asignación segura de la clase 'active' al botón
+                    if (btnObj) {
+                        // Extraemos el elemento ya sea de un Evento nativo, o usamos el objeto directo
+                        let targetElement = btnObj.currentTarget || btnObj.target || btnObj;
+                        // Lo envolvemos en jQuery para asignarle la clase sin riesgo de errores
+                        $(targetElement).addClass("active");
+                    }
                     
-                    // Disparar las recargas de datos contextuales según la pestaña que se abra
-                    if (name === "TabKanban" && typeof SuiteKanban !== "undefined") {
+                    // D. Disparar las recargas de datos contextuales según la pestaña
+                    if (tabId === "TabKanban" && typeof SuiteKanban !== "undefined") {
                         SuiteKanban.loadBoard();
                     }
-                    if (name === "TabComisiones" && typeof SuiteCommissions !== "undefined") {
+                    if (tabId === "TabComisiones" && typeof SuiteCommissions !== "undefined") {
                         SuiteCommissions.loadDashboard();
                     }
-                    if (name === "TabMarketing" && typeof SuiteMarketing !== "undefined") {
+                    if (tabId === "TabMarketing" && typeof SuiteMarketing !== "undefined") {
                         SuiteMarketing.loadDashboard();
                     }
-					if (name === "TabHistorial" && typeof SuiteHistorial !== "undefined") {
-                        SuiteHistorial.refresh(); // <--- AGREGADO: Refresca el historial al abrir la pestaña
+                    if (tabId === "TabHistorial" && typeof SuiteHistorial !== "undefined") {
+                        SuiteHistorial.refresh(); 
                     }
                 };
 
@@ -3061,15 +3152,27 @@ class Suite_Ajax_Freeze_Commissions extends Suite_AJAX_Controller {
         // 2. Congelamiento Masivo y Atómico (Update Bulk)
         $updated = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$tabla_ledger} 
-                 SET estado_pago = 'pagado' 
+                "UPDATE {$tabla_ledger}
+                 SET estado_pago = 'pagado'
                  WHERE estado_pago = 'pendiente' AND created_at <= %s",
                 $fecha_corte
             )
         );
 
         if ( $updated !== false ) {
+            // --- NUEVO: ADJUDICACIÓN DE PREMIOS GAMIFICACIÓN ---
+            // Extraemos el mes y año en base a la fecha del corte que se acaba de congelar
+            $timestamp_corte = strtotime( $fecha_corte );
+            $mes_corte = (int) date( 'm', $timestamp_corte );
+            $anio_corte = (int) date( 'Y', $timestamp_corte );
+            
+            // Adjudicamos los premios (Nacerán como "pendientes" y se liquidarán en el siguiente cierre)
+            $commission_model = new Suite_Model_Commission();
+            $commission_model->award_monthly_prizes( $mes_corte, $anio_corte );
+
             // Opcional: Escribir en la tabla Logs de Auditoría
+            
+            
             if ( function_exists('suite_record_log') ) {
                 suite_record_log('cierre_mes', "Se ejecutó el Cierre Contable de Comisiones. ({$updated} registros congelados hasta: {$fecha_corte}).");
             }
@@ -3291,6 +3394,64 @@ class Suite_Ajax_Employee_Delete extends Suite_AJAX_Controller {
     }
 }
 --- FIN DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-employees.php ---
+
+--- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-inventory.php ---
+<?php
+/**
+ * Controlador AJAX: Módulo de Inventario
+ */
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+
+class Suite_Ajax_Get_Inventory extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_get_inventory';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        $csv_path = SUITE_PATH . 'output/reporte_final.csv';
+        
+        if ( ! file_exists( $csv_path ) || ( $handle = fopen( $csv_path, 'r' ) ) === false ) {
+            $this->send_error( 'El archivo de inventario no se encuentra disponible actualmente.' );
+        }
+
+        $headers = fgetcsv( $handle, 2000, ',' );
+        if ( ! $headers ) {
+            fclose( $handle );
+            $this->send_error( 'El archivo CSV está vacío o corrupto.' );
+        }
+
+        // 1. Mapeo Heurístico (Smart Indexing) para ubicar la posición de las columnas
+        $map = [];
+        foreach ( $headers as $index => $header ) {
+            $h_clean = strtolower( trim( $header ) );
+            if ( strpos( $h_clean, 'sku' ) !== false ) $map['sku'] = $index;
+            elseif ( strpos( $h_clean, 'nombre' ) !== false ) $map['nombre'] = $index;
+            elseif ( strpos( $h_clean, 'status' ) !== false ) $map['status'] = $index;
+            elseif ( strpos( $h_clean, 'total' ) !== false ) $map['stock_total'] = $index;
+            elseif ( strpos( $h_clean, 'gale' ) !== false ) $map['disponibilidad_galerias'] = $index;
+            elseif ( strpos( $h_clean, 'mille' ) !== false ) $map['disponibilidad_millennium'] = $index;
+            elseif ( strpos( $h_clean, 'transito' ) !== false ) $map['cantidad_en_transito'] = $index;
+        }
+
+        $data = [];
+        // 2. Procesamiento y Limpieza de Datos
+        while ( ( $row = fgetcsv( $handle, 2000, ',' ) ) !== false ) {
+            $data[] = [
+                'sku' => isset($map['sku'], $row[$map['sku']]) ? sanitize_text_field($row[$map['sku']]) : 'N/D',
+                'nombre' => isset($map['nombre'], $row[$map['nombre']]) ? sanitize_text_field($row[$map['nombre']]) : 'N/D',
+                'status' => isset($map['status'], $row[$map['status']]) ? sanitize_text_field($row[$map['status']]) : '-',
+                'stock_total' => isset($map['stock_total'], $row[$map['stock_total']]) ? intval($row[$map['stock_total']]) : 0,
+                'disponibilidad_galerias' => isset($map['disponibilidad_galerias'], $row[$map['disponibilidad_galerias']]) ? intval($row[$map['disponibilidad_galerias']]) : 0,
+                'disponibilidad_millennium' => isset($map['disponibilidad_millennium'], $row[$map['disponibilidad_millennium']]) ? intval($row[$map['disponibilidad_millennium']]) : 0,
+                'cantidad_en_transito' => isset($map['cantidad_en_transito'], $row[$map['cantidad_en_transito']]) ? intval($row[$map['cantidad_en_transito']]) : 0,
+            ];
+        }
+
+        fclose( $handle );
+        $this->send_success( $data );
+    }
+}
+--- FIN DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-inventory.php ---
 
 --- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-kanban.php ---
 <?php
@@ -3840,8 +4001,12 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
             if ( function_exists('suite_record_log') ) {
                 suite_record_log( 'logistica_inversa', "Logística Inversa: El Administrador (ID: " . get_current_user_id() . ") revirtió el pedido #{$quote_id} de 'despachado' a 'proceso'." );
             }
-            
-            // Nota de Arquitectura: Si el módulo descuenta inventario físico al llegar a 'despachado', 
+
+            // --- NUEVO: REVERSO CONTABLE EN EL LEDGER ---
+            $commission_model = new Suite_Model_Commission();
+            $commission_model->reverse_commission( $quote_id );
+
+            // Nota de Arquitectura: Si el módulo descuenta inventario físico al llegar a 'despachado',
             // este es el punto exacto para invocar una función que restaure dicho stock.
         }
         // --- FIN INYECCIÓN ---
@@ -4960,32 +5125,50 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Suite_Cron_Jobs {
 
-    /**
-     * Constructor: Engancha los métodos a los hooks de WP-Cron
-     */
     public function __construct() {
         add_action( 'suite_daily_inventory_snapshot', [ $this, 'take_inventory_snapshot' ] );
+        // NUEVO: Hook para el archivo semanal
+        add_action( 'suite_weekly_archive_orders', [ $this, 'archive_dispatched_orders' ] );
     }
 
-    /**
-     * Registra el evento recurrente en WordPress.
-     * Debe llamarse durante el init del plugin.
-     */
     public function schedule_events() {
         if ( ! wp_next_scheduled( 'suite_daily_inventory_snapshot' ) ) {
-            // Programar para que corra diariamente. 'midnight' asegura que la foto
-            // sea consistente a nivel estadístico (cierre del día).
             wp_schedule_event( strtotime( 'midnight' ), 'daily', 'suite_daily_inventory_snapshot' );
+        }
+        
+        // NUEVO: Programación para todos los domingos a las 23:00:00 (Usa el intervalo 'weekly' nativo de WP 5.4+)
+        if ( ! wp_next_scheduled( 'suite_weekly_archive_orders' ) ) {
+            wp_schedule_event( strtotime( 'next sunday 23:00:00', current_time( 'timestamp' ) ), 'weekly', 'suite_weekly_archive_orders' );
         }
     }
 
-    /**
-     * Limpia los eventos al desactivar el plugin.
-     */
     public function clear_events() {
         $timestamp = wp_next_scheduled( 'suite_daily_inventory_snapshot' );
         if ( $timestamp ) {
             wp_unschedule_event( $timestamp, 'suite_daily_inventory_snapshot' );
+        }
+
+        // NUEVO: Limpieza del evento semanal al desactivar el plugin
+        $timestamp_weekly = wp_next_scheduled( 'suite_weekly_archive_orders' );
+        if ( $timestamp_weekly ) {
+            wp_unschedule_event( $timestamp_weekly, 'suite_weekly_archive_orders' );
+        }
+    }
+
+    /**
+     * NUEVO MÉTODO: Limpieza Semanal del Kanban (Domingos 11:00 PM)
+     * Pasa todas las tarjetas "Despachadas" al archivo histórico.
+     */
+    public function archive_dispatched_orders() {
+        global $wpdb;
+        $tabla_cot = $wpdb->prefix . 'suite_cotizaciones';
+
+        // Actualización atómica en base de datos
+        $afectados = $wpdb->query( "UPDATE {$tabla_cot} SET estado = 'archivado' WHERE estado = 'despachado'" );
+
+        // Registrar en la tabla de Logs de Seguridad/Auditoría
+        if ( function_exists( 'suite_record_log' ) && $afectados > 0 ) {
+            suite_record_log( 'archivo_semanal', "Limpieza Kanban: {$afectados} pedidos despachados fueron movidos al archivo histórico." );
         }
     }
 
@@ -5528,7 +5711,76 @@ class Suite_Model_Commission extends Suite_Model_Base {
             'historial' => $historial
         ];
     }	
+
 	
+	
+    /**
+     * LOGÍSTICA INVERSA (Reverso Contable)
+     * Anula o deduce la comisión de un pedido devuelto.
+     * 
+     * @param int $quote_id ID de la cotización/pedido
+     */
+    public function reverse_commission( $quote_id ) {
+        $registros = $this->wpdb->get_results( $this->wpdb->prepare(
+            "SELECT * FROM {$this->table_name} WHERE quote_id = %d", 
+            intval( $quote_id )
+        ) );
+
+        foreach ( $registros as $row ) {
+            // Protección de Idempotencia: Si ya es un registro negativo (una deducción previa), lo ignoramos
+            if ( floatval( $row->comision_ganada_usd ) < 0 ) {
+                continue;
+            }
+
+            if ( $row->estado_pago === 'pendiente' ) {
+                // El dinero aún no se ha pagado al vendedor. Simplemente borramos el registro.
+                $this->delete( $row->id );
+            } elseif ( $row->estado_pago === 'pagado' ) {
+                // El dinero YA fue liquidado en un mes anterior. 
+                // Insertamos un contra-asiento (Deducción) en el mes actual.
+                $this->insert([
+                    'quote_id'            => $row->quote_id,
+                    'vendedor_id'         => $row->vendedor_id,
+                    'monto_base_usd'      => -floatval( $row->monto_base_usd ),
+                    'comision_ganada_usd' => -floatval( $row->comision_ganada_usd ),
+                    'estado_pago'         => 'pendiente' // Nace pendiente para que se le descuente en este cierre
+                ]);
+            }
+        }
+    }
+
+    /**
+     * ADJUDICACIÓN DE PREMIOS (Dinero Real)
+     * Liquida los premios de Gamificación inyectándolos en el Ledger como dólares reales.
+     * 
+     * @param int $mes Mes que se acaba de cerrar
+     * @param int $anio Año del cierre
+     */
+    public function award_monthly_prizes( $mes, $anio ) {
+        $winners = $this->get_gamification_winners( $mes, $anio );
+
+        // 1. Premio: Pez Gordo ($20)
+        if ( ! empty( $winners['pez_gordo'] ) ) {
+            $this->insert([
+                'quote_id'            => 0, // 0 indica que no proviene de una venta, es un bono
+                'vendedor_id'         => $winners['pez_gordo']->vendedor_id,
+                'monto_base_usd'      => 0,
+                'comision_ganada_usd' => 20.00,
+                'estado_pago'         => 'pendiente'
+            ]);
+        }
+
+        // 2. Premio: Deja pa' los demás ($20)
+        if ( ! empty( $winners['deja_pa_los_demas'] ) ) {
+            $this->insert([
+                'quote_id'            => 0,
+                'vendedor_id'         => $winners['deja_pa_los_demas']->vendedor_id,
+                'monto_base_usd'      => 0,
+                'comision_ganada_usd' => 20.00,
+                'estado_pago'         => 'pendiente'
+            ]);
+        }
+    }
 	
 	
 	
@@ -6117,17 +6369,20 @@ class Suite_Model_Quote extends Suite_Model_Base {
         $tabla_cli = $this->wpdb->prefix . 'suite_clientes';
         
         $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, cli.nombre_razon AS cliente_nombre 
-                FROM {$this->table_name} c 
-                LEFT JOIN {$tabla_cli} cli ON c.cliente_id = cli.id";
-        
+                FROM {$this->table_name} c
+                LEFT JOIN {$tabla_cli} cli ON c.cliente_id = cli.id
+                WHERE 1=1";
+
+        // 1. FILTRO DINÁMICO: Ocultar cotizaciones vencidas del Kanban (fecha_emision + validez < hoy)
+        $sql .= " AND NOT (c.estado = 'emitida' AND DATE_ADD(c.fecha_emision, INTERVAL c.validez_dias DAY) < NOW())";
+
         // APLICACIÓN RLS: Si no tiene acceso global, forzamos a que solo vea lo suyo
         if ( ! $tiene_acceso_global ) {
-            $sql .= $this->wpdb->prepare( " WHERE c.vendedor_id = %d", intval( $current_vendedor_id ) );
-        } elseif ( $vendedor_id ) {
-            // Si tiene acceso global pero pidió ver el de un vendedor específico (ej. filtro en la vista)
-            $sql .= $this->wpdb->prepare( " WHERE c.vendedor_id = %d", intval( $vendedor_id ) );
+            $sql .= $this->wpdb->prepare( " AND c.vendedor_id = %d", intval( $current_vendedor_id ) );
+        } elseif ( $vendedor_id && $vendedor_id != $current_vendedor_id ) {
+            // CORRECCIÓN BYPASS: Si es gerente/admin, aplicamos filtro específico si se solicitó
+            $sql .= $this->wpdb->prepare( " AND c.vendedor_id = %d", intval( $vendedor_id ) );
         }
-
         $sql .= " ORDER BY c.fecha_emision DESC LIMIT 200";
         
         $resultados = $this->wpdb->get_results( $sql );
@@ -7386,6 +7641,44 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
     </div>
 </div>
 --- FIN DEL ARCHIVO: views/app/tab-historial.php ---
+
+--- INICIO DEL ARCHIVO: views/app/tab-inventario.php ---
+<?php
+/**
+ * Vista: Inventario Global
+ */
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+?>
+
+<div id="TabInventario" class="suite-tab-content" style="display: none;">
+    <div class="suite-header-modern">
+        <h2 style="margin:0; font-size: 22px; color: #0f172a;">📦 Inventario</h2>
+        <p style="color:#64748b; font-size:14px; margin-top:5px;">Consulta de disponibilidad de productos y stock en tránsito.</p>
+    </div>
+    
+    <div style="padding: 25px;">
+        <div class="suite-table-responsive">
+            <!-- Las columnas se ocultarán automáticamente vía JavaScript según el Rol -->
+            <table class="suite-modern-table" id="inventoryTable" style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>SKU</th>
+                        <th>Nombre / Descripción</th>
+                        <th>Status</th>
+                        <th>Stock Total</th>
+                        <th>Disp. Galerías</th>
+                        <th>Disp. Millennium</th>
+                        <th>En Tránsito</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Llenado dinámico por DataTables -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+--- FIN DEL ARCHIVO: views/app/tab-inventario.php ---
 
 --- INICIO DEL ARCHIVO: views/app/tab-kanban.php ---
 <?php

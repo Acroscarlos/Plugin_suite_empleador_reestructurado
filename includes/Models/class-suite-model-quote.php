@@ -177,17 +177,20 @@ class Suite_Model_Quote extends Suite_Model_Base {
         $tabla_cli = $this->wpdb->prefix . 'suite_clientes';
         
         $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, cli.nombre_razon AS cliente_nombre 
-                FROM {$this->table_name} c 
-                LEFT JOIN {$tabla_cli} cli ON c.cliente_id = cli.id";
-        
+                FROM {$this->table_name} c
+                LEFT JOIN {$tabla_cli} cli ON c.cliente_id = cli.id
+                WHERE 1=1";
+
+        // 1. FILTRO DINÁMICO: Ocultar cotizaciones vencidas del Kanban (fecha_emision + validez < hoy)
+        $sql .= " AND NOT (c.estado = 'emitida' AND DATE_ADD(c.fecha_emision, INTERVAL c.validez_dias DAY) < NOW())";
+
         // APLICACIÓN RLS: Si no tiene acceso global, forzamos a que solo vea lo suyo
         if ( ! $tiene_acceso_global ) {
-            $sql .= $this->wpdb->prepare( " WHERE c.vendedor_id = %d", intval( $current_vendedor_id ) );
-        } elseif ( $vendedor_id ) {
-            // Si tiene acceso global pero pidió ver el de un vendedor específico (ej. filtro en la vista)
-            $sql .= $this->wpdb->prepare( " WHERE c.vendedor_id = %d", intval( $vendedor_id ) );
+            $sql .= $this->wpdb->prepare( " AND c.vendedor_id = %d", intval( $current_vendedor_id ) );
+        } elseif ( $vendedor_id && $vendedor_id != $current_vendedor_id ) {
+            // CORRECCIÓN BYPASS: Si es gerente/admin, aplicamos filtro específico si se solicitó
+            $sql .= $this->wpdb->prepare( " AND c.vendedor_id = %d", intval( $vendedor_id ) );
         }
-
         $sql .= " ORDER BY c.fecha_emision DESC LIMIT 200";
         
         $resultados = $this->wpdb->get_results( $sql );

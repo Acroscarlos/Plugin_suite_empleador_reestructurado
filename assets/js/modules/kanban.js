@@ -236,7 +236,7 @@ const SuiteKanban = (function($) {
             // Simular el objeto pendingDrop para evitar fallos lógicos
             pendingDrop = { 
                 quoteId: quoteId, 
-                itemEl: $(this).closest('.kanban-card'), 
+                itemEl: $(this).closest('.kanban-card')[0], 
                 fromCol: document.getElementById('kb-col-' + col), 
                 toCol: document.getElementById('kb-col-pagado'), 
                 oldIndex: $(this).closest('.kanban-card').index()

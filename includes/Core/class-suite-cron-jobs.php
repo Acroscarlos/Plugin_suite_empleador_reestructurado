@@ -14,32 +14,50 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Suite_Cron_Jobs {
 
-    /**
-     * Constructor: Engancha los métodos a los hooks de WP-Cron
-     */
     public function __construct() {
         add_action( 'suite_daily_inventory_snapshot', [ $this, 'take_inventory_snapshot' ] );
+        // NUEVO: Hook para el archivo semanal
+        add_action( 'suite_weekly_archive_orders', [ $this, 'archive_dispatched_orders' ] );
     }
 
-    /**
-     * Registra el evento recurrente en WordPress.
-     * Debe llamarse durante el init del plugin.
-     */
     public function schedule_events() {
         if ( ! wp_next_scheduled( 'suite_daily_inventory_snapshot' ) ) {
-            // Programar para que corra diariamente. 'midnight' asegura que la foto
-            // sea consistente a nivel estadístico (cierre del día).
             wp_schedule_event( strtotime( 'midnight' ), 'daily', 'suite_daily_inventory_snapshot' );
+        }
+        
+        // NUEVO: Programación para todos los domingos a las 23:00:00 (Usa el intervalo 'weekly' nativo de WP 5.4+)
+        if ( ! wp_next_scheduled( 'suite_weekly_archive_orders' ) ) {
+            wp_schedule_event( strtotime( 'next sunday 23:00:00', current_time( 'timestamp' ) ), 'weekly', 'suite_weekly_archive_orders' );
         }
     }
 
-    /**
-     * Limpia los eventos al desactivar el plugin.
-     */
     public function clear_events() {
         $timestamp = wp_next_scheduled( 'suite_daily_inventory_snapshot' );
         if ( $timestamp ) {
             wp_unschedule_event( $timestamp, 'suite_daily_inventory_snapshot' );
+        }
+
+        // NUEVO: Limpieza del evento semanal al desactivar el plugin
+        $timestamp_weekly = wp_next_scheduled( 'suite_weekly_archive_orders' );
+        if ( $timestamp_weekly ) {
+            wp_unschedule_event( $timestamp_weekly, 'suite_weekly_archive_orders' );
+        }
+    }
+
+    /**
+     * NUEVO MÉTODO: Limpieza Semanal del Kanban (Domingos 11:00 PM)
+     * Pasa todas las tarjetas "Despachadas" al archivo histórico.
+     */
+    public function archive_dispatched_orders() {
+        global $wpdb;
+        $tabla_cot = $wpdb->prefix . 'suite_cotizaciones';
+
+        // Actualización atómica en base de datos
+        $afectados = $wpdb->query( "UPDATE {$tabla_cot} SET estado = 'archivado' WHERE estado = 'despachado'" );
+
+        // Registrar en la tabla de Logs de Seguridad/Auditoría
+        if ( function_exists( 'suite_record_log' ) && $afectados > 0 ) {
+            suite_record_log( 'archivo_semanal', "Limpieza Kanban: {$afectados} pedidos despachados fueron movidos al archivo histórico." );
         }
     }
 

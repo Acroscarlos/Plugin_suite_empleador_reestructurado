@@ -190,7 +190,76 @@ class Suite_Model_Commission extends Suite_Model_Base {
             'historial' => $historial
         ];
     }	
+
 	
+	
+    /**
+     * LOGÍSTICA INVERSA (Reverso Contable)
+     * Anula o deduce la comisión de un pedido devuelto.
+     * 
+     * @param int $quote_id ID de la cotización/pedido
+     */
+    public function reverse_commission( $quote_id ) {
+        $registros = $this->wpdb->get_results( $this->wpdb->prepare(
+            "SELECT * FROM {$this->table_name} WHERE quote_id = %d", 
+            intval( $quote_id )
+        ) );
+
+        foreach ( $registros as $row ) {
+            // Protección de Idempotencia: Si ya es un registro negativo (una deducción previa), lo ignoramos
+            if ( floatval( $row->comision_ganada_usd ) < 0 ) {
+                continue;
+            }
+
+            if ( $row->estado_pago === 'pendiente' ) {
+                // El dinero aún no se ha pagado al vendedor. Simplemente borramos el registro.
+                $this->delete( $row->id );
+            } elseif ( $row->estado_pago === 'pagado' ) {
+                // El dinero YA fue liquidado en un mes anterior. 
+                // Insertamos un contra-asiento (Deducción) en el mes actual.
+                $this->insert([
+                    'quote_id'            => $row->quote_id,
+                    'vendedor_id'         => $row->vendedor_id,
+                    'monto_base_usd'      => -floatval( $row->monto_base_usd ),
+                    'comision_ganada_usd' => -floatval( $row->comision_ganada_usd ),
+                    'estado_pago'         => 'pendiente' // Nace pendiente para que se le descuente en este cierre
+                ]);
+            }
+        }
+    }
+
+    /**
+     * ADJUDICACIÓN DE PREMIOS (Dinero Real)
+     * Liquida los premios de Gamificación inyectándolos en el Ledger como dólares reales.
+     * 
+     * @param int $mes Mes que se acaba de cerrar
+     * @param int $anio Año del cierre
+     */
+    public function award_monthly_prizes( $mes, $anio ) {
+        $winners = $this->get_gamification_winners( $mes, $anio );
+
+        // 1. Premio: Pez Gordo ($20)
+        if ( ! empty( $winners['pez_gordo'] ) ) {
+            $this->insert([
+                'quote_id'            => 0, // 0 indica que no proviene de una venta, es un bono
+                'vendedor_id'         => $winners['pez_gordo']->vendedor_id,
+                'monto_base_usd'      => 0,
+                'comision_ganada_usd' => 20.00,
+                'estado_pago'         => 'pendiente'
+            ]);
+        }
+
+        // 2. Premio: Deja pa' los demás ($20)
+        if ( ! empty( $winners['deja_pa_los_demas'] ) ) {
+            $this->insert([
+                'quote_id'            => 0,
+                'vendedor_id'         => $winners['deja_pa_los_demas']->vendedor_id,
+                'monto_base_usd'      => 0,
+                'comision_ganada_usd' => 20.00,
+                'estado_pago'         => 'pendiente'
+            ]);
+        }
+    }
 	
 	
 	
