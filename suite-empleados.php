@@ -90,6 +90,7 @@ function suite_empleados_init() {
 
     // Módulo 4: Dashboard de Comisiones y Gamificación
     new Suite_Ajax_Dashboard_Stats();
+	new Suite_Ajax_Freeze_Commissions();
 
     // Módulo 5: Cerebro de Demanda (REST API)
     new Suite_API_Stats();

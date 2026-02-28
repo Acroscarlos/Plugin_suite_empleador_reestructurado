@@ -50,6 +50,7 @@ class Suite_Ajax_Client_Add extends Suite_AJAX_Controller {
         $clientModel = new Suite_Model_Client();
         
         $data = [
+			'vendedor_id'  => get_current_user_id(), 
             'rif_ci'       => strtoupper( preg_replace( '/[^A-Z0-9]/', '', $rif ) ),
             'nombre_razon' => $nombre,
             'direccion'    => isset( $_POST['direccion'] ) ? sanitize_textarea_field( $_POST['direccion'] ) : '',
@@ -126,6 +127,13 @@ class Suite_Ajax_Client_Delete extends Suite_AJAX_Controller {
     protected $required_capability = 'read';
 
     protected function process() {
+        // --- INICIO: MIDDLEWARE ZERO-TRUST (Prohibición de Hard-Delete) ---
+        if ( ! current_user_can( 'manage_options' ) ) {
+            $this->send_error( 'Acceso denegado. Solo un administrador puede eliminar registros permanentemente. Por favor, cambie el estado u oculte el registro.', 403 );
+            return; // Detenemos la ejecución inmediatamente
+        }
+        // --- FIN: ZERO-TRUST ---
+
         global $wpdb;
         $id = isset( $_POST['id'] ) ? intval( $_POST['id'] ) : 0;
         
@@ -145,7 +153,7 @@ class Suite_Ajax_Client_Delete extends Suite_AJAX_Controller {
         $deleted = $clientModel->delete( $id );
 
         if ( $deleted ) {
-            $this->send_success( 'Cliente eliminado correctamente.' );
+            $this->send_success( 'Cliente eliminado permanentemente.' );
         } else {
             $this->send_error( 'No se pudo eliminar el cliente.' );
         }

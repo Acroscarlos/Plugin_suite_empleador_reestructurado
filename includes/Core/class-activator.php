@@ -34,6 +34,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
         // 2. Tabla Clientes (CRM)
         $sql_clientes = "CREATE TABLE {$wpdb->prefix}suite_clientes (
             id bigint(20) NOT NULL AUTO_INCREMENT,
+			vendedor_id bigint(20) DEFAULT 0,
             nombre_razon VARCHAR(255) NOT NULL,
             rif_ci VARCHAR(50) NOT NULL,
             direccion TEXT,
@@ -153,6 +154,12 @@ if ( ! function_exists( 'suite_install_db' ) ) {
         $count = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}suite_cotizaciones" );
         if ( $count == 0 ) {
             $wpdb->query( "ALTER TABLE {$wpdb->prefix}suite_cotizaciones AUTO_INCREMENT = 15000" );
+        }
+		
+		// --- PARCHE EN CALIENTE: Añadir vendedor_id si el plugin ya estaba instalado ---
+        $column_check = $wpdb->get_results( "SHOW COLUMNS FROM {$wpdb->prefix}suite_clientes LIKE 'vendedor_id'" );
+        if ( empty( $column_check ) ) {
+            $wpdb->query( "ALTER TABLE {$wpdb->prefix}suite_clientes ADD vendedor_id bigint(20) DEFAULT 0 AFTER id" );
         }
 
         // --- CREACIÓN DE ROLES (Ejecutar una vez) ---

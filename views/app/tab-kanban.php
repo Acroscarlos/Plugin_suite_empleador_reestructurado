@@ -218,6 +218,8 @@ if ( ! defined( 'ABSPATH' ) ) {
             <option value="Encomienda Tealca">Encomienda Nacional (Tealca)</option>
             <option value="Encomienda Zoom">Encomienda Nacional (Zoom)</option>
         </select>
+		
+		
 
 	
 		<label>N° de Factura / Nota de Entrega *</label>
@@ -232,6 +234,28 @@ if ( ! defined( 'ABSPATH' ) ) {
         <label>Link de Captura de Pago / Soporte</label>
         <input type="url" id="cierre-captura" class="widefat" placeholder="https://drive.google.com/... o Imgur">
 
+		<!-- INICIO: Selector de Venta Compartida -->
+		<label style="margin-top: 15px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+			🤝 ¿Venta Compartida? (Colaboradores)
+		</label>
+		<select id="cierre-compartido" class="widefat" multiple="multiple" data-placeholder="Seleccione otros vendedores...">
+			<?php
+			// Poblar dinámicamente aislando al usuario actual
+			$vendedores = get_users( ['role__not_in' => ['subscriber', 'customer']] );
+			$current_user_id = get_current_user_id();
+			foreach ( $vendedores as $vend ) {
+				if ( $vend->ID != $current_user_id ) {
+					echo '<option value="' . esc_attr( $vend->ID ) . '">' . esc_html( $vend->display_name ) . '</option>';
+				}
+			}
+			?>
+		</select>
+		<small style="color:#64748b; font-size: 11px; display:block; margin-bottom: 15px;">
+			Deje en blanco si la venta es individual.
+		</small>
+		<!-- FIN: Selector de Venta Compartida -->					
+		
+		
         <button class="btn-save-big" id="btn-confirmar-pago" style="margin-top:15px; background-color: #10b981;">
             Confirmar y Procesar Pago
         </button>

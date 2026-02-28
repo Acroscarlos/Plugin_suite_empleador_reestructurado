@@ -3,7 +3,8 @@
  * Modelo de Base de Datos: Clientes (CRM)
  *
  * Maneja las consultas específicas de la tabla suite_clientes.
- * Hereda de Suite_Model_Base los métodos genéricos (get, get_all, insert, update, delete).
+ * Hereda de Suite_Model_Base los métodos genéricos.
+ * ACTUALIZADO: Módulo 1 (Zero-Trust) y Anti-Secuestro de Cartera.
  *
  * @package SuiteEmpleados\Models
  */
@@ -14,51 +15,69 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Suite_Model_Client extends Suite_Model_Base {
 
-    /**
-     * Define el nombre de la tabla sin el prefijo wp_
-     * (Requerido obligatoriamente por la clase abstracta Suite_Model_Base)
-     *
-     * @return string
-     */
     protected function set_table_name() {
-        // Al retornar esto, la clase base armará: wp_suite_clientes [4]
         return 'suite_clientes';
     }
 
     /**
-     * Busca clientes por Nombre/Razón Social o por RIF/CI.
-     * Aplica la limpieza híbrida de caracteres para evitar fallos por guiones.
-     *
-     * @param string $term Término de búsqueda introducido por el vendedor.
-     * @return array Array de objetos con los resultados (Límite 10).
+     * Override del método Base: Devuelve clientes respetando la seguridad RLS
      */
-    public function search_clients( $term ) {
-        // 1. Limpiamos el término para la búsqueda de RIF (ej. "J-505" -> "J505") [1, 5]
-        $term_clean = strtoupper( preg_replace( '/[^A-Z0-9]/', '', $term ) );
+    public function get_all( $limit = 100, $offset = 0 ) {
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('manage_options');
+        $is_gerente = in_array('suite_gerente', (array)$user->roles) || in_array('gerente', (array)$user->roles);
         
-        // 2. Mantenemos el original para buscar por Razón Social [1]
-        $term_name  = $term;
-
-        $sql = $this->wpdb->prepare(
-            "SELECT * FROM {$this->table_name}
-            WHERE nombre_razon LIKE %s
-            OR rif_ci LIKE %s
-            LIMIT 10",
-            '%' . $this->wpdb->esc_like( $term_name ) . '%',
-            '%' . $this->wpdb->esc_like( $term_clean ) . '%'
-        );
-
+        $sql = "SELECT * FROM {$this->table_name}";
+        
+        // Zero-Trust: Filtro estricto si es vendedor regular
+        if ( ! $is_admin && ! $is_gerente ) {
+            $sql .= $this->wpdb->prepare(" WHERE vendedor_id = %d", get_current_user_id());
+        }
+        
+        $sql .= $this->wpdb->prepare(" ORDER BY id DESC LIMIT %d OFFSET %d", intval($limit), intval($offset));
         return $this->wpdb->get_results( $sql );
     }
 
     /**
+     * Busca clientes por Nombre/Razón Social o por RIF/CI con Seguridad RLS.
+     */
+    public function search_clients( $term ) {
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('manage_options');
+        $is_gerente = in_array('suite_gerente', (array)$user->roles) || in_array('gerente', (array)$user->roles);
+        
+        $term_clean = strtoupper( preg_replace( '/[^A-Z0-9]/', '', $term ) );
+        $term_name = $term;
+
+        // Construcción SQL Base con paréntesis para aislar el OR
+        $sql = "SELECT * FROM {$this->table_name} WHERE (nombre_razon LIKE %s OR rif_ci LIKE %s)";
+        
+        // Zero-Trust: El vendedor solo puede buscar dentro de sus propios clientes
+        if ( ! $is_admin && ! $is_gerente ) {
+            $sql .= $this->wpdb->prepare(" AND vendedor_id = %d", get_current_user_id());
+        }
+        
+        $sql .= " LIMIT 10";
+
+        // Preparar y ejecutar
+        $prepared_sql = $this->wpdb->prepare(
+            $sql, 
+            '%' . $this->wpdb->esc_like( $term_name ) . '%', 
+            '%' . $this->wpdb->esc_like( $term_clean ) . '%'
+        );
+
+        return $this->wpdb->get_results( $prepared_sql );
+    }
+
+    /**
      * Obtiene los KPIs y estadísticas de compras de un cliente específico.
-     * Cruza la información con la tabla wp_suite_cotizaciones.
-     *
-     * @param int $client_id ID del cliente en la base de datos.
-     * @return object|null Objeto con los totales (total, count, first, last).
+     * ACTUALIZADO: Solo contabiliza las compras hechas con EL VENDEDOR ACTUAL (RLS).
      */
     public function get_client_stats( $client_id ) {
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('manage_options');
+        $is_gerente = in_array('suite_gerente', (array)$user->roles) || in_array('gerente', (array)$user->roles);
+
         $tabla_cotizaciones = $this->wpdb->prefix . 'suite_cotizaciones';
 
         $sql = $this->wpdb->prepare( 
@@ -72,33 +91,38 @@ class Suite_Model_Client extends Suite_Model_Base {
             intval( $client_id ) 
         );
 
+        // Zero-Trust
+        if ( ! $is_admin && ! $is_gerente ) {
+            $sql .= $this->wpdb->prepare(" AND vendedor_id = %d", get_current_user_id());
+        }
+
         return $this->wpdb->get_row( $sql );
     }
 
     /**
-     * Obtiene el historial reciente de cotizaciones/compras de un cliente.
-     *
-     * @param int $client_id ID del cliente en la base de datos.
-     * @return array Array de objetos con las últimas 10 cotizaciones.
+     * Historial RLS: Un vendedor solo ve las compras que ESE cliente hizo con ÉL.
      */
     public function get_client_history( $client_id ) {
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('manage_options');
+        $is_gerente = in_array('suite_gerente', (array)$user->roles) || in_array('gerente', (array)$user->roles);
+        
         $tabla_cotizaciones = $this->wpdb->prefix . 'suite_cotizaciones';
-
-        $sql = $this->wpdb->prepare( 
-            "SELECT 
-                id, 
-                codigo_cotizacion as codigo, 
-                fecha_emision as fecha, 
-                total_usd as total, 
-                estado 
-            FROM {$tabla_cotizaciones} 
-            WHERE cliente_id = %d 
-            ORDER BY id DESC 
-            LIMIT 10", 
-            intval( $client_id ) 
+        
+        $sql = $this->wpdb->prepare(
+            "SELECT id, codigo_cotizacion as codigo, fecha_emision as fecha, total_usd as total, estado 
+             FROM {$tabla_cotizaciones} 
+             WHERE cliente_id = %d", 
+             intval($client_id)
         );
-
+        
+        // Zero-Trust
+        if ( ! $is_admin && ! $is_gerente ) {
+            $sql .= $this->wpdb->prepare(" AND vendedor_id = %d", get_current_user_id());
+        }
+        
+        $sql .= " ORDER BY id DESC LIMIT 10";
+        
         return $this->wpdb->get_results( $sql );
     }
-
 }

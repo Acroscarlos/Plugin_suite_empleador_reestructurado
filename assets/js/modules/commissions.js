@@ -37,6 +37,47 @@ const SuiteCommissions = (function($) {
         }
     };
 
+	
+	// ==========================================
+    // EVENT LISTENERS
+    // ==========================================
+    const bindEvents = function() {
+        
+        // Acción de Cierre de Mes (Exclusiva de Gerencia)
+        $('#btn-cierre-mes').on('click', function(e) {
+            e.preventDefault();
+            
+            // 1. Confirmación de Doble Vía (Seguridad Anti-Errores)
+            const seguro = confirm('⚠️ ATENCIÓN: Esta acción es IRREVERSIBLE.\n\nTodos los registros "pendientes" en el Ledger de Comisiones pasarán a "pagado" y se congelarán.\n\n¿Está absolutamente seguro de proceder con el Cierre Contable de Mes?');
+            
+            if (!seguro) return;
+
+            const btn = $(this);
+            btn.prop('disabled', true).text('⏳ Procesando Cierre...');
+
+            // Formatear fecha actual de corte segura para MySQL (YYYY-MM-DD HH:mm:ss)
+            const fechaCorte = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+            // 2. Disparar el Endpoint AJAX
+            SuiteAPI.post('suite_freeze_commissions', {
+                fecha_corte: fechaCorte
+            }).then(res => {
+                if (res.success) {
+                    alert('✅ ' + (res.data.message || res.data));
+                    location.reload(); // Recarga agresiva para repintar la Billetera a 0
+                } else {
+                    alert('❌ Error de validación: ' + (res.data.message || res.data));
+                    btn.prop('disabled', false).text('🔒 Ejecutar Cierre de Mes');
+                }
+            }).catch(err => {
+                alert('❌ Ocurrió un error crítico de red al intentar congelar el Ledger.');
+                btn.prop('disabled', false).text('🔒 Ejecutar Cierre de Mes');
+            });
+        });
+        
+    };
+	
+	
     // ==========================================
     // API PÚBLICA (Métodos Revelados)
     // ==========================================
@@ -62,7 +103,9 @@ const SuiteCommissions = (function($) {
         },
 
         init: function() {
-            // Se puede cargar automáticamente, o esperar a que el usuario haga clic en la pestaña
+			bindEvents();
+            
+			// Se puede cargar automáticamente, o esperar a que el usuario haga clic en la pestaña
             // Lo dejamos listo para ser invocado por el controlador de pestañas.
         }
     };

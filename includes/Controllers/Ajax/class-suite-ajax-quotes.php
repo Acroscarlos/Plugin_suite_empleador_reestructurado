@@ -205,6 +205,22 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
         if ( in_array( $current_status, $protected_statuses ) && ! $is_admin ) {
             $this->send_error( 'Candado de Inmutabilidad 🔒: Este pedido ya ha sido procesado y no puede ser modificado.', 403 );
         }
+		
+        // --- INICIO INYECCIÓN: EVENTO DE LOGÍSTICA INVERSA ---
+        if ( $current_status === 'despachado' && $new_status === 'proceso' ) {
+            // Re-verificación estricta (Zero-Trust)
+            if ( ! current_user_can( 'manage_options' ) ) {
+                $this->send_error( 'Acceso Denegado. Solo el Administrador puede aplicar Logística Inversa.', 403 );
+            }
+            // Registro obligatorio en el historial
+            if ( function_exists('suite_record_log') ) {
+                suite_record_log( 'logistica_inversa', "Logística Inversa: El Administrador (ID: " . get_current_user_id() . ") revirtió el pedido #{$quote_id} de 'despachado' a 'proceso'." );
+            }
+            
+            // Nota de Arquitectura: Si el módulo descuenta inventario físico al llegar a 'despachado', 
+            // este es el punto exacto para invocar una función que restaure dicho stock.
+        }
+        // --- FIN INYECCIÓN ---
 
 		// CORRECCIÓN 1: Se agregó 'por_enviar' al array de estados válidos
         $estados_validos = ['emitida', 'proceso', 'pagado', 'por_enviar', 'anulado', 'despachado'];
@@ -248,15 +264,22 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
         }
 
         if ( $result ) {
-            // 5. DISPARAR COMISIÓN AUTOMÁTICA
-            if ( $new_status === 'pagado' && $current_status !== 'pagado' ) {
-                $commission_model = new Suite_Model_Commission();
-                $commission_model->calculate_and_save_commission(
-                    $quote_id,
-                    $current_order->vendedor_id,
-                    $current_order->total_usd
-                );
-            }
+			
+			// 5. DISPARAR COMISIÓN AUTOMÁTICA
+			if ( $new_status === 'pagado' && $current_status !== 'pagado' ) {
+				$commission_model = new Suite_Model_Commission();
+
+				// Recepción y Sanitización Estricta (Casteo de cada elemento a Integer)
+				$colaboradores_raw = isset( $_POST['colaboradores'] ) ? $_POST['colaboradores'] : [];
+				$colaboradores_clean = is_array( $colaboradores_raw ) ? array_map( 'intval', $colaboradores_raw ) : [];
+
+				$commission_model->calculate_and_save_commission(
+					$quote_id,
+					$current_order->vendedor_id,
+					$current_order->total_usd,
+					$colaboradores_clean // <-- 4TO PARÁMETRO INYECTADO
+				);
+			}
 
             $this->send_success( [ 'message' => 'Estado actualizado a ' . strtoupper( $new_status ) ] );
         } else {

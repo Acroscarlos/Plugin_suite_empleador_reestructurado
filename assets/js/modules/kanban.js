@@ -25,21 +25,29 @@ const SuiteKanban = (function($) {
 		if (order.estado !== 'pagado' && order.estado !== 'despachado' && order.estado !== 'por_enviar') {			
             mobilePayBtn = `<button type="button" class="btn-modern-action trigger-mobile-pay" data-id="${order.id}" data-col="${order.estado}" style="padding: 4px; font-size:11px; background:#10b981; color:white; border:none; cursor:pointer;">💰 Pagar</button>`;
         }
-
+		
+        let reverseBtn = '';
+        if (order.estado === 'despachado' && suite_vars.is_admin) {
+            reverseBtn = `<button class="btn-modern-action small trigger-reverse-logistics" data-id="${order.id}" style="color:#dc2626; border-color:#fca5a5; width:100%; margin-top:8px;">🔙 Logística Inversa (Admin)</button>`;
+        }
+		
         return `
-            <div class="kanban-card" data-id="${order.id}">
-                <div class="kanban-card-title">#${order.codigo_cotizacion}</div>
-                <div class="kanban-card-client" title="${order.cliente_nombre}">👤 ${order.cliente_nombre || 'Sin Nombre'}</div>
-                
-                <div class="kanban-card-footer">
-                    <strong style="color: #059669; font-size:14px;">$${order.total_fmt}</strong>
-                    <div style="display:flex; gap: 8px;">
-                        ${waBtnHtml}
-                        ${mobilePayBtn}
-                        <a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${order.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action" style="padding: 4px; font-size:11px; text-decoration:none;">🖨️</a>
-                    </div>
-                </div>
+        <div class="kanban-card" data-id="${order.id}">
+            <!-- El botón de Logística Inversa se añade al final de la tarjeta -->
+            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                <span style="font-weight:bold; color:#0f172a;">#${order.codigo_cotizacion}</span>
             </div>
+            <div style="font-size: 13px; color:#475569; margin-bottom: 10px;">
+                👤 ${order.cliente_nombre || 'Sin Nombre'} <br>
+                <span style="font-weight:bold; color:#059669;">$${order.total_fmt}</span>
+            </div>
+            <div style="display:flex; gap: 5px; flex-wrap:wrap;">
+                ${waBtnHtml}
+                ${mobilePayBtn}
+                <a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${order.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small" style="color:#475569;">🖨️</a>
+            </div>
+            ${reverseBtn}
+        </div>
         `;
     };
 
@@ -170,7 +178,10 @@ const SuiteKanban = (function($) {
             const rawNumber = $('#cierre-loyverse').val().replace(/[^0-9]/g, '');
             const prefix = $('#cierre-recibo-prefijo').val();
             const finalReceipt = rawNumber ? (prefix + rawNumber) : '';
-
+			
+			const colaboradoresIds = $('#cierre-compartido').val() || [];
+			
+			
             // Recolectar datos (NOTA: Se removió la propiedad 'action' redundante)
             const payload = {
                 id: pendingDrop.quoteId,
@@ -179,7 +190,8 @@ const SuiteKanban = (function($) {
                 metodo_pago: $('#cierre-pago').val(),
                 metodo_entrega: $('#cierre-entrega').val(),
                 recibo_loyverse: finalReceipt, // Aquí inyectamos el recibo ensamblado (Ej: "F1005")
-                url_captura: $('#cierre-captura').val().trim()
+                url_captura: $('#cierre-captura').val().trim(),
+				colaboradores: colaboradoresIds 
             };
 
             // Validar obligatorios (Nota: Validamos !rawNumber para asegurar que escribieron los dígitos)
@@ -238,6 +250,37 @@ const SuiteKanban = (function($) {
             // Mostrar Modal
             $('#modal-cierre-venta').fadeIn();
         });
+		
+        // 4. TRIGGER EXCLUSIVO ADMIN: LOGÍSTICA INVERSA
+        $('#kb-col-despachado').on('click', '.trigger-reverse-logistics', function(e) {
+            e.preventDefault();
+            
+            const quoteId = $(this).data('id');
+            const seguro = confirm('⚠️ ATENCIÓN ADMIN:\n\n¿Está seguro de aplicar Logística Inversa a este pedido?\nLa orden regresará al estado "En Proceso" y se registrará la acción en el log de auditoría.');
+            
+            if (!seguro) return;
+            
+            const btn = $(this);
+            btn.prop('disabled', true).text('⏳ Revirtiendo...');
+
+            SuiteAPI.post('suite_change_status_ajax', {
+                id: quoteId,
+                estado: 'proceso'
+            }).then(res => {
+                if (res.success) {
+                    alert('✅ ' + (res.data.message || 'Logística Inversa aplicada exitosamente.'));
+                    SuiteKanban.loadBoard(); // Refresca las columnas del Kanban
+                } else {
+                    alert('❌ Error: ' + (res.data.message || res.data));
+                    btn.prop('disabled', false).text('🔙 Logística Inversa (Admin)');
+                }
+            }).catch(() => {
+                alert('❌ Error de red al intentar revertir el pedido.');
+                btn.prop('disabled', false).text('🔙 Logística Inversa (Admin)');
+            });
+        });
+		
+		
     };
     // ==========================================
     // API PÚBLICA (Métodos Revelados)

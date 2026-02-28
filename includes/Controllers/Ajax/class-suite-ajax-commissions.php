@@ -56,3 +56,54 @@ class Suite_Ajax_Dashboard_Stats extends Suite_AJAX_Controller {
         ] );
     }
 }
+
+
+/**
+ * Endpoint Exclusivo Administrativo: Cierre de Mes (Freeze de Comisiones)
+ * 
+ * Convierte el estado 'pendiente' a 'pagado' congelando la modificación del
+ * Ledger contable.
+ * ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-commissions.php
+ */
+class Suite_Ajax_Freeze_Commissions extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_freeze_commissions';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        // 1. Barrera Zero-Trust (Solo Administradores / Gerentes)
+        $user = wp_get_current_user();
+        $is_admin = current_user_can( 'manage_options' );
+        $is_gerente = in_array( 'suite_gerente', (array)$user->roles );
+
+        if ( ! $is_admin && ! $is_gerente ) {
+            $this->send_error( 'Acceso Denegado. Función financiera exclusiva de gerencia.', 403 );
+        }
+
+        // Fecha de corte para evitar liquidar ventas de hoy si el cierre es del mes anterior
+        $fecha_corte = isset( $_POST['fecha_corte'] ) ? sanitize_text_field( $_POST['fecha_corte'] ) : current_time('mysql');
+
+        global $wpdb;
+        $tabla_ledger = $wpdb->prefix . 'suite_comisiones_ledger';
+
+        // 2. Congelamiento Masivo y Atómico (Update Bulk)
+        $updated = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$tabla_ledger} 
+                 SET estado_pago = 'pagado' 
+                 WHERE estado_pago = 'pendiente' AND created_at <= %s",
+                $fecha_corte
+            )
+        );
+
+        if ( $updated !== false ) {
+            // Opcional: Escribir en la tabla Logs de Auditoría
+            if ( function_exists('suite_record_log') ) {
+                suite_record_log('cierre_mes', "Se ejecutó el Cierre Contable de Comisiones. ({$updated} registros congelados hasta: {$fecha_corte}).");
+            }
+            $this->send_success( "Cierre de mes ejecutado exitosamente. Se han liquidado y congelado {$updated} comisiones en el sistema." );
+        } else {
+            $this->send_error( 'Ocurrió un error en la base de datos al intentar congelar el Ledger.', 500 );
+        }
+    }
+}

@@ -161,18 +161,38 @@ class Suite_Model_Quote extends Suite_Model_Base {
      * Obtiene los pedidos agrupados por estado (Kanban)
      */
 	public function get_kanban_orders( $vendedor_id = null, $is_admin = false ) {
+        // --- INICIO: REGLA 3 ZERO-TRUST (Visibilidad del Kanban) ---
+        $user = wp_get_current_user();
+        $roles = (array) $user->roles;
+        
+        $is_admin_real = current_user_can( 'manage_options' );
+        $is_gerente = in_array( 'suite_gerente', $roles ) || in_array( 'gerente', $roles );
+        $is_logistica = in_array( 'suite_logistica', $roles );
+        
+        // El acceso global se otorga si tiene el rol gerencial/logístico, o si el parámetro legacy es true
+        $tiene_acceso_global = ( $is_admin_real || $is_gerente || $is_logistica || $is_admin );
+        $current_vendedor_id = get_current_user_id();
+        // --- FIN: ZERO-TRUST ---
+
         $tabla_cli = $this->wpdb->prefix . 'suite_clientes';
         
         $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, cli.nombre_razon AS cliente_nombre 
                 FROM {$this->table_name} c 
                 LEFT JOIN {$tabla_cli} cli ON c.cliente_id = cli.id";
         
-        if ( ! $is_admin && $vendedor_id ) $sql .= $this->wpdb->prepare( " WHERE c.vendedor_id = %d", intval( $vendedor_id ) );
+        // APLICACIÓN RLS: Si no tiene acceso global, forzamos a que solo vea lo suyo
+        if ( ! $tiene_acceso_global ) {
+            $sql .= $this->wpdb->prepare( " WHERE c.vendedor_id = %d", intval( $current_vendedor_id ) );
+        } elseif ( $vendedor_id ) {
+            // Si tiene acceso global pero pidió ver el de un vendedor específico (ej. filtro en la vista)
+            $sql .= $this->wpdb->prepare( " WHERE c.vendedor_id = %d", intval( $vendedor_id ) );
+        }
+
         $sql .= " ORDER BY c.fecha_emision DESC LIMIT 200";
         
         $resultados = $this->wpdb->get_results( $sql );
         
-        // AGREGADO: Únicamente la llave 'por_enviar'
+        // AGREGADO: Únicamente la llave 'por_enviar' (Protegido de tu versión original)
         $kanban_data = [ 'emitida' => [], 'proceso' => [], 'pagado' => [], 'por_enviar' => [], 'despachado' => [] ];
         
         foreach ( $resultados as $row ) {
