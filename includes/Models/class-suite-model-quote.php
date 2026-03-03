@@ -174,12 +174,17 @@ class Suite_Model_Quote extends Suite_Model_Base {
         $current_vendedor_id = get_current_user_id();
         // --- FIN: ZERO-TRUST ---
 
+		
+		
         $tabla_cli = $this->wpdb->prefix . 'suite_clientes';
         
-        $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, cli.nombre_razon AS cliente_nombre 
+        $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, c.pod_url, cli.nombre_razon AS cliente_nombre
                 FROM {$this->table_name} c
                 LEFT JOIN {$tabla_cli} cli ON c.cliente_id = cli.id
                 WHERE 1=1";
+		
+		
+		
 
         // 1. FILTRO DINÁMICO: Ocultar cotizaciones vencidas del Kanban (fecha_emision + validez < hoy)
         $sql .= " AND NOT (c.estado = 'emitida' AND DATE_ADD(c.fecha_emision, INTERVAL c.validez_dias DAY) < NOW())";

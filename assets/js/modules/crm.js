@@ -96,10 +96,25 @@ const SuiteCRM = (function($) {
 				responsive: true,
 				dom: tableDom,
 				buttons: tableButtons,
-				language: dtLanguage
+				language: dtLanguage,
+				// --- INICIO CORRECCIÓN: Optimización y Truncado de Columna ---
+				columnDefs: [
+					{
+						targets: 1, // Índice de la columna "Nombre / Razón Social"
+						render: function(data, type, row) {
+							if (type === 'display') {
+								// Extraemos el texto puro en caso de que venga con etiquetas HTML (como <strong>)
+								let textContent = $('<div>').html(data).text();
+								return `<div style="max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${textContent}">${data}</div>`;
+							}
+							return data;
+						}
+					}
+				]
+				// --- FIN CORRECCIÓN ---
 			});
 
-            // Buscador personalizado
+			// Buscador personalizado
             $('#clients-table-search').on('keyup', function() { 
                 cliTable.search(this.value).draw(); 
             });
