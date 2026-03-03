@@ -66,6 +66,7 @@ function suite_empleados_init() {
 	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-employees.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-roles.php';
 	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-products.php';
+	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-inventory.php';
     // Controladores API REST (Data Lake y Machine Learning)
     require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-stats.php';
 	// Controladores de la API REST
@@ -92,7 +93,7 @@ function suite_empleados_init() {
 	new Suite_Ajax_Print_Quote();
 	new Suite_Ajax_Get_Products();
 	new Suite_Ajax_Quote_Details();
-	
+	new Suite_Ajax_Get_Inventory();
 	
     // Módulo 1: Tablero Kanban (Pedidos)
     new Suite_Ajax_Kanban_Data();
@@ -219,15 +220,25 @@ register_deactivation_hook( __FILE__, 'suite_plugin_deactivate' );
 
 .suite-tabs-modern {
     display: flex;
+	flex-wrap: nowrap !important;      /* Impide que salten de línea */
+    overflow-x: auto;                  /* Activa el scroll horizontal en pantallas pequeñas */
+    -webkit-overflow-scrolling: touch;
     gap: 10px;
     border-bottom: 2px solid #e2e8f0;
     margin-bottom: 20px;
     background: #f8fafc;
     padding: 10px 10px 0 10px;
     border-radius: 8px 8px 0 0;
+	scrollbar-width: none;             /* Firefox */
+    -ms-overflow-style: none;
+}
+.suite-tabs-modern::-webkit-scrollbar {
+    display: none;
 }
 
 .tab-btn {
+	flex-shrink: 0;                    /* Evita que los botones se achiquen si no caben */
+    white-space: nowrap;
     padding: 12px 20px;
     border: none;
     background: transparent;
@@ -693,10 +704,25 @@ const SuiteCRM = (function($) {
 				responsive: true,
 				dom: tableDom,
 				buttons: tableButtons,
-				language: dtLanguage
+				language: dtLanguage,
+				// --- INICIO CORRECCIÓN: Optimización y Truncado de Columna ---
+				columnDefs: [
+					{
+						targets: 1, // Índice de la columna "Nombre / Razón Social"
+						render: function(data, type, row) {
+							if (type === 'display') {
+								// Extraemos el texto puro en caso de que venga con etiquetas HTML (como <strong>)
+								let textContent = $('<div>').html(data).text();
+								return `<div style="max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${textContent}">${data}</div>`;
+							}
+							return data;
+						}
+					}
+				]
+				// --- FIN CORRECCIÓN ---
 			});
 
-            // Buscador personalizado
+			// Buscador personalizado
             $('#clients-table-search').on('keyup', function() { 
                 cliTable.search(this.value).draw(); 
             });
@@ -1512,10 +1538,16 @@ const SuiteKanban = (function($) {
         if (order.estado === 'despachado' && suite_vars.is_admin) {
             reverseBtn = `<button class="btn-modern-action small trigger-reverse-logistics" data-id="${order.id}" style="color:#dc2626; border-color:#fca5a5; width:100%; margin-top:8px;">🔙 Logística Inversa (Admin)</button>`;
         }
-		
+
+        // --- INICIO CORRECCIÓN: Botón de Guía Logística (POD) ---
+        let podBtn = '';
+        if (order.estado === 'despachado' && order.pod_url) {
+            podBtn = `<a href="${order.pod_url}" target="_blank" class="btn-modern-action small" style="color:#0284c7; border-color:#bae6fd;" title="Ver Guía / Comprobante de Entrega">📸 Guía</a>`;
+        }
+        // --- FIN CORRECCIÓN ---
+
         return `
         <div class="kanban-card" data-id="${order.id}">
-            <!-- El botón de Logística Inversa se añade al final de la tarjeta -->
             <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
                 <span style="font-weight:bold; color:#0f172a;">#${order.codigo_cotizacion}</span>
             </div>
@@ -1526,7 +1558,8 @@ const SuiteKanban = (function($) {
             <div style="display:flex; gap: 5px; flex-wrap:wrap;">
                 ${waBtnHtml}
                 ${mobilePayBtn}
-                <a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${order.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small" style="color:#475569;">🖨️</a>
+                <a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${order.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small" style="color:#475569;" title="Imprimir PDF">🖨️</a>
+                ${podBtn}
             </div>
             ${reverseBtn}
         </div>
@@ -2581,6 +2614,7 @@ class Suite_Shortcode_Controller {
             wp_enqueue_script( 'suite-logistics-js', SUITE_URL . 'assets/js/modules/logistics.js', ['suite-api-js'], SUITE_VERSION, true );
             wp_enqueue_script( 'suite-marketing-js', SUITE_URL . 'assets/js/modules/marketing.js', ['suite-api-js', 'chart-js'], SUITE_VERSION, true );
 			wp_enqueue_script( 'suite-employees-js', SUITE_URL . 'assets/js/modules/employees.js', ['suite-api-js', 'dt-js'], SUITE_VERSION, true );
+       		wp_enqueue_script( 'suite-inventory-js', SUITE_URL . 'assets/js/modules/inventory.js', ['suite-api-js', 'dt-js'], SUITE_VERSION, true );
 
             // 5. Orquestador Principal (Carga al final)
             wp_enqueue_script( 'suite-main-js', SUITE_URL . 'assets/js/main.js', [
@@ -2591,7 +2625,8 @@ class Suite_Shortcode_Controller {
                 'suite-commissions-js', 
                 'suite-logistics-js', 
                 'suite-marketing-js',
-				'suite-employees-js'
+				'suite-employees-js',
+				'suite-inventory-js'
             ], SUITE_VERSION, true );
 
 			
@@ -2607,7 +2642,8 @@ class Suite_Shortcode_Controller {
                 'is_admin'   => current_user_can( 'manage_options' ),
                 'rest_url'   => esc_url_raw( rest_url() ),
                 'rest_nonce' => wp_create_nonce( 'wp_rest' ),
-				'can_export' => $can_export
+				'can_export' => $can_export,
+				'is_marketing' => in_array( 'suite_marketing', $roles_actuales )
             ] );
         }
     }
@@ -2630,6 +2666,7 @@ class Suite_Shortcode_Controller {
         $can_view_comis  = $es_admin || current_user_can( 'suite_view_commissions' );
         $can_view_logis  = $es_admin || current_user_can( 'suite_view_logistics' );
         $can_view_bi     = $es_admin || current_user_can( 'suite_view_marketing' );
+		$can_view_inventory = $es_admin || current_user_can( 'suite_view_crm' ) || current_user_can( 'suite_view_marketing' );
         $can_manage_team = $es_admin || current_user_can( 'suite_manage_team' );
 
         // Si no tiene ningún permiso, se bloquea el renderizado por completo
@@ -2689,6 +2726,10 @@ class Suite_Shortcode_Controller {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabMarketing\')" style="color:#dc2626; font-weight:bold;">📈 BI & Marketing</button>';
         }
 		
+		if ( $can_view_inventory ) {
+            echo '<button class="tab-btn" onclick="window.openSuiteTab(\'TabInventario\', this)">📦 Inventario</button>';
+        }
+		
 		// Pestaña Protegida: Gestión de Equipo (RBAC)
         if ( $can_manage_team ) { 
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabEquipo\')" style="color:#0f172a; font-weight:bold;">⚙️ Equipo y Accesos</button>';
@@ -2718,6 +2759,10 @@ class Suite_Shortcode_Controller {
         if ( $can_view_bi ) {
             require SUITE_PATH . 'views/app/tab-marketing.php';
         }
+		
+		if ( $can_view_inventory ) {
+            require SUITE_PATH . 'views/app/tab-inventario.php';
+        }
 
 		// Nuevo Módulo de Equipo y Roles (RBAC)
         if ( $can_manage_team ) { 
@@ -2739,6 +2784,7 @@ class Suite_Shortcode_Controller {
                 if (typeof SuiteMarketing !== "undefined") SuiteMarketing.init();
 				if (typeof SuiteEmployees !== "undefined") SuiteEmployees.init();
 				if (typeof SuiteHistorial !== "undefined") SuiteHistorial.init();
+				if (typeof SuiteInventory !== "undefined") SuiteInventory.init();
 				
 				
 				
@@ -6366,12 +6412,17 @@ class Suite_Model_Quote extends Suite_Model_Base {
         $current_vendedor_id = get_current_user_id();
         // --- FIN: ZERO-TRUST ---
 
+		
+		
         $tabla_cli = $this->wpdb->prefix . 'suite_clientes';
         
-        $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, cli.nombre_razon AS cliente_nombre 
+        $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, c.pod_url, cli.nombre_razon AS cliente_nombre
                 FROM {$this->table_name} c
                 LEFT JOIN {$tabla_cli} cli ON c.cliente_id = cli.id
                 WHERE 1=1";
+		
+		
+		
 
         // 1. FILTRO DINÁMICO: Ocultar cotizaciones vencidas del Kanban (fecha_emision + validez < hoy)
         $sql .= " AND NOT (c.estado = 'emitida' AND DATE_ADD(c.fecha_emision, INTERVAL c.validez_dias DAY) < NOW())";

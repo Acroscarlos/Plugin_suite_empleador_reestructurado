@@ -55,6 +55,7 @@ class Suite_Shortcode_Controller {
             wp_enqueue_script( 'suite-logistics-js', SUITE_URL . 'assets/js/modules/logistics.js', ['suite-api-js'], SUITE_VERSION, true );
             wp_enqueue_script( 'suite-marketing-js', SUITE_URL . 'assets/js/modules/marketing.js', ['suite-api-js', 'chart-js'], SUITE_VERSION, true );
 			wp_enqueue_script( 'suite-employees-js', SUITE_URL . 'assets/js/modules/employees.js', ['suite-api-js', 'dt-js'], SUITE_VERSION, true );
+       		wp_enqueue_script( 'suite-inventory-js', SUITE_URL . 'assets/js/modules/inventory.js', ['suite-api-js', 'dt-js'], SUITE_VERSION, true );
 
             // 5. Orquestador Principal (Carga al final)
             wp_enqueue_script( 'suite-main-js', SUITE_URL . 'assets/js/main.js', [
@@ -65,7 +66,8 @@ class Suite_Shortcode_Controller {
                 'suite-commissions-js', 
                 'suite-logistics-js', 
                 'suite-marketing-js',
-				'suite-employees-js'
+				'suite-employees-js',
+				'suite-inventory-js'
             ], SUITE_VERSION, true );
 
 			
@@ -81,7 +83,8 @@ class Suite_Shortcode_Controller {
                 'is_admin'   => current_user_can( 'manage_options' ),
                 'rest_url'   => esc_url_raw( rest_url() ),
                 'rest_nonce' => wp_create_nonce( 'wp_rest' ),
-				'can_export' => $can_export
+				'can_export' => $can_export,
+				'is_marketing' => in_array( 'suite_marketing', $roles_actuales )
             ] );
         }
     }
@@ -104,6 +107,7 @@ class Suite_Shortcode_Controller {
         $can_view_comis  = $es_admin || current_user_can( 'suite_view_commissions' );
         $can_view_logis  = $es_admin || current_user_can( 'suite_view_logistics' );
         $can_view_bi     = $es_admin || current_user_can( 'suite_view_marketing' );
+		$can_view_inventory = $es_admin || current_user_can( 'suite_view_crm' ) || current_user_can( 'suite_view_marketing' );
         $can_manage_team = $es_admin || current_user_can( 'suite_manage_team' );
 
         // Si no tiene ningún permiso, se bloquea el renderizado por completo
@@ -163,6 +167,10 @@ class Suite_Shortcode_Controller {
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabMarketing\')" style="color:#dc2626; font-weight:bold;">📈 BI & Marketing</button>';
         }
 		
+		if ( $can_view_inventory ) {
+            echo '<button class="tab-btn" onclick="window.openSuiteTab(\'TabInventario\', this)">📦 Inventario</button>';
+        }
+		
 		// Pestaña Protegida: Gestión de Equipo (RBAC)
         if ( $can_manage_team ) { 
             echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabEquipo\')" style="color:#0f172a; font-weight:bold;">⚙️ Equipo y Accesos</button>';
@@ -192,6 +200,10 @@ class Suite_Shortcode_Controller {
         if ( $can_view_bi ) {
             require SUITE_PATH . 'views/app/tab-marketing.php';
         }
+		
+		if ( $can_view_inventory ) {
+            require SUITE_PATH . 'views/app/tab-inventario.php';
+        }
 
 		// Nuevo Módulo de Equipo y Roles (RBAC)
         if ( $can_manage_team ) { 
@@ -213,6 +225,7 @@ class Suite_Shortcode_Controller {
                 if (typeof SuiteMarketing !== "undefined") SuiteMarketing.init();
 				if (typeof SuiteEmployees !== "undefined") SuiteEmployees.init();
 				if (typeof SuiteHistorial !== "undefined") SuiteHistorial.init();
+				if (typeof SuiteInventory !== "undefined") SuiteInventory.init();
 				
 				
 				

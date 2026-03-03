@@ -44,15 +44,25 @@
 
 .suite-tabs-modern {
     display: flex;
+	flex-wrap: nowrap !important;      /* Impide que salten de línea */
+    overflow-x: auto;                  /* Activa el scroll horizontal en pantallas pequeñas */
+    -webkit-overflow-scrolling: touch;
     gap: 10px;
     border-bottom: 2px solid #e2e8f0;
     margin-bottom: 20px;
     background: #f8fafc;
     padding: 10px 10px 0 10px;
     border-radius: 8px 8px 0 0;
+	scrollbar-width: none;             /* Firefox */
+    -ms-overflow-style: none;
+}
+.suite-tabs-modern::-webkit-scrollbar {
+    display: none;
 }
 
 .tab-btn {
+	flex-shrink: 0;                    /* Evita que los botones se achiquen si no caben */
+    white-space: nowrap;
     padding: 12px 20px;
     border: none;
     background: transparent;
