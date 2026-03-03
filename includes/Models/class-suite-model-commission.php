@@ -79,30 +79,39 @@ class Suite_Model_Commission extends Suite_Model_Base {
      * @param int $anio Año a evaluar (ej. 2024)
      * @return array    Array asociativo con los datos de los ganadores
      */
-    public function get_gamification_winners( $mes, $anio ) {
-        $tabla_cot  = $this->wpdb->prefix . 'suite_cotizaciones';
-        $tabla_user = $this->wpdb->prefix . 'users';
+	public function get_gamification_winners( $mes, $anio ) {
+        $tabla_ledger   = $this->wpdb->prefix . 'suite_comisiones_ledger';
+        $tabla_user     = $this->wpdb->prefix . 'users';
+        $tabla_usermeta = $this->wpdb->usermeta;
 
-        // 1. Ganador "Pez Gordo" ($20): Mayor volumen acumulado en dólares
+        // 1. Ganador "Pez Gordo" ($20): Mayor volumen acumulado (Ledger + Filtro Elegibilidad)
         $pez_gordo = $this->wpdb->get_row( $this->wpdb->prepare( "
-            SELECT c.vendedor_id, u.display_name, SUM(c.total_usd) as total_vendido
-            FROM {$tabla_cot} c
-            INNER JOIN {$tabla_user} u ON c.vendedor_id = u.ID
-            WHERE MONTH(c.fecha_emision) = %d AND YEAR(c.fecha_emision) = %d
-            AND c.estado IN ('pagado', 'despachado')
-            GROUP BY c.vendedor_id
+            SELECT l.vendedor_id, u.display_name, SUM(l.monto_base_usd) as total_vendido
+            FROM {$tabla_ledger} l
+            INNER JOIN {$tabla_user} u ON l.vendedor_id = u.ID
+            INNER JOIN {$tabla_usermeta} um ON l.vendedor_id = um.user_id
+            WHERE l.estado_pago = 'pendiente' 
+              AND MONTH(l.created_at) = %d 
+              AND YEAR(l.created_at) = %d 
+              AND l.monto_base_usd > 0
+              AND um.meta_key = 'suite_participa_comisiones' AND um.meta_value = '1'
+            GROUP BY l.vendedor_id
             ORDER BY total_vendido DESC
             LIMIT 1
         ", intval( $mes ), intval( $anio ) ) );
 
-        // 2. Ganador "Deja pa' los demás" ($20): Mayor cantidad de ventas cerradas
+        // 2. Ganador "Deja pa' los demás" ($20): Mayor cantidad de ventas (Ledger + Filtro Elegibilidad)
         $deja_pa_los_demas = $this->wpdb->get_row( $this->wpdb->prepare( "
-            SELECT c.vendedor_id, u.display_name, COUNT(c.id) as cantidad_ventas
-            FROM {$tabla_cot} c
-            INNER JOIN {$tabla_user} u ON c.vendedor_id = u.ID
-            WHERE MONTH(c.fecha_emision) = %d AND YEAR(c.fecha_emision) = %d
-            AND c.estado IN ('pagado', 'despachado')
-            GROUP BY c.vendedor_id
+            SELECT l.vendedor_id, u.display_name, COUNT(l.id) as cantidad_ventas
+            FROM {$tabla_ledger} l
+            INNER JOIN {$tabla_user} u ON l.vendedor_id = u.ID
+            INNER JOIN {$tabla_usermeta} um ON l.vendedor_id = um.user_id
+            WHERE l.estado_pago = 'pendiente' 
+              AND MONTH(l.created_at) = %d 
+              AND YEAR(l.created_at) = %d 
+              AND l.monto_base_usd > 0
+              AND um.meta_key = 'suite_participa_comisiones' AND um.meta_value = '1'
+            GROUP BY l.vendedor_id
             ORDER BY cantidad_ventas DESC
             LIMIT 1
         ", intval( $mes ), intval( $anio ) ) );

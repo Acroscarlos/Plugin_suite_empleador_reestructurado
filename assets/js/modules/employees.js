@@ -267,6 +267,49 @@ const SuiteEmployees = (function($) {
                 btn.prop('disabled', false).text('🛡️ Guardar Perfil y Permisos');
             });
         });
+		
+        // --- INICIO FASE 4.1: INTERCEPTOR DE MATRIZ DE PERMISOS ---
+        $('#matriz-permisos').on('change', '.toggle-capability', function(e) {
+            const checkbox = $(this);
+            const role = checkbox.data('role');
+            const cap = checkbox.data('cap');
+            const isGranted = checkbox.is(':checked') ? 1 : 0;
+
+            // Bloqueo temporal para prevenir spam de clics
+            checkbox.prop('disabled', true);
+
+            SuiteAPI.post('suite_update_role_cap', {
+                role: role,
+                capability: cap,
+                is_granted: isGranted
+            }).then(res => {
+                if (res.success) {
+                    // Notificación Toast sutil
+                    const toast = document.createElement('div');
+                    toast.textContent = '✅ ' + (res.data.message || res.data);
+                    toast.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#10b981; color:white; padding:12px 20px; border-radius:8px; z-index:9999; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition: opacity 0.4s ease-out; font-size:14px;';
+                    document.body.appendChild(toast);
+                    
+                    // Desvanecer el Toast
+                    setTimeout(() => { 
+                        toast.style.opacity = '0'; 
+                        setTimeout(() => toast.remove(), 400); 
+                    }, 2500);
+                } else {
+                    alert('❌ Error: ' + (res.data.message || res.data));
+                    checkbox.prop('checked', !isGranted); // Reversión visual
+                }
+            }).catch(err => {
+                alert('❌ Ocurrió un error de red al intentar actualizar la capacidad.');
+                checkbox.prop('checked', !isGranted); // Reversión visual
+            }).finally(() => {
+                checkbox.prop('disabled', false);
+            });
+        });
+        // --- FIN FASE 4.1 ---		
+		
+		
+		
     };
 
     // ==========================================

@@ -6,6 +6,8 @@
  */
 const SuiteCommissions = (function($) {
     'use strict';
+	let auditTable = null;
+    let fameLoaded = false;
 
     // ==========================================
     // MÉTODOS PRIVADOS
@@ -36,6 +38,109 @@ const SuiteCommissions = (function($) {
             $('#deja-pa-count').text('0 ventas');
         }
     };
+	
+	// ==========================================
+    // MÉTODOS PRIVADOS (INICIO FASE 3.2: SPA & DATATABLES)
+    // ==========================================
+
+    const bindPillEvents = function() {
+        $('.pill-btn').on('click', function(e) {
+            e.preventDefault();
+            
+            // UI: Cambiar color del botón activo
+            $('.pill-btn').removeClass('active').css({
+                'background': 'transparent',
+                'border': '1px solid #cbd5e1'
+            });
+            $(this).addClass('active').css({
+                'background': '#fff',
+                'border': '1px solid #cbd5e1'
+            });
+
+            const target = $(this).data('target');
+            
+            // Lógica SPA: Ocultar todo y mostrar el contenedor solicitado
+            $('#comisiones-dashboard-view, #comisiones-audit-view, #comisiones-fame-view').hide();
+            $('#' + target).fadeIn();
+
+            // Lazy load de DataTables y Salón de la Fama (Solo carga si no se había cargado antes)
+            if (target === 'comisiones-audit-view' && !auditTable) {
+                loadAuditTable();
+            } else if (target === 'comisiones-fame-view' && !fameLoaded) {
+                loadHallOfFame();
+            }
+        });
+    };
+
+    const loadAuditTable = function() {
+        auditTable = $('#auditTable').DataTable({
+            responsive: true,
+            language: { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json" },
+            ajax: {
+                url: suite_vars.ajax_url,
+                type: 'POST',
+                // OJO: Esta acción debe existir en tu backend PHP
+                data: { action: 'suite_get_commission_audit', nonce: suite_vars.nonce },
+                dataSrc: 'data'
+            },
+            columns: [
+                { data: 'quote_id', render: data => data > 0 ? `<strong>#${data}</strong>` : '<span style="color:#64748b;">Premio/Bono</span>' },
+                { data: 'vendedor_nombre' },
+                { data: 'monto_base_usd', render: data => `$${parseFloat(data).toFixed(2)}` },
+                { data: 'comision_ganada_usd', render: data => {
+                    let val = parseFloat(data);
+                    let color = val < 0 ? '#dc2626' : '#059669';
+                    return `<strong style="color:${color};">${val < 0 ? '' : '+'}$${val.toFixed(2)}</strong>`;
+                }},
+                { data: 'estado_pago', render: data => {
+                    let bg = data === 'pagado' ? '#d1fae5' : (data === 'anulado' ? '#fee2e2' : '#fef3c7');
+                    let cl = data === 'pagado' ? '#065f46' : (data === 'anulado' ? '#991b1b' : '#92400e');
+                    return `<span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; background:${bg}; color:${cl};">${data.toUpperCase()}</span>`;
+                }},
+                { data: 'created_at', render: data => {
+                    // Formatear la fecha para que se lea mejor en la tabla
+                    let d = new Date(data);
+                    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+                }}
+            ],
+            order: [[5, 'desc']] // Ordenar por fecha más reciente
+        });
+    };
+
+    const loadHallOfFame = function() {
+        $('#fame-cards-container').html('<p style="color:#64748b;">⏳ Desclasificando leyendas...</p>');
+        SuiteAPI.post('suite_get_hall_of_fame').then(res => {
+            if (res.success && res.data.length > 0) {
+                let html = '';
+                res.data.forEach(mesData => {
+                    // Título del Periodo
+                    html += `<div style="width:100%; border-bottom:2px solid #e2e8f0; margin-top:15px; padding-bottom:5px;"><h4 style="color:#0f172a;">📅 Periodo: ${mesData.mes.replace('_', '-')}</h4></div>`;
+                    
+                    // Contenedor de las tarjetas del periodo
+                    html += `<div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; width:100%;">`;
+                    
+                    Object.values(mesData.premios).forEach(premio => {
+                        html += `
+                        <div class="kpi-card" style="flex:1; min-width:250px; background:#fff; border:1px solid #e2e8f0; padding:20px; border-radius:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+                            <small style="display:block; text-transform:uppercase; color:#64748b; font-weight:bold; margin-bottom:5px;">${premio.premio_nombre}</small>
+                            <h3 style="margin:0; color:#0f172a; font-size:20px;">👤 ${premio.vendedor_name}</h3>
+                            <strong style="display:block; margin-top:10px; color:#059669; font-size:18px;">+$${parseFloat(premio.monto_premio).toFixed(2)}</strong>
+                        </div>`;
+                    });
+                    html += `</div>`; // Cierre del contenedor de tarjetas
+                });
+                $('#fame-cards-container').html(html);
+                fameLoaded = true; // Marcar como cargado para no volver a pedirlo al backend
+            } else {
+                $('#fame-cards-container').html('<p style="color:#64748b;">Aún no hay registros en el Salón de la Fama.</p>');
+            }
+        }).catch(() => {
+            $('#fame-cards-container').html('<p style="color:#dc2626;">Error al cargar el Salón de la Fama.</p>');
+        });
+    };
+    // ==========================================
+    // FIN FASE 3.2: SPA & DATATABLES
+    // ==========================================
 
 	
 	// ==========================================
@@ -43,34 +148,75 @@ const SuiteCommissions = (function($) {
     // ==========================================
     const bindEvents = function() {
         
-        // Acción de Cierre de Mes (Exclusiva de Gerencia)
-        $('#btn-cierre-mes').on('click', function(e) {
+        // Acción de Cierre de Mes con Adjudicación de Premios (Fase 2.2)
+        $('#btn-cierre-mes').on('click', async function(e) {
             e.preventDefault();
-            
-            // 1. Confirmación de Doble Vía (Seguridad Anti-Errores)
-            const seguro = confirm('⚠️ ATENCIÓN: Esta acción es IRREVERSIBLE.\n\nTodos los registros "pendientes" en el Ledger de Comisiones pasarán a "pagado" y se congelarán.\n\n¿Está absolutamente seguro de proceder con el Cierre Contable de Mes?');
-            
-            if (!seguro) return;
+
+            // 1. Población dinámica del select de vendedores (Usando variable localizada de WP)
+            let optionsHtml = '<option value="" disabled selected>Seleccione al vendedor...</option>';
+            if (typeof suite_vars !== 'undefined' && suite_vars.sellers) {
+                suite_vars.sellers.forEach(seller => {
+                    optionsHtml += `<option value="${seller.id}">${seller.name}</option>`;
+                });
+            } else {
+                optionsHtml += '<option value="">(Debe inyectar suite_vars.sellers desde WP)</option>';
+            }
+
+            // 2. Interfaz Híbrida mediante SweetAlert2
+            const { value: dalePlayWinnerId, isConfirmed } = await Swal.fire({
+                title: '⚙️ Cierre Contable de Mes',
+                html: `
+                    <div style="text-align:left; font-size:14px;">
+                        <p style="color:#b91c1c; font-weight:bold; margin-bottom:15px;">
+                            ⚠️ ATENCIÓN: Esta acción es IRREVERSIBLE. El Ledger pasará a estado "pagado".
+                        </p>
+                        <p style="margin-bottom:8px;"><strong>Asignación Manual de Premio:</strong></p>
+                        <label style="color:#475569; font-size:13px;">▶️ Dale Play (Esfuerzo excepcional)</label>
+                        <select id="dale-play-select" class="swal2-select" style="display:flex; width:100%; margin: 5px 0 15px 0; font-size:15px; padding:8px;">
+                            ${optionsHtml}
+                        </select>
+                        <p style="font-size:12px; color:#64748b; font-style:italic;">
+                            * Los premios "🐟 Pez Gordo" y "🏃 Deja pa' los demás" se calcularán e inyectarán automáticamente en el Ledger.
+                        </p>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: '🔒 Congelar Mes y Repartir Premios',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const selectEl = document.getElementById('dale-play-select');
+                    if (!selectEl.value) {
+                        Swal.showValidationMessage('Debe seleccionar un ganador para el premio Dale Play.');
+                    }
+                    return selectEl.value;
+                }
+            });
+
+            if (!isConfirmed || !dalePlayWinnerId) return;
 
             const btn = $(this);
             btn.prop('disabled', true).text('⏳ Procesando Cierre...');
 
-            // Formatear fecha actual de corte segura para MySQL (YYYY-MM-DD HH:mm:ss)
             const fechaCorte = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-            // 2. Disparar el Endpoint AJAX
+            // 3. Disparar el Endpoint AJAX
             SuiteAPI.post('suite_freeze_commissions', {
-                fecha_corte: fechaCorte
+                fecha_corte: fechaCorte,
+                dale_play_winner_id: dalePlayWinnerId
             }).then(res => {
                 if (res.success) {
-                    alert('✅ ' + (res.data.message || res.data));
-                    location.reload(); // Recarga agresiva para repintar la Billetera a 0
+                    Swal.fire('¡Éxito!', res.data.message || res.data, 'success').then(() => {
+                        location.reload(); 
+                    });
                 } else {
-                    alert('❌ Error de validación: ' + (res.data.message || res.data));
+                    Swal.fire('Error', res.data.message || res.data, 'error');
                     btn.prop('disabled', false).text('🔒 Ejecutar Cierre de Mes');
                 }
             }).catch(err => {
-                alert('❌ Ocurrió un error crítico de red al intentar congelar el Ledger.');
+                Swal.fire('Error Crítico', 'Ocurrió un error de red al intentar congelar el Ledger.', 'error');
                 btn.prop('disabled', false).text('🔒 Ejecutar Cierre de Mes');
             });
         });
@@ -104,6 +250,7 @@ const SuiteCommissions = (function($) {
 
         init: function() {
 			bindEvents();
+			bindPillEvents();
             
 			// Se puede cargar automáticamente, o esperar a que el usuario haga clic en la pestaña
             // Lo dejamos listo para ser invocado por el controlador de pestañas.

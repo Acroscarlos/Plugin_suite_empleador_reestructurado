@@ -87,6 +87,7 @@ function suite_empleados_init() {
     // Módulo 1: Tablero Kanban (Pedidos)
     new Suite_Ajax_Kanban_Data();
     new Suite_Ajax_Kanban_Status();
+	new Suite_Ajax_Reverse_Logistics();
 
     // Módulo 3: Logística y Despacho
     new Suite_Ajax_Upload_POD();
@@ -95,7 +96,8 @@ function suite_empleados_init() {
     // Módulo 4: Dashboard de Comisiones y Gamificación
     new Suite_Ajax_Dashboard_Stats();
 	new Suite_Ajax_Freeze_Commissions();
-
+	new Suite_Ajax_Commission_Audit(); 
+    new Suite_Ajax_Hall_of_Fame();
     // Módulo 5: Cerebro de Demanda (REST API)
     new Suite_API_Stats();
 	new Suite_API_Sync();
@@ -107,6 +109,7 @@ function suite_empleados_init() {
     new Suite_Ajax_Role_List();
     new Suite_Ajax_Role_Save();
     new Suite_Ajax_Role_Delete();
+	new Suite_Ajax_Update_Role_Cap();
 
     // Gestor de la Vista Principal (Shortcode y encolado de assets)
     new Suite_Shortcode_Controller();

@@ -21,22 +21,29 @@ class Suite_Model_Roles {
      *
      * @return array
      */
+	/**
+     * Devuelve el diccionario estructurado de capacidades de la Suite
+     */
     public function get_capabilities_dictionary() {
+        // FASE 4.2: Diccionario Unificado de Capacidades (Sincronizado con Matriz RBAC)
         return [
-            'crm' => [
-                'suite_view_crm'       => 'Ver Clientes y Cotizar',
-                'suite_manage_clients' => 'Crear, Editar y Eliminar Clientes',
-                'suite_change_status'  => 'Cambiar Estados (Kanban)'
+            'Nivel 1 (Vistas)' => [
+                'suite_view_crm'         => 'Ver Directorio de Clientes',
+                'suite_view_quotes'      => 'Ver Cotizador e Historial',
+                'suite_view_kanban'      => 'Ver Tablero Kanban (Pedidos)',
+                'suite_view_inventory'   => 'Ver Control de Inventario',
+                'suite_view_commissions' => 'Ver Panel de Comisiones',
+                'suite_view_logistics'   => 'Ver Módulo de Logística',
+                'suite_view_marketing'   => 'Ver Módulo BI & Marketing',
+                'suite_manage_team'      => 'Gestión de Equipo (RBAC)'
             ],
-            'logistica' => [
-                'suite_view_logistics' => 'Ver Almacén y Despacho',
-                'suite_print_picking'  => 'Imprimir Hoja de Picking',
-                'suite_upload_pod'     => 'Subir Comprobante de Entrega (POD)'
+            'Nivel 2 (Acciones Críticas)' => [
+                'suite_action_approve_commissions' => 'Ejecutar Cierre de Mes (Comisiones)',
+                'suite_action_reverse_logistics'   => 'Aprobar Logística Inversa'
             ],
-            'admin' => [
-                'suite_export_data'    => 'Exportar a Excel/CSV',
-                'suite_view_marketing' => 'Ver Analíticas y Marketing (BI)',
-                'suite_manage_team'    => 'Gestionar Empleados y Roles'
+            'Nivel 3 (Datos Sensibles)' => [
+                'suite_data_detailed_stock'    => 'Ver Costos Base de Stock',
+                'suite_data_marketing_transit' => 'Ver Data de Tránsito en BI'
             ]
         ];
     }

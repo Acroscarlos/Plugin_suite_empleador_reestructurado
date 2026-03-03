@@ -99,19 +99,19 @@ class Suite_Shortcode_Controller {
             return '<div style="padding:20px; text-align:center; font-family:sans-serif;">🔒 Inicie sesión para acceder a la Intranet de RV Tech.</div>';
         }
 
-        // --- 2. CONTROL DE ROLES DINÁMICO (RBAC) ---
-        // Se abandona el chequeo estático de roles por validación de Capacidades (Capabilities)
-        $es_admin        = current_user_can( 'manage_options' );
-        $can_view_crm    = $es_admin || current_user_can( 'suite_view_crm' );
-        $can_view_kanban = $es_admin || current_user_can( 'suite_view_kanban' );
-        $can_view_comis  = $es_admin || current_user_can( 'suite_view_commissions' );
-        $can_view_logis  = $es_admin || current_user_can( 'suite_view_logistics' );
-        $can_view_bi     = $es_admin || current_user_can( 'suite_view_marketing' );
-		$can_view_inventory = $es_admin || current_user_can( 'suite_view_crm' ) || current_user_can( 'suite_view_marketing' );
-        $can_manage_team = $es_admin || current_user_can( 'suite_manage_team' );
+		// --- 2. CONTROL DE ROLES DINÁMICO (RBAC - Fase 4.2) ---
+        $es_admin           = current_user_can( 'manage_options' );
+        $can_view_crm       = $es_admin || current_user_can( 'suite_view_crm' );
+        $can_view_quotes    = $es_admin || current_user_can( 'suite_view_quotes' ); // NUEVA CERRADURA
+        $can_view_kanban    = $es_admin || current_user_can( 'suite_view_kanban' );
+        $can_view_inventory = $es_admin || current_user_can( 'suite_view_inventory' ); // NUEVA CERRADURA
+        $can_view_comis     = $es_admin || current_user_can( 'suite_view_commissions' );
+        $can_view_logis     = $es_admin || current_user_can( 'suite_view_logistics' );
+        $can_view_bi        = $es_admin || current_user_can( 'suite_view_marketing' );
+        $can_manage_team    = $es_admin || current_user_can( 'suite_manage_team' );
 
         // Si no tiene ningún permiso, se bloquea el renderizado por completo
-        if ( ! $es_admin && ! $can_view_crm && ! $can_view_kanban && ! $can_view_comis && ! $can_view_logis && ! $can_view_bi && ! $can_manage_team ) {
+        if ( ! $es_admin && ! $can_view_crm && ! $can_view_quotes && ! $can_view_kanban && ! $can_view_comis && ! $can_view_logis && ! $can_view_bi && ! $can_view_inventory && ! $can_manage_team ) {
             return '<div style="padding:20px; text-align:center; color:#dc2626; font-family:sans-serif;">⛔ Acceso Denegado. Usted no tiene permisos asignados en el ERP.</div>';
         }
 
@@ -140,12 +140,15 @@ class Suite_Shortcode_Controller {
         // A. MENÚ DE PESTAÑAS (Renderizado dinámico basado en permisos)
         echo '<div class="suite-tabs-modern">';
         
-        // Pestañas Operativas Generales (Ventas y Administración)
+		// Pestañas Operativas Generales (Ventas y Administración)
         if ( $can_view_crm ) {
             echo '<button class="tab-btn active" onclick="openSuiteTab(event, \'TabCli\')">👥 Clientes</button>';
-            echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabPos\')">📝 Cotizador</button>';
-			echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabHistorial\')">📜 Historial</button>';
+        }
 
+        // Pestaña Protegida: Cotizador e Historial
+        if ( $can_view_quotes ) {
+            echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabPos\')">📝 Cotizador</button>';
+            echo '<button class="tab-btn" onclick="openSuiteTab(event, \'TabHistorial\')">📜 Historial</button>';
         }
 
         if ( $can_view_kanban ) {
@@ -178,11 +181,14 @@ class Suite_Shortcode_Controller {
         
         echo '</div>'; // Fin menú de pestañas
 
-        // B. CARGA DE VISTAS (Inyección de plantillas limpia y ordenada)
+		// B. CARGA DE VISTAS (Inyección de plantillas limpia y ordenada)
         if ( $can_view_crm ) {
             require SUITE_PATH . 'views/app/tab-clientes.php';
+        }
+
+        if ( $can_view_quotes ) {
             require SUITE_PATH . 'views/app/tab-cotizador.php';
-			require SUITE_PATH . 'views/app/tab-historial.php';
+            require SUITE_PATH . 'views/app/tab-historial.php';
         }
 
         if ( $can_view_kanban ) {

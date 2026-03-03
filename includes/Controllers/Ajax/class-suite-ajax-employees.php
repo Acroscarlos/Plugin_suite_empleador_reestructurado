@@ -71,10 +71,18 @@ class Suite_Ajax_Employee_Save extends Suite_AJAX_Controller {
             $this->send_error( $result->get_error_message() );
         }
 
+		// --- INICIO FASE 3.1: ELEGIBILIDAD ---
+        $user_id = $result; // El modelo nos devuelve el ID del usuario guardado
+        
+        // Guardado de la preferencia de Elegibilidad (Gamificación y Comisiones)
+        $participa_comisiones = isset( $_POST['participa_comisiones'] ) && $_POST['participa_comisiones'] === '1' ? 1 : 0;
+        update_user_meta( $user_id, 'suite_participa_comisiones', $participa_comisiones );
+        // --- FIN FASE 3.1 ---		
+		
         $this->send_success( [
             'message' => 'Empleado guardado correctamente.',
             'user_id' => $result
-        ] );
+        ] );	
     }
 }
 

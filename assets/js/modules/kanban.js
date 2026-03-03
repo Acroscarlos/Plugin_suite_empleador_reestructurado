@@ -259,31 +259,36 @@ const SuiteKanban = (function($) {
         });
 		
         // 4. TRIGGER EXCLUSIVO ADMIN: LOGÍSTICA INVERSA
-        $('#kb-col-despachado').on('click', '.trigger-reverse-logistics', function(e) {
+        $('#kb-col-despachado, .kanban-board').on('click', '.trigger-reverse-logistics', function(e) {
             e.preventDefault();
-            
-            const quoteId = $(this).data('id');
-            const seguro = confirm('⚠️ ATENCIÓN ADMIN:\n\n¿Está seguro de aplicar Logística Inversa a este pedido?\nLa orden regresará al estado "En Proceso" y se registrará la acción en el log de auditoría.');
-            
-            if (!seguro) return;
-            
-            const btn = $(this);
-            btn.prop('disabled', true).text('⏳ Revirtiendo...');
 
-            SuiteAPI.post('suite_change_status_ajax', {
-                id: quoteId,
-                estado: 'proceso'
+            const orderId = $(this).data('id');
+            const seguro = confirm('⚠️ ¿Estás seguro de aplicar logística inversa? Esto afectará las comisiones y devolverá la orden a estado "En proceso".');
+
+            if (!seguro) return;
+
+            const btn = $(this);
+            btn.prop('disabled', true).text('⏳ Procesando...');
+
+            SuiteAPI.post('suite_reverse_logistics', {
+                order_id: orderId
             }).then(res => {
                 if (res.success) {
-                    alert('✅ ' + (res.data.message || 'Logística Inversa aplicada exitosamente.'));
-                    SuiteKanban.loadBoard(); // Refresca las columnas del Kanban
+                    alert('✅ ' + (res.data.message || 'Logística inversa aplicada con éxito.'));
+                    
+                    // Recargar el tablero si existe el método, de lo contrario recargar la página
+                    if (typeof SuiteKanban !== 'undefined' && typeof SuiteKanban.loadBoard === 'function') {
+                        SuiteKanban.loadBoard();
+                    } else {
+                        location.reload();
+                    }
                 } else {
                     alert('❌ Error: ' + (res.data.message || res.data));
-                    btn.prop('disabled', false).text('🔙 Logística Inversa (Admin)');
+                    btn.prop('disabled', false).html('🔙 Logística Inversa (Admin)');
                 }
-            }).catch(() => {
-                alert('❌ Error de red al intentar revertir el pedido.');
-                btn.prop('disabled', false).text('🔙 Logística Inversa (Admin)');
+            }).catch(err => {
+                alert('❌ Ocurrió un error de red al intentar aplicar la logística inversa.');
+                btn.prop('disabled', false).html('🔙 Logística Inversa (Admin)');
             });
         });
 		
