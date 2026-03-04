@@ -65,9 +65,15 @@ class Suite_Ajax_Dashboard_Stats extends Suite_AJAX_Controller {
 class Suite_Ajax_Freeze_Commissions extends Suite_AJAX_Controller {
 
     protected $action_name = 'suite_freeze_commissions';
-    protected $required_capability = 'suite_freeze_commissions';
+    protected $required_capability = 'read';
 
     protected function process() {
+		
+		if ( ! current_user_can('manage_options') && ! current_user_can('suite_freeze_commissions') ) {
+            $this->send_error( 'Privilegios insuficientes para realizar esta acción.' );
+            return;
+        }		
+		
 
         $fecha_corte = isset( $_POST['fecha_corte'] ) ? sanitize_text_field( $_POST['fecha_corte'] ) : current_time('mysql');
         $dale_play_winner_id = isset( $_POST['dale_play_winner_id'] ) ? intval( $_POST['dale_play_winner_id'] ) : 0;
@@ -104,8 +110,8 @@ class Suite_Ajax_Freeze_Commissions extends Suite_AJAX_Controller {
 
         $premios = [
             'dale_play'         => [ 'id' => $dale_play_winner_id, 'monto' => 20.00, 'nombre' => "▶️ Dale Play" ],
-            'pez_gordo'         => [ 'id' => $pez_gordo ? $pez_gordo->vendedor_id : 0, 'monto' => 50.00, 'nombre' => "🐟 Pez Gordo" ],
-            'deja_pa_los_demas' => [ 'id' => $deja_pa ? $deja_pa->vendedor_id : 0, 'monto' => 30.00, 'nombre' => "🏃 Deja pa' los demás" ]
+            'pez_gordo'         => [ 'id' => $pez_gordo ? $pez_gordo->vendedor_id : 0, 'monto' => 20.00, 'nombre' => "🐟 Pez Gordo" ],
+            'deja_pa_los_demas' => [ 'id' => $deja_pa ? $deja_pa->vendedor_id : 0, 'monto' => 20.00, 'nombre' => "🏃 Deja pa' los demás" ]
         ];
 
         // ==========================================
@@ -124,10 +130,9 @@ class Suite_Ajax_Freeze_Commissions extends Suite_AJAX_Controller {
                         'vendedor_id'         => $data['id'],
                         'monto_base_usd'      => 0,
                         'comision_ganada_usd' => $data['monto'],
-                        'estado_pago'         => 'pagado', // Nace como 'pagado' para quedar congelado en este mismo corte
-                        'notas'               => "Bono Premio Mensual: {$data['nombre']}"
+                        'estado_pago'         => 'pagado' // Nace como 'pagado' para quedar congelado en este mismo corte
                     ],
-                    [ '%d', '%d', '%f', '%f', '%s', '%s' ]
+                    [ '%d', '%d', '%f', '%f', '%s' ]
                 );
 
                 // Recopilamos datos para el Salón de la Fama
@@ -190,8 +195,8 @@ class Suite_Ajax_Commission_Audit extends Suite_AJAX_Controller {
         $tabla_ledger = $wpdb->prefix . 'suite_comisiones_ledger';
         $tabla_users  = $wpdb->users;
 
-        // Sentencia SQL Base
-        $sql = "SELECT l.quote_id, l.monto_base_usd, l.comision_ganada_usd, l.estado_pago, l.created_at, u.display_name AS vendedor_nombre 
+        // Sentencia SQL Base (Actualizada V32 para soportar Checkboxes y B2B)
+        $sql = "SELECT l.id, l.quote_id, l.monto_base_usd, l.comision_ganada_usd, l.estado_pago, l.created_at, u.display_name AS vendedor_nombre 
                 FROM {$tabla_ledger} l
                 LEFT JOIN {$tabla_users} u ON l.vendedor_id = u.ID";
 
@@ -244,5 +249,92 @@ class Suite_Ajax_Hall_of_Fame extends Suite_AJAX_Controller {
         }
 
         $this->send_success( $fame_data );
+    }
+}
+
+
+
+/**
+ * Controlador: Liquidación de Comisiones Seleccionadas
+ */
+class Suite_Ajax_Pay_Selected extends Suite_AJAX_Controller {
+    protected $action_name = 'suite_pay_selected_commissions';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        global $wpdb;
+		
+		if ( ! current_user_can('manage_options') && ! current_user_can('suite_action_approve_commissions') ) {
+            $this->send_error( 'Privilegios insuficientes para realizar esta acción.' );
+            return;
+        }
+		
+        $ids = isset( $_POST['ledger_ids'] ) ? array_map( 'intval', $_POST['ledger_ids'] ) : [];
+
+        if ( empty( $ids ) ) {
+            $this->send_error( 'No se seleccionaron comisiones para pagar.' );
+        }
+
+        $ids_string = implode( ',', $ids );
+        $tabla_ledger = $wpdb->prefix . 'suite_comisiones_ledger';
+
+        // UPDATE blindado: Solo afecta a los IDs enviados que sigan estando 'pendiente'
+        $updated = $wpdb->query( "UPDATE {$tabla_ledger} SET estado_pago = 'pagado' WHERE id IN ({$ids_string}) AND estado_pago = 'pendiente'" );
+
+        if ( $updated !== false ) {
+            if ( function_exists('suite_record_log') ) {
+                suite_record_log( 'pago_comisiones', "Se liquidaron {$updated} líneas contables de forma manual." );
+            }
+            $this->send_success( "Se han pagado {$updated} registros exitosamente." );
+        } else {
+            $this->send_error( 'Fallo de integridad al actualizar el Ledger.' );
+        }
+    }
+}
+
+/**
+ * Controlador: Registro de Abonos / Anticipos
+ */
+class Suite_Ajax_Register_Abono extends Suite_AJAX_Controller {
+    protected $action_name = 'suite_register_abono';
+    protected $required_capability = 'read';
+	
+    protected function process() {
+        global $wpdb;
+		
+		if ( ! current_user_can('manage_options') && ! current_user_can('suite_action_approve_commissions') ) {
+            $this->send_error( 'Privilegios insuficientes para realizar esta acción.' );
+            return;
+        }		
+		
+        $vendedor_id = isset( $_POST['vendedor_id'] ) ? intval( $_POST['vendedor_id'] ) : 0;
+        $monto = isset( $_POST['monto'] ) ? floatval( $_POST['monto'] ) : 0;
+
+        if ( ! $vendedor_id || $monto <= 0 ) {
+            $this->send_error( 'Datos de abono inválidos.' );
+        }
+
+		// El abono nace como PENDIENTE y NEGATIVO para restar en la próxima liquidación
+        $insert = $wpdb->insert(
+            $wpdb->prefix . 'suite_comisiones_ledger',
+            [
+                'quote_id'            => 0,
+                'vendedor_id'         => $vendedor_id,
+                'monto_base_usd'      => 0,
+                'comision_ganada_usd' => -$monto,
+                'estado_pago'         => 'pendiente'
+                // ELIMINADA LA COLUMNA 'notas' PARA EVITAR EL CRASH DE MYSQL
+            ],
+            [ '%d', '%d', '%f', '%f', '%s' ] // ELIMINADO UN '%s' AL FINAL
+        );
+
+        if ( $insert ) {
+            if ( function_exists('suite_record_log') ) {
+                suite_record_log( 'abono_comision', "Abono de \${$monto} registrado para el usuario ID {$vendedor_id}." );
+            }
+            $this->send_success( "Abono de \${$monto} registrado con éxito en el estado de cuenta." );
+        } else {
+            $this->send_error( 'No se pudo registrar el abono.' );
+        }
     }
 }

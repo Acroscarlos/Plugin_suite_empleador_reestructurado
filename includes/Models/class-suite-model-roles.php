@@ -24,23 +24,24 @@ class Suite_Model_Roles {
 	/**
      * Devuelve el diccionario estructurado de capacidades de la Suite
      */
-    public function get_capabilities_dictionary() {
+	public function get_capabilities_dictionary() {
         // FASE 4.2: Diccionario Unificado de Capacidades (Sincronizado con Matriz RBAC)
         return [
             'Nivel 1 (Vistas)' => [
-				'suite_access'           => 'Acceso Base al Sistema (Login)',
+                'suite_access'           => 'Acceso Base al Sistema (Login)',
                 'suite_view_crm'         => 'Ver Directorio de Clientes',
                 'suite_view_quotes'      => 'Ver Cotizador e Historial',
                 'suite_view_kanban'      => 'Ver Tablero Kanban (Pedidos)',
                 'suite_view_inventory'   => 'Ver Control de Inventario',
-                'suite_view_commissions' => 'Ver Panel de Comisiones',
+                'suite_view_commissions' => 'Ver Panel de Comisiones y Ledger', // Actualizado
                 'suite_view_logistics'   => 'Ver Módulo de Logística',
                 'suite_view_marketing'   => 'Ver Módulo BI & Marketing',
                 'suite_manage_team'      => 'Gestión de Equipo (RBAC)'
             ],
             'Nivel 2 (Acciones Críticas)' => [
-				'suite_change_status'              => 'Cambiar Estados (Mover Kanban)',
-                'suite_action_approve_commissions' => 'Ejecutar Cierre de Mes (Comisiones)',
+                'suite_change_status'              => 'Cambiar Estados (Mover Kanban)',
+                'suite_action_approve_commissions' => 'Liquidar Pagos y Registrar Abonos', // Renombrado a su función real
+                'suite_freeze_commissions'         => 'Ejecutar Cierre de Mes (Premios)',  // NUEVO: Poder supremo mensual
                 'suite_action_reverse_logistics'   => 'Aprobar Logística Inversa'
             ],
             'Nivel 3 (Datos Sensibles)' => [

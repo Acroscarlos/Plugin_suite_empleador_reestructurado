@@ -13,13 +13,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 ?>
 
 <style>
-    /* Estilos específicos del Kanban */
+    /* Estilos específicos del Kanban (Actualizado a Ruta A: Estilo Trello) */
     .kanban-board {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        display: flex;
+        flex-wrap: nowrap;          /* Evita que la 5ta columna caiga abajo */
         gap: 20px;
         align-items: start;
         margin-top: 15px;
+        overflow-x: auto;           /* Habilita el scroll horizontal elegante */
+        padding-bottom: 15px;       /* Espacio extra para que la barra de scroll no pise las tarjetas */
     }
     .kanban-column-wrapper {
         background: #f8fafc;
@@ -28,6 +30,8 @@ if ( ! defined( 'ABSPATH' ) ) {
         display: flex;
         flex-direction: column;
         max-height: 80vh;
+        min-width: 300px; /* Forzamos un ancho mínimo para cada columna */
+        flex: 0 0 300px;  /* Evita que Flexbox las aplaste */
     }
     .kanban-column-header {
         padding: 15px;

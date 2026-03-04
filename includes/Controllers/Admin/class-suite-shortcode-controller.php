@@ -71,24 +71,40 @@ class Suite_Shortcode_Controller {
             ], SUITE_VERSION, true );
 
 			
+			
 			// 6. Variables Globales de Entorno e Inyección de Nonce de Seguridad
             $user_actual = wp_get_current_user();
             $roles_actuales = (array) $user_actual->roles;
             $is_gerente = in_array( 'suite_gerente', $roles_actuales ) || in_array( 'gerente', $roles_actuales );
-            $can_export = current_user_can( 'manage_options' ) || $is_gerente;		
-			
-			$is_b2b = get_user_meta( $user_actual->ID, 'suite_is_b2b', true ) == '1';
-			
-            wp_localize_script( 'suite-api-js', 'suite_vars', [
-                'ajax_url'   => admin_url( 'admin-ajax.php' ),
-                'nonce'      => wp_create_nonce( 'suite_quote_nonce' ),
-                'is_admin'   => current_user_can( 'manage_options' ),
-                'rest_url'   => esc_url_raw( rest_url() ),
-                'rest_nonce' => wp_create_nonce( 'wp_rest' ),
-				'can_export' => $can_export,
-				'is_marketing' => in_array( 'suite_marketing', $roles_actuales ),
-				'is_b2b'       => $is_b2b
+            $can_export = current_user_can( 'manage_options' ) || $is_gerente;
+            
+            $is_b2b = get_user_meta( $user_actual->ID, 'suite_is_b2b', true ) == '1';
+            
+            // --- INYECCIÓN PARA FASE 6.1: Obtener lista de vendedores para los modales ---
+            $vendedores = get_users( [
+                'role__in' => [ 'vendedor_jr', 'administrator', 'editor', 'author' ] 
             ] );
+            $sellers_data = [];
+            foreach ( $vendedores as $v ) {
+                $sellers_data[] = [
+                    'id'   => $v->ID,
+                    'name' => $v->display_name
+                ];
+            }
+            // --------------------------------------------------------------------------
+
+            wp_localize_script( 'suite-api-js', 'suite_vars', [
+                'ajax_url'     => admin_url( 'admin-ajax.php' ),
+                'nonce'        => wp_create_nonce( 'suite_quote_nonce' ),
+                'is_admin'     => current_user_can( 'manage_options' ),
+                'rest_url'     => esc_url_raw( rest_url() ),
+                'rest_nonce'   => wp_create_nonce( 'wp_rest' ),
+                'can_export'   => $can_export,
+                'is_marketing' => in_array( 'suite_marketing', $roles_actuales ),
+                'is_b2b'       => $is_b2b,
+                'sellers'      => $sellers_data
+            ] );
+						
         }
     }
 

@@ -83,9 +83,30 @@ const SuiteCommissions = (function($) {
                 data: { action: 'suite_get_commission_audit', nonce: suite_vars.nonce },
                 dataSrc: 'data'
             },
-            columns: [
-                { data: 'quote_id', render: data => data > 0 ? `<strong>#${data}</strong>` : '<span style="color:#64748b;">Premio/Bono</span>' },
-                { data: 'vendedor_nombre' },
+			
+			
+			
+			columns: [
+                // NUEVA COLUMNA: Checkboxes de selección múltiple
+                { 
+                    data: 'id', 
+                    visible: suite_vars.is_admin,
+                    orderable: false,
+                    render: (data, type, row) => {
+                        if (row.estado_pago === 'pendiente') {
+                            return `<input type="checkbox" class="com-chk" value="${data}" data-monto="${row.comision_ganada_usd}" style="width:16px; height:16px; cursor:pointer;">`;
+                        }
+                        return '🔒';
+                    }
+                },
+                { data: 'quote_id', render: data => data > 0 ? `<strong>#${data}</strong>` : '<span style="color:#64748b;">Premio/Bono/Abono</span>' },
+                { data: 'vendedor_nombre', render: (data, type, row) => {
+                    // DETECCIÓN VISUAL B2B
+                    let badge = (row.notas && row.notas.includes('B2B')) 
+                        ? ' <span style="background:#0ea5e9; color:white; padding:2px 6px; border-radius:4px; font-size:10px; margin-left:5px;">B2B</span>' 
+                        : '';
+                    return `<strong>${data}</strong>${badge}`;
+                }},
                 { data: 'monto_base_usd', render: data => `$${parseFloat(data).toFixed(2)}` },
                 { data: 'comision_ganada_usd', render: data => {
                     let val = parseFloat(data);
@@ -98,12 +119,15 @@ const SuiteCommissions = (function($) {
                     return `<span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; background:${bg}; color:${cl};">${data.toUpperCase()}</span>`;
                 }},
                 { data: 'created_at', render: data => {
-                    // Formatear la fecha para que se lea mejor en la tabla
                     let d = new Date(data);
                     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
                 }}
             ],
-            order: [[5, 'desc']] // Ordenar por fecha más reciente
+            
+            order: [[6, 'desc']] // CORRECCIÓN: Ahora ordenamos por la columna 6 porque añadimos los checkboxes al inicio
+			
+			
+			
         });
     };
 
@@ -215,11 +239,110 @@ const SuiteCommissions = (function($) {
                     Swal.fire('Error', res.data.message || res.data, 'error');
                     btn.prop('disabled', false).text('🔒 Ejecutar Cierre de Mes');
                 }
-            }).catch(err => {
+			}).catch(err => {
                 Swal.fire('Error Crítico', 'Ocurrió un error de red al intentar congelar el Ledger.', 'error');
                 btn.prop('disabled', false).text('🔒 Ejecutar Cierre de Mes');
             });
         });
+
+		// =========================================================
+        // INICIO REPARACIÓN FASE 6.1: LISTENERS DE LIQUIDACIÓN Y ABONOS
+        // =========================================================
+
+        // A. Seleccionar todos los checkboxes (Checkbox Maestro)
+        $('#auditTable').on('change', '#chk-all-com', function() {
+            const isChecked = $(this).is(':checked');
+            $('.com-chk').prop('checked', isChecked);
+        });
+
+        // B. Botón "Liquidar Seleccionados"
+        $('#btn-pay-selected').on('click', function(e) {
+            e.preventDefault();
+            const selectedIds = [];
+            $('.com-chk:checked').each(function() {
+                selectedIds.push($(this).val());
+            });
+
+            if (selectedIds.length === 0) {
+                Swal.fire('Atención', 'Seleccione al menos una comisión pendiente para liquidar.', 'warning');
+                return;
+            }
+
+            Swal.fire({
+                title: '¿Procesar Liquidación?',
+                text: `¿Está seguro de liquidar y marcar como PAGADOS los ${selectedIds.length} registros seleccionados?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#059669',
+                confirmButtonText: 'Sí, registrar pago',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const btn = $(this);
+                    const originalText = btn.html();
+                    btn.prop('disabled', true).text('⏳ Liquidando...');
+
+                    SuiteAPI.post('suite_pay_selected_commissions', { ledger_ids: selectedIds })
+                        .then(res => {
+                            if (res.success) {
+                                Swal.fire('¡Éxito!', res.data.message || res.data, 'success');
+                                if (auditTable) auditTable.ajax.reload(null, false);
+                                $('#chk-all-com').prop('checked', false); // Limpiar checkbox maestro
+                            } else {
+                                Swal.fire('Error', res.data.message || res.data, 'error');
+                            }
+                        })
+                        .catch(() => Swal.fire('Error', 'Fallo de conexión.', 'error'))
+                        .finally(() => btn.prop('disabled', false).html(originalText));
+                }
+            });
+        });
+
+        // C. Botón "Registrar Abono / Anticipo"
+        $('#btn-register-abono').on('click', async function(e) {
+            e.preventDefault();
+            
+            let optionsHtml = '<option value="" disabled selected>Seleccione al vendedor o aliado...</option>';
+            if (typeof suite_vars !== 'undefined' && suite_vars.sellers) {
+                suite_vars.sellers.forEach(seller => {
+                    optionsHtml += `<option value="${seller.id}">${seller.name}</option>`;
+                });
+            }
+
+            const { value: formValues } = await Swal.fire({
+                title: '💸 Registrar Abono',
+                html: `
+                    <select id="swal-abono-seller" class="swal2-select" style="display:flex; width:100%; margin: 10px 0;">${optionsHtml}</select>
+                    <input id="swal-abono-monto" class="swal2-input" type="number" step="0.01" min="1" placeholder="Monto del abono (USD)">
+                `,
+                focusConfirm: false,
+                showCancelButton: true,
+                confirmButtonText: 'Registrar Abono',
+                confirmButtonColor: '#0284c7',
+                preConfirm: () => {
+                    const seller = document.getElementById('swal-abono-seller').value;
+                    const monto = document.getElementById('swal-abono-monto').value;
+                    if (!seller || !monto || parseFloat(monto) <= 0) {
+                        Swal.showValidationMessage('Debe seleccionar un usuario y un monto válido mayor a 0.');
+                    }
+                    return { vendedor_id: seller, monto: monto };
+                }
+            });
+
+            if (formValues) {
+                SuiteAPI.post('suite_register_abono', formValues)
+                    .then(res => {
+                        if (res.success) {
+                            Swal.fire('¡Éxito!', res.data.message || res.data, 'success');
+                            if (auditTable) auditTable.ajax.reload(null, false);
+                        } else {
+                            Swal.fire('Error', res.data.message || res.data, 'error');
+                        }
+                    })
+                    .catch(() => Swal.fire('Error', 'Fallo de conexión.', 'error'));
+            }
+        });
+        // --- FIN REPARACIÓN ---
         
     };
 	
@@ -251,7 +374,9 @@ const SuiteCommissions = (function($) {
         init: function() {
 			bindEvents();
 			bindPillEvents();
-            
+			if (typeof suite_vars !== 'undefined' && suite_vars.is_b2b) {
+                loadAuditTable();
+            }            
 			// Se puede cargar automáticamente, o esperar a que el usuario haga clic en la pestaña
             // Lo dejamos listo para ser invocado por el controlador de pestañas.
         }

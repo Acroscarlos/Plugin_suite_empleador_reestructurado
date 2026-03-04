@@ -129,10 +129,11 @@ class Suite_Ajax_Quote_History extends Suite_AJAX_Controller {
         $tiene_acceso_global = ( $is_admin || $is_logistica );
 
         $quote_model = new Suite_Model_Quote();
-        $history = $quote_model->get_vendor_history( $user_id, 50, $tiene_acceso_global );
+        $history = $quote_model->get_vendor_history( $user_id, 500, $tiene_acceso_global );
 
         foreach ( $history as $r ) {
             $r->fecha_fmt = date( 'd/m/Y', strtotime( $r->fecha_emision ) );
+			$r->fecha_cruda = strtotime( $r->fecha_emision );
             $r->total_fmt = number_format( floatval( $r->total_usd ), 2 );
             $r->cliente_nombre = empty( $r->cliente_nombre ) ? 'N/A' : esc_html( $r->cliente_nombre );
 

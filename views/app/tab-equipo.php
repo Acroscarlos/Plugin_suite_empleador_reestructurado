@@ -174,66 +174,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                     </tbody>
                 </table>
             </div>
-						<!-- INICIO FASE 4.1: MATRIZ DE PERMISOS (RBAC) -->
-			<div id="matriz-permisos" style="margin-top: 40px; overflow-x: auto; padding-top: 20px; border-top: 2px solid #e2e8f0;">
-                <h3 style="color: #0f172a; margin-bottom: 5px; font-size: 18px;">⚙️ Centro de Comando: Matriz de Permisos</h3>
-                <p style="color:#64748b; font-size:13px; margin-bottom: 20px;">Habilite o deshabilite capacidades específicas en tiempo real para cada rol.</p>
-                
-                <?php
-                $capacidades = [
-                    'Nivel 1 (Vistas)'   => ['suite_view_crm', 'suite_view_quotes', 'suite_view_kanban', 'suite_view_inventory'],
-                    'Nivel 2 (Acciones)' => ['suite_action_reverse_logistics', 'suite_action_approve_commissions'],
-                    'Nivel 3 (Datos)'    => ['suite_data_detailed_stock', 'suite_data_marketing_transit']
-                ];
-                
-                // Obtenemos todos los roles registrados en el sistema
-                $roles_wp = wp_roles()->roles;
-                ?>
-                
-                <table class="suite-modern-table" style="width: 100%; text-align: center;">
-                    <thead>
-                        <tr>
-                            <th style="text-align: left; background: #f8fafc;">Rol / Perfil</th>
-                            <?php foreach ( $capacidades as $grupo => $caps ) : ?>
-                                <?php foreach ( $caps as $cap ) : ?>
-                                    <th title="<?php echo esc_attr($grupo); ?>" style="min-width: 120px;">
-                                        <small style="display:block; color:#64748b; font-size:10px; text-transform:uppercase;"><?php echo esc_html($grupo); ?></small>
-                                        <?php echo esc_html($cap); ?>
-                                    </th>
-                                <?php endforeach; ?>
-                            <?php endforeach; ?>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ( $roles_wp as $role_slug => $role_details ) : ?>
-                            <?php 
-                            // Zero-Trust: Ocultamos el 'administrator' para evitar que se revoquen sus capacidades maestras por accidente
-                            if ( $role_slug === 'administrator' ) continue; 
-                            
-                            $role_obj = get_role( $role_slug );
-                            ?>
-                            <tr>
-                                <td style="text-align: left;">
-                                    <strong><?php echo esc_html( translate_user_role( $role_details['name'] ) ); ?></strong><br>
-                                    <small style="color:#94a3b8;"><?php echo esc_html($role_slug); ?></small>
-                                </td>
-                                <?php foreach ( $capacidades as $grupo => $caps ) : ?>
-                                    <?php foreach ( $caps as $cap ) : ?>
-                                        <td>
-                                            <input type="checkbox" class="toggle-capability" 
-                                                data-role="<?php echo esc_attr($role_slug); ?>" 
-                                                data-cap="<?php echo esc_attr($cap); ?>" 
-                                                <?php checked( $role_obj->has_cap($cap) ); ?>
-                                                style="cursor: pointer; width: 18px; height: 18px;">
-                                        </td>
-                                    <?php endforeach; ?>
-                                <?php endforeach; ?>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-    <!-- FIN FASE 4.1 -->
+
         </div>
 
     </div>

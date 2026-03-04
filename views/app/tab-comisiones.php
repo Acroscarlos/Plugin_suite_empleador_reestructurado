@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Vista: Dashboard de Comisiones y Gamificación (Módulo 4)
  * * Muestra las ganancias en tiempo real del vendedor y el ranking 
@@ -21,26 +22,40 @@ $stats_billetera = $commission_model->get_vendedor_stats( $vendedor_id );
 // FASE 4.2: Se delega a la matriz de permisos RBAC
 $is_gerencia = current_user_can('manage_options') || current_user_can('suite_action_approve_commissions');
 
+// --- INICIO DE NUEVO CÓDIGO (Restricción B2B) ---
+// Identidad del usuario actual para ocultar gamificación
+$is_b2b = get_user_meta( $vendedor_id, 'suite_is_b2b', true ) == '1';
+// --- FIN DE NUEVO CÓDIGO ---
 
 ?>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+
 
 <div id="TabComisiones" class="suite-tab-content" style="display: none;">
     <div class="suite-header-modern">
         <h2 style="margin:0; font-size: 22px; color: #0f172a;">🏆 Comisiones y Rendimiento</h2>
     </div>
 
-    <div class="suite-pills-nav" style="display:flex; gap:10px; margin: 20px 25px 0 25px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
-        <button class="tab-btn active pill-btn" data-target="comisiones-dashboard-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: #fff; cursor: pointer;">📊 Dashboard Actual</button>
-        <button class="tab-btn pill-btn" data-target="comisiones-audit-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: transparent; cursor: pointer;">📝 Mis Registros</button>
-        <button class="tab-btn pill-btn" data-target="comisiones-fame-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: transparent; cursor: pointer;">🎖️ Salón de la Fama</button>
-    </div>
+	<div class="suite-pills-nav" style="display:flex; gap:10px; margin: 20px 25px 0 25px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+        
+        <?php if ( ! $is_b2b ) : ?>
+            <button class="tab-btn active pill-btn" data-target="comisiones-dashboard-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: #fff; cursor: pointer;">📊 Dashboard Actual</button>
+        <?php endif; ?>
+        
+        <button class="tab-btn pill-btn <?php echo $is_b2b ? 'active' : ''; ?>" data-target="comisiones-audit-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: <?php echo $is_b2b ? '#fff' : 'transparent'; ?>; cursor: pointer;">📝 Mis Registros</button>
+        
+        <?php if ( ! $is_b2b ) : ?>
+            <button class="tab-btn pill-btn" data-target="comisiones-fame-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: transparent; cursor: pointer;">🎖️ Salón de la Fama</button>
+        <?php endif; ?>
+        </div>
 
+	<?php if ( ! $is_b2b ) : ?>
     <div id="comisiones-dashboard-view">
 
     <div style="padding: 25px;">
         
-        <?php if ( 
-$is_gerencia ) : ?>
+        <?php if ( $is_gerencia ) : ?>
         <div style="margin-bottom: 30px; padding: 20px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h3 style="color: #991b1b; margin: 0 0 5px 0; font-size: 16px;">⚙️ Cierre Contable de Mes</h3>
@@ -184,14 +199,33 @@ color: #7c3aed; margin-top: 2px;">Evaluado a fin de mes según Kanban de Proyect
             </div>
         </div>
 
+	</div> </div> </div> <?php endif; ?> <div id="comisiones-audit-view" style="display: <?php echo $is_b2b ? 'block' : 'none'; ?>; padding: 25px;">
+    <?php if ( current_user_can('manage_options') || current_user_can('suite_action_approve_commissions') ) : ?>
+	
+	
+	
+    <div style="margin-bottom: 20px; display:flex; gap:10px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+        <button id="btn-pay-selected" class="btn-modern-action" style="background:#059669; color:white; border:none; padding:8px 15px;">
+            💵 Liquidar Seleccionados
+        </button>
+        <button id="btn-register-abono" class="btn-modern-action" style="background:#0284c7; color:white; border:none; padding:8px 15px;">
+            💸 Registrar Abono / Anticipo
+        </button>
     </div>
-    </div>
-
-    </div> <div id="comisiones-audit-view" style="display:none; padding: 25px;">
+    <?php endif; ?>
+    
         <h3 style="color: #0f172a; margin-bottom: 15px; font-size: 18px;">📝 Auditoría General del Ledger</h3>
         <table class="suite-modern-table" id="auditTable" style="width: 100%;">
             <thead>
                 <tr>
+                    <!-- INYECCIÓN: El <th> faltante que espera DataTables para la columna 0 (Checkboxes) -->
+                    <th style="width: 30px;">
+                        <?php if ( current_user_can('manage_options') || current_user_can('suite_action_approve_commissions') ) : ?>
+                            <input type="checkbox" id="chk-all-com" style="cursor:pointer;" title="Seleccionar todos">
+                        <?php else: ?>
+                            🔒
+                        <?php endif; ?>
+                    </th>
                     <th>ID Orden</th>
                     <th>Vendedor</th>
                     <th>Monto Base</th>
@@ -204,11 +238,13 @@ color: #7c3aed; margin-top: 2px;">Evaluado a fin de mes según Kanban de Proyect
         </table>
     </div>
 
+<?php if ( ! $is_b2b ) : ?>
     <div id="comisiones-fame-view" style="display:none; padding: 25px;">
         <h3 style="color: #0f172a; margin-bottom: 15px; font-size: 18px;">🎖️ Salón de la Fama Histórico</h3>
         <div id="fame-cards-container" style="display:flex; flex-wrap:wrap; gap:20px;">
-            </div>
+        </div>
     </div>
+    <?php endif; ?>
 
 </div>
 

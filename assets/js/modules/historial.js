@@ -8,10 +8,25 @@ const SuiteHistorial = (function($) {
 
     const initTable = function() {
         if ($('#historyTable').length && !$.fn.DataTable.isDataTable('#historyTable')) {
-            table = $('#historyTable').DataTable({
+
+			
+			table = $('#historyTable').DataTable({
                 responsive: true,
                 language: { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json" },
-                order: [[0, 'desc']] // Ordenar por fecha de más reciente a antiguo
+                order: [[0, 'desc']],
+                columnDefs: [
+                    {
+                        targets: 0,
+                        render: function(data, type, row) {
+                            // Si DataTables está ordenando internamente, usa el número matemático
+                            if (type === 'sort' || type === 'type') {
+                                return data.sort; 
+                            }
+                            // Si DataTables está pintando la pantalla, muestra el texto bonito
+                            return data.display; 
+                        }
+                    }
+                ]
             });
         }
     };
@@ -40,13 +55,16 @@ const SuiteHistorial = (function($) {
                     let cloneBtn = `<button class="btn-modern-action small btn-clone-quote" data-id="${r.id}" style="color:#0073aa; border-color:#bae6fd;" title="Clonar al Cotizador">🔄 Clonar</button>`;
 
                     table.row.add([
-                        r.fecha_fmt,
+                        { display: r.fecha_fmt, sort: r.fecha_cruda }, 
                         `<strong>#${r.codigo_cotizacion}</strong>`,
                         r.cliente_nombre,
                         `$${r.total_fmt}`,
                         `<span class="status-pill ${badgeClass}">${r.estado.toUpperCase()}</span>`,
                         `<div style="display:flex; gap:5px;">${printBtn} ${waBtn} ${cloneBtn}</div>`
                     ]);
+					
+					
+					
                 });
                 
                 table.draw();
