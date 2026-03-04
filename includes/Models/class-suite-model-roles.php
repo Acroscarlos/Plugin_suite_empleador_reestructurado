@@ -28,6 +28,7 @@ class Suite_Model_Roles {
         // FASE 4.2: Diccionario Unificado de Capacidades (Sincronizado con Matriz RBAC)
         return [
             'Nivel 1 (Vistas)' => [
+				'suite_access'           => 'Acceso Base al Sistema (Login)',
                 'suite_view_crm'         => 'Ver Directorio de Clientes',
                 'suite_view_quotes'      => 'Ver Cotizador e Historial',
                 'suite_view_kanban'      => 'Ver Tablero Kanban (Pedidos)',
@@ -38,6 +39,7 @@ class Suite_Model_Roles {
                 'suite_manage_team'      => 'Gestión de Equipo (RBAC)'
             ],
             'Nivel 2 (Acciones Críticas)' => [
+				'suite_change_status'              => 'Cambiar Estados (Mover Kanban)',
                 'suite_action_approve_commissions' => 'Ejecutar Cierre de Mes (Comisiones)',
                 'suite_action_reverse_logistics'   => 'Aprobar Logística Inversa'
             ],

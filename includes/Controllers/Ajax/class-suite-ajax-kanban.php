@@ -36,7 +36,24 @@ class Suite_Ajax_Kanban_Data extends Suite_AJAX_Controller {
         
         // Invocar método del modelo agrupando por columnas
         $kanban_data = $quote_model->get_kanban_orders( $user_id, $tiene_acceso_global );
-
+		
+		
+		// --- INICIO FASE 5.3: IDENTIFICADOR B2B PARA GATILLO MANUAL ---
+        // Recorremos cada columna (emitida, proceso, etc.) y cada orden dentro de ellas
+        foreach ( $kanban_data as $columna => $ordenes ) {
+            if ( is_array( $ordenes ) ) {
+                foreach ( $ordenes as &$order ) {
+                    // Consultamos si el vendedor de esta orden es Aliado Comercial
+                    // Usamos el ID del vendedor que ya viene en el objeto de la orden
+                    $vendedor_id = isset( $order->vendedor_id ) ? $order->vendedor_id : 0;
+                    $order->vendedor_is_b2b = ( get_user_meta( $vendedor_id, 'suite_is_b2b', true ) === '1' );
+                }
+            }
+        }
+        // --- FIN FASE 5.3 ---
+		
+		
+		
         $this->send_success( $kanban_data );
     }
 }

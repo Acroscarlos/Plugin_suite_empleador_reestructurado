@@ -253,8 +253,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<small style="color:#64748b; font-size: 11px; display:block; margin-bottom: 15px;">
 			Deje en blanco si la venta es individual.
 		</small>
-		<!-- FIN: Selector de Venta Compartida -->					
+		<!-- FIN: Selector de Venta Compartida -->		
 		
+		
+		<div id="container-b2b-percent" style="display: none; margin-top: 15px; background: #f0f9ff; padding: 15px; border-left: 4px solid #0ea5e9; border-radius: 8px;">
+            <label style="font-weight:bold; color:#0369a1; display:block; margin-bottom:8px;">🤝 Porcentaje de Comisión B2B (%)</label>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <input type="number" id="cierre-b2b-percent" class="widefat" step="0.1" min="0" max="100" placeholder="Ej: 15" style="border-color:#bae6fd; margin-bottom:0;">
+                <span style="font-weight:bold; color:#0369a1;">%</span>
+            </div>
+            <small style="color:#0284c7; display:block; margin-top:5px; font-size:11px;">
+                Detectado: Aliado Comercial. Ingrese el porcentaje acordado para este pedido.
+            </small>
+        </div>		
 		
         <button class="btn-save-big" id="btn-confirmar-pago" style="margin-top:15px; background-color: #10b981;">
             Confirmar y Procesar Pago

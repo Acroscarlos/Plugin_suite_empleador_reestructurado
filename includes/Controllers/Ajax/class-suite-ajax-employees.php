@@ -78,6 +78,11 @@ class Suite_Ajax_Employee_Save extends Suite_AJAX_Controller {
         $participa_comisiones = isset( $_POST['participa_comisiones'] ) && $_POST['participa_comisiones'] === '1' ? 1 : 0;
         update_user_meta( $user_id, 'suite_participa_comisiones', $participa_comisiones );
         // --- FIN FASE 3.1 ---		
+
+		// --- INICIO FASE 5.1: IDENTIDAD B2B ---
+        $is_b2b = isset( $_POST['is_b2b'] ) && $_POST['is_b2b'] == '1' ? 1 : 0;
+        update_user_meta( $user_id, 'suite_is_b2b', $is_b2b );
+        // --- FIN FASE 5.1 ---		
 		
         $this->send_success( [
             'message' => 'Empleado guardado correctamente.',

@@ -21,15 +21,19 @@ const SuiteKanban = (function($) {
             waBtnHtml = `<a href="https://api.whatsapp.com/send?phone=${order.wa_phone}&text=${msg}" target="_blank" class="btn-modern-action" style="padding: 4px; font-size:11px; text-decoration:none;">📱 WA</a>`;
         }
 
-        let mobilePayBtn = '';
-		if (order.estado !== 'pagado' && order.estado !== 'despachado' && order.estado !== 'por_enviar') {			
-            mobilePayBtn = `<button type="button" class="btn-modern-action trigger-mobile-pay" data-id="${order.id}" data-col="${order.estado}" style="padding: 4px; font-size:11px; background:#10b981; color:white; border:none; cursor:pointer;">💰 Pagar</button>`;
-        }
+		// --- INICIO FASE 5.2: RESTRICCIÓN VISUAL B2B ---
+        let mobilePayBtn = '';
+        // El botón de pago desaparece si el usuario es Aliado Comercial
+		if (!suite_vars.is_b2b && order.estado !== 'pagado' && order.estado !== 'despachado' && order.estado !== 'por_enviar') {			
+            mobilePayBtn = `<button type="button" class="btn-modern-action trigger-mobile-pay" data-id="${order.id}" data-col="${order.estado}" style="padding: 4px; font-size:11px; background:#10b981; color:white; border:none; cursor:pointer;">💰 Pagar</button>`;
+        }
 		
-        let reverseBtn = '';
-        if (order.estado === 'despachado' && suite_vars.is_admin) {
-            reverseBtn = `<button class="btn-modern-action small trigger-reverse-logistics" data-id="${order.id}" style="color:#dc2626; border-color:#fca5a5; width:100%; margin-top:8px;">🔙 Logística Inversa (Admin)</button>`;
-        }
+        let reverseBtn = '';
+        // La logística inversa también bloqueada visualmente para el B2B
+        if (!suite_vars.is_b2b && order.estado === 'despachado' && suite_vars.is_admin) {
+            reverseBtn = `<button class="btn-modern-action small trigger-reverse-logistics" data-id="${order.id}" style="color:#dc2626; border-color:#fca5a5; width:100%; margin-top:8px;">🔙 Logística Inversa (Admin)</button>`;
+        }
+        // --- FIN FASE 5.2 ---
 
         // --- INICIO CORRECCIÓN: Botón de Guía Logística (POD) ---
         let podBtn = '';
@@ -38,9 +42,9 @@ const SuiteKanban = (function($) {
         }
         // --- FIN CORRECCIÓN ---
 
-        return `
-        <div class="kanban-card" data-id="${order.id}">
-            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+        return `
+        <div class="kanban-card" data-id="${order.id}" data-is-b2b="${order.vendedor_is_b2b ? '1' : '0'}">
+            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
                 <span style="font-weight:bold; color:#0f172a;">#${order.codigo_cotizacion}</span>
             </div>
             <div style="font-size: 13px; color:#475569; margin-bottom: 10px;">
@@ -77,6 +81,29 @@ const SuiteKanban = (function($) {
                 group: 'kanban', 
                 animation: 150,
                 ghostClass: 'kanban-ghost',
+				
+				
+				// --- INICIO FASE 5.2: CAMPO DE FUERZA B2B (onMove) ---
+                onMove: function (evt) {
+                    if (suite_vars.is_b2b) {
+                        // Leemos el data-status directamente de la columna origen y destino
+                        const toStatus = evt.to.getAttribute('data-status');
+                        const fromStatus = evt.from.getAttribute('data-status');
+                        
+                        // Zonas seguras para los Aliados Comerciales
+                        const allowedColumns = ['emitida', 'proceso']; 
+
+                        // Si intenta arrastrar a un área financiera o logística, bloqueamos el movimiento en vivo
+                        if (!allowedColumns.includes(toStatus) || !allowedColumns.includes(fromStatus)) {
+                            return false; 
+                        }
+                    }
+                },
+                // --- FIN FASE 5.2 ---				
+				
+				
+				
+				
 				onEnd: function (evt) {
                     const itemEl = evt.item;  
                     const toCol = evt.to;     
@@ -89,17 +116,26 @@ const SuiteKanban = (function($) {
                     const newStatus = toCol.getAttribute('data-status');
                     const oldStatus = fromCol.getAttribute('data-status'); // <-- AGREGADO: Necesario para validar de dónde viene
 
-                    // ----------------------------------------------------
-                    // CANDADO MÓDULO 2: SECUENCIA ESTRICTA DE ESTADOS
-                    // ----------------------------------------------------
-                    const isMoveValid = function(oldS, newS) {
-                        if (oldS === 'emitida' && newS === 'proceso') return true;
-                        if (oldS === 'proceso' && (newS === 'emitida' || newS === 'pagado')) return true;
-                        if (oldS === 'pagado' && newS === 'por_enviar') return true; // Avanza a Logística
-                        if (oldS === 'por_enviar' && newS === 'pagado') return true; // Excepción: Retrocede de Logística a Facturado
-                        // 'despachado' está prohibido por Drag & Drop (solo desde el panel logístico)
-                        return false; 
-                    };
+					// ----------------------------------------------------
+                    // CANDADO MÓDULO 2: SECUENCIA ESTRICTA DE ESTADOS
+                    // ----------------------------------------------------
+                    const isMoveValid = function(oldS, newS) {
+                        // --- INICIO FASE 5.2: FÍSICA ZERO-TRUST PARA ALIADOS B2B ---
+                        if (suite_vars.is_b2b) {
+                            // Aliados solo pueden mover entre Pendiente y En Proceso
+                            if (oldS === 'emitida' && newS === 'proceso') return true;
+                            if (oldS === 'proceso' && newS === 'emitida') return true;
+                            return false; // Prohibido tocar facturación o logística
+                        }
+                        // --- FIN FASE 5.2 ---
+
+                        // Reglas normales para empleados internos
+                        if (oldS === 'emitida' && newS === 'proceso') return true;
+                        if (oldS === 'proceso' && (newS === 'emitida' || newS === 'pagado')) return true;
+                        if (oldS === 'pagado' && newS === 'por_enviar') return true; // Avanza a Logística
+                        if (oldS === 'por_enviar' && newS === 'pagado') return true; // Excepción: Retrocede de Logística a Facturado
+                        return false; 
+                    };
 
                     if (!isMoveValid(oldStatus, newStatus)) {
                         alert('⛔ Movimiento no permitido. Debe respetar la secuencia lógica (Pendiente ↔️ En Proceso ➡️ Facturado ↔️ Por Enviar).');
@@ -120,8 +156,18 @@ const SuiteKanban = (function($) {
 						$('#cierre-recibo-prefijo').val('F');
                         $('#cierre-quote-id').val(quoteId);
                         
-                        // 3. Abrir Modal (No enviamos AJAX aún)
-                        $('#modal-cierre-venta').fadeIn();
+						// 3. Lógica B2B y Abrir Modal
+                        const isB2b = $(itemEl).attr('data-is-b2b') === '1';
+                        if (isB2b) {
+                            $('#container-b2b-percent').show();
+                            $('#cierre-b2b-percent').prop('required', true).val('');
+                        } else {
+                            $('#container-b2b-percent').hide();
+                            $('#cierre-b2b-percent').prop('required', false).val('');
+                        }
+
+                        $('#modal-cierre-venta').fadeIn();
+						
                     } else {
                         // Si es otro estado (ej. de Emitida a Proceso, o de Pagado a Por Enviar), enviar directo
                         updateCounters();
@@ -198,7 +244,8 @@ const SuiteKanban = (function($) {
                 metodo_entrega: $('#cierre-entrega').val(),
                 recibo_loyverse: finalReceipt, // Aquí inyectamos el recibo ensamblado (Ej: "F1005")
                 url_captura: $('#cierre-captura').val().trim(),
-				colaboradores: colaboradoresIds 
+				colaboradores: colaboradoresIds,
+				porcentaje_b2b: $('#cierre-b2b-percent').is(':visible') ? $('#cierre-b2b-percent').val() : 0
             };
 
             // Validar obligatorios (Nota: Validamos !rawNumber para asegurar que escribieron los dígitos)
@@ -254,8 +301,17 @@ const SuiteKanban = (function($) {
 			$('#cierre-recibo-prefijo').val('F');
             $('#cierre-quote-id').val(quoteId);
             
-            // Mostrar Modal
-            $('#modal-cierre-venta').fadeIn();
+			// Lógica B2B y Mostrar Modal
+            const isB2b = $(this).closest('.kanban-card').attr('data-is-b2b') === '1';
+            if (isB2b) {
+                $('#container-b2b-percent').show();
+                $('#cierre-b2b-percent').prop('required', true).val('');
+            } else {
+                $('#container-b2b-percent').hide();
+                $('#cierre-b2b-percent').prop('required', false).val('');
+            }
+
+            $('#modal-cierre-venta').fadeIn();
         });
 		
         // 4. TRIGGER EXCLUSIVO ADMIN: LOGÍSTICA INVERSA

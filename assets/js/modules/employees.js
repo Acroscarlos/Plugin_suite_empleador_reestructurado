@@ -75,6 +75,8 @@ const SuiteEmployees = (function($) {
         $('#emp-id').val('0');
         $('#emp-first-name, #emp-last-name, #emp-email, #emp-phone, #emp-password').val('');
         $('#emp-role').val('');
+		$('#emp-is-b2b').prop('checked', false);
+		$('#emp-participa-comisiones').prop('checked', false); 
     };
 
     /**
@@ -202,7 +204,9 @@ const SuiteEmployees = (function($) {
                 email: $('#emp-email').val().trim(),
                 telefono: $('#emp-phone').val().trim(),
                 password: $('#emp-password').val(),
-                role: $('#emp-role').val()
+                role: $('#emp-role').val(),
+				is_b2b: $('#emp-is-b2b').is(':checked') ? 1 : 0,
+				participa_comisiones: $('#emp-participa-comisiones').is(':checked') ? 1 : 0
             };
 
             if (!payload.email || !payload.role) {
@@ -348,7 +352,8 @@ const SuiteEmployees = (function($) {
             // CORRECCIÓN: Extraemos el índice [0] del array para que jQuery seleccione correctamente el <option>
             let rKey = (Array.isArray(data.roles) && data.roles.length > 0) ? data.roles[0] : (data.roles ? Object.keys(data.roles)[0] : '');
             $('#emp-role').val(rKey);
-
+			$('#emp-is-b2b').prop('checked', data.is_b2b === '1' || data.is_b2b === 1);
+			$('#emp-participa-comisiones').prop('checked', data.participa_comisiones === '1' || data.participa_comisiones === 1);
             $('#modal-employee').fadeIn();
         },
 

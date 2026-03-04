@@ -44,7 +44,9 @@ class Suite_Model_Employee {
                 'nombre'     => $u->display_name,
                 'email'      => $u->user_email,
                 'telefono'   => ! empty( $telefono ) ? $telefono : '-',
-                'roles'      => array_values( $u->roles ), // CORRECCIÓN: Forzamos un array indexado limpio para JS
+                'roles'      => array_values( $u->roles ),
+                'is_b2b'               => get_user_meta( $u->ID, 'suite_is_b2b', true ),
+                'participa_comisiones' => get_user_meta( $u->ID, 'suite_participa_comisiones', true ),
             ];
         }
 
@@ -146,8 +148,13 @@ class Suite_Model_Employee {
             $user_data['user_pass']  = $password;
         }
 
-        // wp_insert_user maneja tanto INSERT como UPDATE (si se envía el 'ID' en el array)
-        $user_id = wp_insert_user( $user_data );
+		// --- INICIO CORRECCIÓN ARQUITECTO: Separar Crear de Actualizar ---
+        if ( $id > 0 ) {
+            $user_id = wp_update_user( $user_data );
+        } else {
+            $user_id = wp_insert_user( $user_data );
+        }
+        // --- FIN CORRECCIÓN ---
 
         if ( is_wp_error( $user_id ) ) {
             return $user_id; // Retorna el error al controlador

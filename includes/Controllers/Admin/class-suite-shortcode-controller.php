@@ -75,7 +75,9 @@ class Suite_Shortcode_Controller {
             $user_actual = wp_get_current_user();
             $roles_actuales = (array) $user_actual->roles;
             $is_gerente = in_array( 'suite_gerente', $roles_actuales ) || in_array( 'gerente', $roles_actuales );
-            $can_export = current_user_can( 'manage_options' ) || $is_gerente;			
+            $can_export = current_user_can( 'manage_options' ) || $is_gerente;		
+			
+			$is_b2b = get_user_meta( $user_actual->ID, 'suite_is_b2b', true ) == '1';
 			
             wp_localize_script( 'suite-api-js', 'suite_vars', [
                 'ajax_url'   => admin_url( 'admin-ajax.php' ),
@@ -84,7 +86,8 @@ class Suite_Shortcode_Controller {
                 'rest_url'   => esc_url_raw( rest_url() ),
                 'rest_nonce' => wp_create_nonce( 'wp_rest' ),
 				'can_export' => $can_export,
-				'is_marketing' => in_array( 'suite_marketing', $roles_actuales )
+				'is_marketing' => in_array( 'suite_marketing', $roles_actuales ),
+				'is_b2b'       => $is_b2b
             ] );
         }
     }

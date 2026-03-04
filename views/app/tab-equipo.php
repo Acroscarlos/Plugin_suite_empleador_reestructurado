@@ -285,6 +285,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 				<input type="checkbox" id="emp-participa-comisiones" name="participa_comisiones" value="1" style="width:18px; height:18px; cursor:pointer;">
 				🏆 Participa en Gamificación y Comisiones
 			</label>
+		</div>
+		
+		<div class="form-group-row" style="margin-top: 10px;">
+			<label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#475569; font-size:14px; font-weight:600;">
+				<input type="checkbox" id="emp-is-b2b" name="is_b2b" value="1" style="width:18px; height:18px; cursor:pointer;">
+				🤝 Es Aliado Comercial (Portal B2B)
+			</label>
 		</div>		
         
         <button type="button" id="btn-save-employee" class="btn-save-big" style="margin-top: 15px;">💾 Guardar Empleado</button>

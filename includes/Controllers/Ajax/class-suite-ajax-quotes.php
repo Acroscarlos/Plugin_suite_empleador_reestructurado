@@ -270,21 +270,75 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
 
         if ( $result ) {
 			
-			// 5. DISPARAR COMISIÓN AUTOMÁTICA
-			if ( $new_status === 'pagado' && $current_status !== 'pagado' ) {
-				$commission_model = new Suite_Model_Commission();
+			// 5. -----------------------------------------------------------------
+            // INCISIÓN D (FASE 5.3) - MOTOR FINANCIERO Y LEDGER ZERO-TRUST
+            // -----------------------------------------------------------------
+            if ( $new_status === 'pagado' && $current_status !== 'pagado' ) {
+                global $wpdb;
 
-				// Recepción y Sanitización Estricta (Casteo de cada elemento a Integer)
-				$colaboradores_raw = isset( $_POST['colaboradores'] ) ? $_POST['colaboradores'] : [];
-				$colaboradores_clean = is_array( $colaboradores_raw ) ? array_map( 'intval', $colaboradores_raw ) : [];
+                // 1. Extracción segura del monto base desde la BD para precisión decimal
+                $cotizacion = $wpdb->get_row( $wpdb->prepare( 
+                    "SELECT total_usd, vendedor_id FROM {$wpdb->prefix}suite_cotizaciones WHERE id = %d", 
+                    $quote_id 
+                ) );
 
-				$commission_model->calculate_and_save_commission(
-					$quote_id,
-					$current_order->vendedor_id,
-					$current_order->total_usd,
-					$colaboradores_clean // <-- 4TO PARÁMETRO INYECTADO
-				);
-			}
+                if ( $cotizacion ) {
+                    $monto_base_usd = floatval( $cotizacion->total_usd );
+                    $vendedor_id    = intval( $cotizacion->vendedor_id );
+
+                    // 2. Detección de Identidad B2B
+                    $is_b2b = get_user_meta( $vendedor_id, 'suite_is_b2b', true ) === '1';
+                    
+                    if ( $is_b2b ) {
+                        // =========================================================
+                        // RUTA A: FLUJO ALIADO COMERCIAL (B2B) - COMISIÓN MANUAL
+                        // =========================================================
+                        $porcentaje_b2b = isset( $_POST['porcentaje_b2b'] ) ? floatval( $_POST['porcentaje_b2b'] ) : 0;
+
+                        if ( $porcentaje_b2b <= 0 ) {
+                            $this->send_error( 'Las órdenes de Aliados B2B requieren un porcentaje de comisión válido mayor a 0.' );
+                        }
+
+                        // Cálculo exacto de la comisión inyectada desde el modal
+                        $comision_usd = ($monto_base_usd * $porcentaje_b2b) / 100;
+
+                        $wpdb->insert(
+                            $wpdb->prefix . 'suite_comisiones_ledger',
+                            [
+                                'quote_id'            => $quote_id,
+                                'vendedor_id'         => $vendedor_id,
+                                'monto_base_usd'      => $monto_base_usd,
+                                'comision_ganada_usd' => $comision_usd,
+                                'estado_pago'         => 'pendiente',
+                                'notas'               => "Comisión Aliado B2B ({$porcentaje_b2b}%)"
+                            ],
+                            [ '%d', '%d', '%f', '%f', '%s', '%s' ]
+                        );
+
+                    } else {
+                        // =========================================================
+                        // RUTA B: FLUJO ESTÁNDAR EMPLEADOS - COMISIÓN AUTOMÁTICA
+                        // =========================================================
+                        if ( class_exists( 'Suite_Model_Commission' ) ) {
+                            $commission_model = new Suite_Model_Commission();
+                            
+                            // Mantener soporte para Venta Compartida (Colaboradores)
+                            $colaboradores_raw = isset( $_POST['colaboradores'] ) ? $_POST['colaboradores'] : [];
+                            $colaboradores_clean = is_array( $colaboradores_raw ) ? array_map( 'intval', $colaboradores_raw ) : [];
+
+                            $commission_model->calculate_and_save_commission( 
+                                $quote_id, 
+                                $vendedor_id, 
+                                $monto_base_usd, 
+                                $colaboradores_clean 
+                            );
+                        }
+                    }
+                }
+            }
+            // -----------------------------------------------------------------
+            // FIN DE LA INCISIÓN D
+            // -----------------------------------------------------------------
 
             $this->send_success( [ 'message' => 'Estado actualizado a ' . strtoupper( $new_status ) ] );
         } else {

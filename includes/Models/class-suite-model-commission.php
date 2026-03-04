@@ -202,36 +202,54 @@ class Suite_Model_Commission extends Suite_Model_Base {
 
 	
 	
-    /**
-     * LOGÍSTICA INVERSA (Reverso Contable)
-     * Anula o deduce la comisión de un pedido devuelto.
-     * 
-     * @param int $quote_id ID de la cotización/pedido
+	/**
+     * LOGÍSTICA INVERSA UNIVERSAL (FASE 5.4)
+     * Anula o deduce la comisión de un pedido devuelto (B2B o Interno).
      */
     public function reverse_commission( $quote_id ) {
+        if ( empty( $quote_id ) ) return;
+
+        // Buscamos todas las líneas contables asociadas a esta orden
         $registros = $this->wpdb->get_results( $this->wpdb->prepare(
-            "SELECT * FROM {$this->table_name} WHERE quote_id = %d", 
+            "SELECT * FROM {$this->table_name} WHERE quote_id = %d AND estado_pago != 'anulado'",
             intval( $quote_id )
         ) );
 
+        if ( empty( $registros ) ) return;
+
         foreach ( $registros as $row ) {
-            // Protección de Idempotencia: Si ya es un registro negativo (una deducción previa), lo ignoramos
+            // Protección de Idempotencia: Omitir si ya es una deducción negativa
             if ( floatval( $row->comision_ganada_usd ) < 0 ) {
                 continue;
             }
 
             if ( $row->estado_pago === 'pendiente' ) {
-                // El dinero aún no se ha pagado al vendedor. Simplemente borramos el registro.
-                $this->delete( $row->id );
+                // ESCENARIO A: Comisión Pendiente -> Soft Delete (Anulado)
+                // Usamos el método update de tu modelo para mantener la integridad
+                $this->wpdb->update(
+                    $this->table_name,
+                    [ 'estado_pago' => 'anulado' ],
+                    [ 'id' => $row->id ],
+                    [ '%s' ],
+                    [ '%d' ]
+                );
+
             } elseif ( $row->estado_pago === 'pagado' ) {
-                // El dinero YA fue liquidado en un mes anterior. 
-                // Insertamos un contra-asiento (Deducción) en el mes actual.
+                // ESCENARIO B: Comisión Pagada -> Inyección de Contra-asiento
+                $nota_deduccion = "Deducción por Logística Inversa - Orden #{$row->quote_id}";
+                
+                // Detectamos si era B2B leyendo la nota original
+                if ( ! empty($row->notas) && strpos( $row->notas, 'B2B' ) !== false ) {
+                    $nota_deduccion .= " (Reverso Aliado B2B)";
+                }
+
                 $this->insert([
                     'quote_id'            => $row->quote_id,
                     'vendedor_id'         => $row->vendedor_id,
-                    'monto_base_usd'      => -floatval( $row->monto_base_usd ),
-                    'comision_ganada_usd' => -floatval( $row->comision_ganada_usd ),
-                    'estado_pago'         => 'pendiente' // Nace pendiente para que se le descuente en este cierre
+                    'monto_base_usd'      => -abs(floatval( $row->monto_base_usd )),
+                    'comision_ganada_usd' => -abs(floatval( $row->comision_ganada_usd )),
+                    'estado_pago'         => 'pendiente',
+                    'notas'               => $nota_deduccion
                 ]);
             }
         }
