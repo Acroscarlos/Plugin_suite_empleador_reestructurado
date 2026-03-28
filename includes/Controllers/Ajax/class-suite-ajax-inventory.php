@@ -44,11 +44,9 @@ class Suite_Ajax_Get_Inventory extends Suite_AJAX_Controller {
             $disp_gale = isset($map['disponibilidad_galerias'], $row[$map['disponibilidad_galerias']]) ? floatval($row[$map['disponibilidad_galerias']]) : 0;
             $disp_mille = isset($map['disponibilidad_millennium'], $row[$map['disponibilidad_millennium']]) ? floatval($row[$map['disponibilidad_millennium']]) : 0;
             
-            // Limpieza numérica estricta para el precio
+            // El precio de WooCommerce ya viene estandarizado (16274.95)
             $precio_raw = isset($map['precio_venta'], $row[$map['precio_venta']]) ? trim($row[$map['precio_venta']]) : '0';
-            $precio_raw = str_replace( '"', '', $precio_raw ); 
-            $precio_raw = str_replace( '.', '', $precio_raw ); 
-            $precio_raw = str_replace( ',', '.', $precio_raw ); 
+            $precio_raw = str_replace( '"', '', $precio_raw ); // Solo quitamos comillas por seguridad
             $precio_float = floatval( $precio_raw );
 
             $data[] = [

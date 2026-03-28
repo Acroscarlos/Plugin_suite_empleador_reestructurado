@@ -49,8 +49,6 @@ class Suite_Model_Product {
                     // Precio (Columna 2 = índice 2 en array PHP)
                     $precio_raw = isset( $data[2] ) ? trim( $data[2] ) : '0';
                     $precio_raw = str_replace( '"', '', $precio_raw ); 
-                    $precio_raw = str_replace( '.', '', $precio_raw ); 
-                    $precio_raw = str_replace( ',', '.', $precio_raw ); 
                     $precio_float = floatval( $precio_raw );
 
                     // Stocks (Columna 5 = índice 5, Columna 6 = índice 6)
