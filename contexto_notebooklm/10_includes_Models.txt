@@ -1,0 +1,1419 @@
+=================================================================
+CONTEXTO DE CARPETA: includes\Models
+Proyecto: ERP Vendedores (MVC y POO)
+=================================================================
+
+--- INICIO DEL ARCHIVO: class-suite-model-base.php ---
+<?php
+/**
+ * Clase Abstracta: Modelo Base de Base de Datos
+ *
+ * Centraliza la interacción con $wpdb, proporcionando métodos CRUD
+ * blindados contra inyecciones SQL y estandarizados para todos los módulos.
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+abstract class Suite_Model_Base {
+
+    /**
+     * Instancia global de WordPress DB
+     * @var wpdb
+     */
+    protected $wpdb;
+
+    /**
+     * Nombre completo de la tabla (incluyendo el prefijo wp_)
+     * @var string
+     */
+    protected $table_name;
+
+    /**
+     * Llave primaria de la tabla (por defecto 'id')
+     * @var string
+     */
+    protected $primary_key = 'id';
+
+    /**
+     * Constructor. Inicializa la conexión a DB y define el nombre de la tabla.
+     */
+    public function __construct() {
+        global $wpdb;
+        $this->wpdb = $wpdb;
+        
+        // $this->set_table_name() debe ser definido obligatoriamente por la clase hija
+        $this->table_name = $this->wpdb->prefix . $this->set_table_name();
+    }
+
+    /**
+     * Define el nombre de la tabla sin el prefijo de WordPress.
+     * Ej: return 'suite_clientes';
+     *
+     * @return string
+     */
+    abstract protected function set_table_name();
+
+    /**
+     * Obtiene un registro específico por su ID.
+     *
+     * @param int $id El ID del registro.
+     * @return object|null Objeto con los datos o null si no existe.
+     */
+    public function get( $id ) {
+        $sql = $this->wpdb->prepare( 
+            "SELECT * FROM {$this->table_name} WHERE {$this->primary_key} = %d", 
+            intval( $id ) 
+        );
+        return $this->wpdb->get_row( $sql );
+    }
+
+    /**
+     * Obtiene una lista de registros con límite y offset (paginación básica).
+     *
+     * @param int $limit Límite de resultados.
+     * @param int $offset Punto de inicio.
+     * @return array Array de objetos.
+     */
+    public function get_all( $limit = 100, $offset = 0 ) {
+        $sql = $this->wpdb->prepare( 
+            "SELECT * FROM {$this->table_name} ORDER BY {$this->primary_key} DESC LIMIT %d OFFSET %d", 
+            intval( $limit ), 
+            intval( $offset ) 
+        );
+        return $this->wpdb->get_results( $sql );
+    }
+
+    /**
+     * Inserta un nuevo registro de forma segura.
+     *
+     * @param array $data Array asociativo [ 'columna' => 'valor' ].
+     * @return int|false El ID insertado o false en caso de error.
+     */
+    public function insert( $data ) {
+        $inserted = $this->wpdb->insert( $this->table_name, $data );
+        if ( $inserted ) {
+            return $this->wpdb->insert_id;
+        }
+        return false;
+    }
+
+    /**
+     * Actualiza un registro existente de forma segura.
+     *
+     * @param int   $id   El ID del registro a actualizar.
+     * @param array $data Array asociativo [ 'columna' => 'valor' ].
+     * @return bool True si se actualizó, false en caso de error.
+     */
+    public function update( $id, $data ) {
+        $updated = $this->wpdb->update( 
+            $this->table_name, 
+            $data, 
+            [ $this->primary_key => intval( $id ) ] 
+        );
+        
+        // $updated devuelve false en error, o el número de filas afectadas (puede ser 0 si los datos eran idénticos)
+        return $updated !== false;
+    }
+
+    /**
+     * Elimina un registro por su ID de forma segura.
+     *
+     * @param int $id El ID del registro a eliminar.
+     * @return bool True en éxito, false en error.
+     */
+    public function delete( $id ) {
+        $deleted = $this->wpdb->delete( 
+            $this->table_name, 
+            [ $this->primary_key => intval( $id ) ] 
+        );
+        return $deleted !== false;
+    }
+
+}
+--- FIN DEL ARCHIVO: class-suite-model-base.php ---
+
+--- INICIO DEL ARCHIVO: class-suite-model-client.php ---
+<?php
+/**
+ * Modelo de Base de Datos: Clientes (CRM)
+ *
+ * Maneja las consultas específicas de la tabla suite_clientes.
+ * Hereda de Suite_Model_Base los métodos genéricos.
+ * ACTUALIZADO: Módulo 1 (Zero-Trust) y Anti-Secuestro de Cartera.
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Model_Client extends Suite_Model_Base {
+
+    protected function set_table_name() {
+        return 'suite_clientes';
+    }
+
+    /**
+     * Override del método Base: Devuelve clientes respetando la seguridad RLS
+     */
+    public function get_all( $limit = 100, $offset = 0 ) {
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('manage_options');
+        $is_gerente = in_array('suite_gerente', (array)$user->roles) || in_array('gerente', (array)$user->roles);
+        
+        $sql = "SELECT * FROM {$this->table_name}";
+        
+        // Zero-Trust: Filtro estricto si es vendedor regular
+        if ( ! $is_admin && ! $is_gerente ) {
+            $sql .= $this->wpdb->prepare(" WHERE vendedor_id = %d", get_current_user_id());
+        }
+        
+        $sql .= $this->wpdb->prepare(" ORDER BY id DESC LIMIT %d OFFSET %d", intval($limit), intval($offset));
+        return $this->wpdb->get_results( $sql );
+    }
+
+    /**
+     * Busca clientes por Nombre/Razón Social o por RIF/CI con Seguridad RLS.
+     */
+    public function search_clients( $term ) {
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('manage_options');
+        $is_gerente = in_array('suite_gerente', (array)$user->roles) || in_array('gerente', (array)$user->roles);
+        
+        $term_clean = strtoupper( preg_replace( '/[^A-Z0-9]/', '', $term ) );
+        $term_name = $term;
+
+        // Construcción SQL Base con paréntesis para aislar el OR
+        $sql = "SELECT * FROM {$this->table_name} WHERE (nombre_razon LIKE %s OR rif_ci LIKE %s)";
+        
+        // Zero-Trust: El vendedor solo puede buscar dentro de sus propios clientes
+        if ( ! $is_admin && ! $is_gerente ) {
+            $sql .= $this->wpdb->prepare(" AND vendedor_id = %d", get_current_user_id());
+        }
+        
+        $sql .= " LIMIT 10";
+
+        // Preparar y ejecutar
+        $prepared_sql = $this->wpdb->prepare(
+            $sql, 
+            '%' . $this->wpdb->esc_like( $term_name ) . '%', 
+            '%' . $this->wpdb->esc_like( $term_clean ) . '%'
+        );
+
+        return $this->wpdb->get_results( $prepared_sql );
+    }
+
+    /**
+     * Obtiene los KPIs y estadísticas de compras de un cliente específico.
+     * ACTUALIZADO: Solo contabiliza las compras hechas con EL VENDEDOR ACTUAL (RLS).
+     */
+    public function get_client_stats( $client_id ) {
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('manage_options');
+        $is_gerente = in_array('suite_gerente', (array)$user->roles) || in_array('gerente', (array)$user->roles);
+
+        $tabla_cotizaciones = $this->wpdb->prefix . 'suite_cotizaciones';
+
+        $sql = $this->wpdb->prepare( 
+            "SELECT 
+                SUM(total_usd) as total, 
+                COUNT(id) as count, 
+                MIN(fecha_emision) as first, 
+                MAX(fecha_emision) as last 
+            FROM {$tabla_cotizaciones} 
+            WHERE cliente_id = %d", 
+            intval( $client_id ) 
+        );
+
+        // Zero-Trust
+        if ( ! $is_admin && ! $is_gerente ) {
+            $sql .= $this->wpdb->prepare(" AND vendedor_id = %d", get_current_user_id());
+        }
+
+        return $this->wpdb->get_row( $sql );
+    }
+
+    /**
+     * Historial RLS: Un vendedor solo ve las compras que ESE cliente hizo con ÉL.
+     */
+    public function get_client_history( $client_id ) {
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('manage_options');
+        $is_gerente = in_array('suite_gerente', (array)$user->roles) || in_array('gerente', (array)$user->roles);
+        
+        $tabla_cotizaciones = $this->wpdb->prefix . 'suite_cotizaciones';
+        
+        $sql = $this->wpdb->prepare(
+            "SELECT id, codigo_cotizacion as codigo, fecha_emision as fecha, total_usd as total, estado 
+             FROM {$tabla_cotizaciones} 
+             WHERE cliente_id = %d", 
+             intval($client_id)
+        );
+        
+        // Zero-Trust
+        if ( ! $is_admin && ! $is_gerente ) {
+            $sql .= $this->wpdb->prepare(" AND vendedor_id = %d", get_current_user_id());
+        }
+        
+        $sql .= " ORDER BY id DESC LIMIT 10";
+        
+        return $this->wpdb->get_results( $sql );
+    }
+}
+--- FIN DEL ARCHIVO: class-suite-model-client.php ---
+
+--- INICIO DEL ARCHIVO: class-suite-model-commission.php ---
+<?php
+/**
+ * Modelo de Base de Datos: Comisiones, Metas y Gamificación (Módulo 4)
+ *
+ * Maneja el cálculo inmutable del 1.5% de comisión y determina a los 
+ * ganadores de los premios mensuales ("Pez Gordo", "Deja pa' los demás").
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Model_Commission extends Suite_Model_Base {
+
+    /**
+     * Define la tabla principal del modelo (Ledger de Comisiones)
+     */
+    protected function set_table_name() {
+        return 'suite_comisiones_ledger';
+    }
+
+
+    /**
+     * Calcula y registra la comisión dividiendo equitativamente entre los beneficiarios.
+     * ARCHIVO: includes/Models/class-suite-model-commission.php
+     * 
+     * @param int $quote_id ID de la cotización
+     * @param int $vendedor_id ID del vendedor titular
+     * @param float $total_usd Monto total de la venta
+     * @param array $colaboradores Array con los IDs de los vendedores secundarios
+     * @return true|false
+     */
+    public function calculate_and_save_commission( $quote_id, $vendedor_id, $total_usd, $colaboradores = [] ) {
+        // Regla de Negocio: Comisión Fija del 1.5%
+        $porcentaje = 0.015;
+        $comision_total = floatval( $total_usd ) * $porcentaje;
+
+        if ( $comision_total <= 0 ) return false;
+
+        // 1. Armar el pool unificado de beneficiarios (Titular + Colaboradores)
+        $beneficiarios = [ intval( $vendedor_id ) ];
+        
+        if ( is_array( $colaboradores ) && !empty( $colaboradores ) ) {
+            foreach ( $colaboradores as $colab_id ) {
+                $colab_id = intval( $colab_id );
+                // Evitar IDs inválidos o duplicar al titular
+                if ( $colab_id > 0 && ! in_array( $colab_id, $beneficiarios ) ) {
+                    $beneficiarios[] = $colab_id;
+                }
+            }
+        }
+
+        // 2. Ejecutar división financiera
+        $cantidad_vendedores = count( $beneficiarios );
+        $base_dividida       = round( floatval( $total_usd ) / $cantidad_vendedores, 2 );
+        $comision_dividida   = round( $comision_total / $cantidad_vendedores, 2 );
+
+        // 3. Insertar registro en el Ledger por cada vendedor
+        foreach ( $beneficiarios as $ben_id ) {
+            $this->insert( [
+                'quote_id'            => intval( $quote_id ),
+                'vendedor_id'         => $ben_id,
+                'monto_base_usd'      => $base_dividida,
+                'comision_ganada_usd' => $comision_dividida,
+                'estado_pago'         => 'pendiente' // Se liquida a fin de mes
+            ] );
+        }
+
+        return true;
+    }
+
+    /**
+     * Analiza la base de datos para determinar los ganadores de la Gamificación.
+     * Solo cuenta ventas efectivamente cerradas ('pagado', 'despachado').
+     *
+     * @param int $mes  Mes a evaluar (1-12)
+     * @param int $anio Año a evaluar (ej. 2024)
+     * @return array    Array asociativo con los datos de los ganadores
+     */
+	public function get_gamification_winners( $mes, $anio ) {
+        $tabla_ledger   = $this->wpdb->prefix . 'suite_comisiones_ledger';
+        $tabla_user     = $this->wpdb->prefix . 'users';
+        $tabla_usermeta = $this->wpdb->usermeta;
+
+        // 1. Ganador "Pez Gordo" ($20): Mayor volumen acumulado (Ledger + Filtro Elegibilidad)
+        $pez_gordo = $this->wpdb->get_row( $this->wpdb->prepare( "
+            SELECT l.vendedor_id, u.display_name, SUM(l.monto_base_usd) as total_vendido
+            FROM {$tabla_ledger} l
+            INNER JOIN {$tabla_user} u ON l.vendedor_id = u.ID
+            INNER JOIN {$tabla_usermeta} um ON l.vendedor_id = um.user_id
+            WHERE l.estado_pago = 'pendiente' 
+              AND MONTH(l.created_at) = %d 
+              AND YEAR(l.created_at) = %d 
+              AND l.monto_base_usd > 0
+              AND um.meta_key = 'suite_participa_comisiones' AND um.meta_value = '1'
+            GROUP BY l.vendedor_id
+            ORDER BY total_vendido DESC
+            LIMIT 1
+        ", intval( $mes ), intval( $anio ) ) );
+
+        // 2. Ganador "Deja pa' los demás" ($20): Mayor cantidad de ventas (Ledger + Filtro Elegibilidad)
+        $deja_pa_los_demas = $this->wpdb->get_row( $this->wpdb->prepare( "
+            SELECT l.vendedor_id, u.display_name, COUNT(l.id) as cantidad_ventas
+            FROM {$tabla_ledger} l
+            INNER JOIN {$tabla_user} u ON l.vendedor_id = u.ID
+            INNER JOIN {$tabla_usermeta} um ON l.vendedor_id = um.user_id
+            WHERE l.estado_pago = 'pendiente' 
+              AND MONTH(l.created_at) = %d 
+              AND YEAR(l.created_at) = %d 
+              AND l.monto_base_usd > 0
+              AND um.meta_key = 'suite_participa_comisiones' AND um.meta_value = '1'
+            GROUP BY l.vendedor_id
+            ORDER BY cantidad_ventas DESC
+            LIMIT 1
+        ", intval( $mes ), intval( $anio ) ) );
+
+        return [
+            'pez_gordo'         => $pez_gordo,
+            'deja_pa_los_demas' => $deja_pa_los_demas
+        ];
+    }
+
+    /**
+     * Asignación manual de un premio por parte del Administrador (Ej: "Dale play").
+     *
+     * @param int    $vendedor_id   ID del vendedor premiado
+     * @param string $premio_nombre Nombre del premio (Ej: "Dale play")
+     * @param float  $monto         Monto en dólares a premiar (Ej: 10.00)
+     * @param int    $mes           Mes correspondiente
+     * @param int    $anio          Año correspondiente
+     * @return int|false
+     */
+    public function assign_manual_prize( $vendedor_id, $premio_nombre, $monto, $mes, $anio ) {
+        $tabla_premios = $this->wpdb->prefix . 'suite_premios_mensuales';
+
+        $inserted = $this->wpdb->insert( $tabla_premios, [
+            'vendedor_id'          => intval( $vendedor_id ),
+            'mes'                  => intval( $mes ),
+            'anio'                 => intval( $anio ),
+            'premio_nombre'        => sanitize_text_field( $premio_nombre ),
+            'monto_premio'         => floatval( $monto ),
+            'asignado_manualmente' => 1
+        ] );
+
+        return $inserted ? $this->wpdb->insert_id : false;
+    }
+	
+
+	
+	
+	/**
+     * Obtiene las estadísticas financieras (Billetera) de un vendedor.
+     * 
+     * @param int $vendedor_id ID del vendedor.
+     * @param int|null $mes Mes a consultar.
+     * @param int|null $anio Año a consultar.
+     * @return array Billetera estructurada (Totales y Últimas 10 Transacciones)
+     */
+    public function get_vendedor_stats( $vendedor_id, $mes = null, $anio = null ) {
+        $mes = $mes ? intval( $mes ) : intval( date( 'm' ) );
+        $anio = $anio ? intval( $anio ) : intval( date( 'Y' ) );
+
+        $tabla_ledger = $this->table_name;
+        $tabla_cot    = $this->wpdb->prefix . 'suite_cotizaciones';
+
+        // 1. Agrupación Contable (Totales por Estado)
+        $sql_totales = $this->wpdb->prepare("
+            SELECT estado_pago, SUM(comision_ganada_usd) as total
+            FROM {$tabla_ledger}
+            WHERE vendedor_id = %d AND MONTH(created_at) = %d AND YEAR(created_at) = %d
+            GROUP BY estado_pago
+        ", $vendedor_id, $mes, $anio);
+
+        $resultados_totales = $this->wpdb->get_results( $sql_totales );
+
+        $totales = [ 'pendiente' => 0.00, 'pagado' => 0.00 ];
+        foreach ( $resultados_totales as $row ) {
+            if ( isset( $totales[ $row->estado_pago ] ) ) {
+                $totales[ $row->estado_pago ] = floatval( $row->total );
+            }
+        }
+
+        // 2. Historial de Transacciones (Últimas 10 del mes)
+        $sql_historial = $this->wpdb->prepare("
+            SELECT l.comision_ganada_usd, l.estado_pago, l.created_at, c.codigo_cotizacion, c.total_usd
+            FROM {$tabla_ledger} l
+            LEFT JOIN {$tabla_cot} c ON l.quote_id = c.id
+            WHERE l.vendedor_id = %d AND MONTH(l.created_at) = %d AND YEAR(l.created_at) = %d
+            ORDER BY l.id DESC
+            LIMIT 10
+        ", $vendedor_id, $mes, $anio);
+
+        $historial = $this->wpdb->get_results( $sql_historial );
+
+        return [
+            'totales'   => $totales,
+            'historial' => $historial
+        ];
+    }	
+
+	
+	
+	/**
+     * LOGÍSTICA INVERSA UNIVERSAL (FASE 5.4)
+     * Anula o deduce la comisión de un pedido devuelto (B2B o Interno).
+     */
+    public function reverse_commission( $quote_id ) {
+        if ( empty( $quote_id ) ) return;
+
+        // Buscamos todas las líneas contables asociadas a esta orden
+        $registros = $this->wpdb->get_results( $this->wpdb->prepare(
+            "SELECT * FROM {$this->table_name} WHERE quote_id = %d AND estado_pago != 'anulado'",
+            intval( $quote_id )
+        ) );
+
+        if ( empty( $registros ) ) return;
+
+        foreach ( $registros as $row ) {
+            // Protección de Idempotencia: Omitir si ya es una deducción negativa
+            if ( floatval( $row->comision_ganada_usd ) < 0 ) {
+                continue;
+            }
+
+            if ( $row->estado_pago === 'pendiente' ) {
+                // ESCENARIO A: Comisión Pendiente -> Soft Delete (Anulado)
+                // Usamos el método update de tu modelo para mantener la integridad
+                $this->wpdb->update(
+                    $this->table_name,
+                    [ 'estado_pago' => 'anulado' ],
+                    [ 'id' => $row->id ],
+                    [ '%s' ],
+                    [ '%d' ]
+                );
+
+            } elseif ( $row->estado_pago === 'pagado' ) {
+                // ESCENARIO B: Comisión Pagada -> Inyección de Contra-asiento
+                $nota_deduccion = "Deducción por Logística Inversa - Orden #{$row->quote_id}";
+                
+                // Detectamos si era B2B leyendo la nota original
+                if ( ! empty($row->notas) && strpos( $row->notas, 'B2B' ) !== false ) {
+                    $nota_deduccion .= " (Reverso Aliado B2B)";
+                }
+
+                $this->insert([
+                    'quote_id'            => $row->quote_id,
+                    'vendedor_id'         => $row->vendedor_id,
+                    'monto_base_usd'      => -abs(floatval( $row->monto_base_usd )),
+                    'comision_ganada_usd' => -abs(floatval( $row->comision_ganada_usd )),
+                    'estado_pago'         => 'pendiente',
+                    'notas'               => $nota_deduccion
+                ]);
+            }
+        }
+    }
+
+    /**
+     * ADJUDICACIÓN DE PREMIOS (Dinero Real)
+     * Liquida los premios de Gamificación inyectándolos en el Ledger como dólares reales.
+     * 
+     * @param int $mes Mes que se acaba de cerrar
+     * @param int $anio Año del cierre
+     */
+    public function award_monthly_prizes( $mes, $anio ) {
+        $winners = $this->get_gamification_winners( $mes, $anio );
+
+        // 1. Premio: Pez Gordo ($20)
+        if ( ! empty( $winners['pez_gordo'] ) ) {
+            $this->insert([
+                'quote_id'            => 0, // 0 indica que no proviene de una venta, es un bono
+                'vendedor_id'         => $winners['pez_gordo']->vendedor_id,
+                'monto_base_usd'      => 0,
+                'comision_ganada_usd' => 20.00,
+                'estado_pago'         => 'pendiente'
+            ]);
+        }
+
+        // 2. Premio: Deja pa' los demás ($20)
+        if ( ! empty( $winners['deja_pa_los_demas'] ) ) {
+            $this->insert([
+                'quote_id'            => 0,
+                'vendedor_id'         => $winners['deja_pa_los_demas']->vendedor_id,
+                'monto_base_usd'      => 0,
+                'comision_ganada_usd' => 20.00,
+                'estado_pago'         => 'pendiente'
+            ]);
+        }
+    }
+	
+	
+	
+	
+}
+--- FIN DEL ARCHIVO: class-suite-model-commission.php ---
+
+--- INICIO DEL ARCHIVO: class-suite-model-employee.php ---
+<?php
+/**
+ * Modelo de Base de Datos: Gestor de Empleados (Usuarios)
+ *
+ * Actúa como un Wrapper de las funciones nativas de WordPress para la gestión 
+ * de usuarios (WP_User, wp_insert_user, get_users). Maneja la lógica de negocio
+ * del CRUD de empleados del ERP.
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Model_Employee {
+
+    /**
+     * Obtiene todos los empleados registrados en el ERP.
+     * Excluye a los usuarios con rol 'subscriber' puro y trae el teléfono de los metadatos.
+     *
+     * @return array Lista de empleados con sus datos formateados.
+     */
+	public function get_all_employees() {
+        // Obtenemos todos los usuarios excepto los suscriptores y clientes genéricos
+        $args = [
+            'role__not_in' => [ 'subscriber', 'customer' ],
+            'orderby'      => 'display_name',
+            'order'        => 'ASC'
+        ];
+
+        $users = get_users( $args );
+        $employees = [];
+
+        foreach ( $users as $u ) {
+            // Obtener el meta_key 'suite_telefono'. Si no existe, buscamos el fallback 'billing_phone'.
+            $telefono = get_user_meta( $u->ID, 'suite_telefono', true );
+            if ( empty( $telefono ) ) {
+                $telefono = get_user_meta( $u->ID, 'billing_phone', true );
+            }
+
+            $employees[] = [
+                'id'         => $u->ID,
+                'nombre'     => $u->display_name,
+                'email'      => $u->user_email,
+                'telefono'   => ! empty( $telefono ) ? $telefono : '-',
+                'roles'      => array_values( $u->roles ),
+                'is_b2b'               => get_user_meta( $u->ID, 'suite_is_b2b', true ),
+                'participa_comisiones' => get_user_meta( $u->ID, 'suite_participa_comisiones', true ),
+            ];
+        }
+
+        return $employees;
+    }
+
+    /**
+     * Obtiene los datos detallados de un empleado en específico.
+     *
+     * @param int $id ID del usuario.
+     * @return array|false Datos del empleado o false si no existe.
+     */
+    public function get_employee( $id ) {
+        $user = get_userdata( intval( $id ) );
+
+        if ( ! $user ) {
+            return false;
+        }
+
+        $telefono = get_user_meta( $user->ID, 'suite_telefono', true );
+        if ( empty( $telefono ) ) {
+            $telefono = get_user_meta( $user->ID, 'billing_phone', true );
+        }
+
+        return [
+            'id'         => $user->ID,
+            'nombre'     => $user->display_name,
+            'first_name' => $user->first_name,
+            'last_name'  => $user->last_name,
+            'email'      => $user->user_email,
+            'telefono'   => $telefono,
+            'roles'      => $user->roles
+        ];
+    }
+
+    /**
+     * Crea o actualiza un empleado en la base de datos de WordPress.
+     *
+     * @param array $data Array con los campos: ID (opcional), email, password, first_name, last_name, role, telefono.
+     * @return int|WP_Error El ID del usuario guardado o un objeto de error.
+     */
+    public function save_employee( $data ) {
+        $id         = isset( $data['ID'] ) ? intval( $data['ID'] ) : 0;
+        $email      = sanitize_email( $data['email'] );
+        $password   = isset( $data['password'] ) ? $data['password'] : '';
+        $first_name = isset( $data['first_name'] ) ? sanitize_text_field( $data['first_name'] ) : '';
+        $last_name  = isset( $data['last_name'] ) ? sanitize_text_field( $data['last_name'] ) : '';
+        $role       = isset( $data['role'] ) ? sanitize_text_field( $data['role'] ) : '';
+        $telefono   = isset( $data['telefono'] ) ? sanitize_text_field( $data['telefono'] ) : '';
+
+        if ( empty( $email ) ) {
+            return new WP_Error( 'empty_email', 'El correo electrónico es obligatorio.' );
+        }
+
+        // Preparar arreglo para wp_insert_user / wp_update_user
+        $user_data = [
+            'user_email' => $email,
+            'first_name' => $first_name,
+            'last_name'  => $last_name,
+            'role'       => $role
+        ];
+
+        // Construir Display Name automáticamente si hay datos
+        $display_name = trim( $first_name . ' ' . $last_name );
+        if ( ! empty( $display_name ) ) {
+            $user_data['display_name'] = $display_name;
+        }
+
+        // Lógica dividida: Actualización vs Creación
+        if ( $id > 0 ) {
+            $user_data['ID'] = $id;
+
+            // Seguridad: Prevenir que un Administrador se quite su propio rol por accidente
+            $current_user_id = get_current_user_id();
+            if ( $id === $current_user_id && $role !== 'administrator' ) {
+                $user_obj = get_userdata( $id );
+                if ( in_array( 'administrator', (array) $user_obj->roles, true ) ) {
+                    return new WP_Error( 'self_demotion', 'Seguridad: No puedes quitarte el rol de Administrador a ti mismo.' );
+                }
+            }
+
+            // Solo actualizamos la contraseña si se envió una nueva
+            if ( ! empty( $password ) ) {
+                $user_data['user_pass'] = $password;
+            }
+
+        } else {
+            // Es un usuario nuevo
+            if ( username_exists( $email ) || email_exists( $email ) ) {
+                return new WP_Error( 'user_exists', 'El correo electrónico ya está registrado en el sistema.' );
+            }
+
+            if ( empty( $password ) ) {
+                return new WP_Error( 'empty_password', 'La contraseña es obligatoria para crear nuevos usuarios.' );
+            }
+
+            // Usamos el email como nombre de usuario de login
+            $user_data['user_login'] = $email;
+            $user_data['user_pass']  = $password;
+        }
+
+		// --- INICIO CORRECCIÓN ARQUITECTO: Separar Crear de Actualizar ---
+        if ( $id > 0 ) {
+            $user_id = wp_update_user( $user_data );
+        } else {
+            $user_id = wp_insert_user( $user_data );
+        }
+        // --- FIN CORRECCIÓN ---
+
+        if ( is_wp_error( $user_id ) ) {
+            return $user_id; // Retorna el error al controlador
+        }
+
+        // Guardar la Meta Data (Teléfono usado en impresiones PDF del ERP)
+        update_user_meta( $user_id, 'suite_telefono', $telefono );
+        
+        // Opcional: Respaldar en 'billing_phone' por compatibilidad con código Legacy
+        update_user_meta( $user_id, 'billing_phone', $telefono );
+
+        return $user_id;
+    }
+
+    /**
+     * Elimina a un empleado del sistema.
+     *
+     * @param int $id ID del usuario a eliminar.
+     * @param int|null $reassign ID de otro usuario al que se le reasignarán los posts/datos (opcional).
+     * @return true|WP_Error
+     */
+    public function delete_employee( $id, $reassign = null ) {
+        $id = intval( $id );
+
+        // Seguridad: Evitar auto-eliminación
+        if ( $id === get_current_user_id() ) {
+            return new WP_Error( 'self_deletion', 'Seguridad: No puedes eliminar tu propia cuenta activa.' );
+        }
+
+        // wp_delete_user requiere incluir manualmente el archivo de administración de usuarios en el frontend o AJAX
+        if ( ! function_exists( 'wp_delete_user' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/user.php';
+        }
+
+        $deleted = wp_delete_user( $id, $reassign );
+
+        if ( $deleted ) {
+            return true;
+        }
+
+        return new WP_Error( 'delete_failed', 'Fallo interno al intentar eliminar al empleado.' );
+    }
+
+}
+--- FIN DEL ARCHIVO: class-suite-model-employee.php ---
+
+--- INICIO DEL ARCHIVO: class-suite-model-inventory.php ---
+<?php
+/**
+ * Modelo de Base de Datos: Inventario y Logística (Módulo 3)
+ *
+ * Maneja las consultas de la tabla suite_inventario_cache.
+ * Provee métodos para el descuento de stock y reservas temporales.
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Model_Inventory extends Suite_Model_Base {
+
+    /**
+     * Define el nombre de la tabla (sin el prefijo wp_)
+     */
+    protected function set_table_name() {
+        return 'suite_inventario_cache';
+    }
+
+    /**
+     * Descuenta el stock físico de los productos vendidos.
+     * Por defecto, descuenta del almacén principal (stock_gale).
+     *
+     * @param array $items Array asociativo con 'sku' y 'cantidad'
+     * @return void
+     */
+    public function discount_stock( $items ) {
+        if ( empty( $items ) || ! is_array( $items ) ) {
+            return;
+        }
+
+        foreach ( $items as $item ) {
+            $sku = isset( $item['sku'] ) ? sanitize_text_field( $item['sku'] ) : '';
+            $qty = isset( $item['cantidad'] ) ? intval( $item['cantidad'] ) : 0;
+
+            // Ignorar productos manuales o genéricos que no están en el catálogo
+            if ( empty( $sku ) || $qty <= 0 || in_array( strtoupper( $sku ), ['MANUAL', 'GENERICO'] ) ) {
+                continue;
+            }
+
+            // Consulta directa para restar el stock atómicamente a nivel de base de datos
+            // Esto previene condiciones de carrera si dos usuarios compran al mismo exacto milisegundo
+            $sql = $this->wpdb->prepare(
+                "UPDATE {$this->table_name} 
+                 SET stock_gale = stock_gale - %d 
+                 WHERE sku = %s",
+                $qty,
+                $sku
+            );
+
+            $this->wpdb->query( $sql );
+            
+            // Log de auditoría (Opcional, si tienes suite_record_log global)
+            if ( function_exists('suite_record_log') ) {
+                suite_record_log('descuento_inventario', "Se descontaron {$qty} unidades del SKU: {$sku}");
+            }
+        }
+    }
+
+    /**
+     * Reserva stock temporalmente (Hard Commit) para clientes "En Espera de Pago".
+     * TODO: [Módulo 3 - Logística] Requiere la creación de la tabla wp_suite_reservas.
+     *
+     * @param string $sku   El código del producto
+     * @param int    $qty   Cantidad a reservar
+     * @param int    $hours Tiempo de vida de la reserva en horas
+     * @return bool
+     */
+    public function reserve_stock_temporal( $sku, $qty, $hours = 24 ) {
+        /*
+        $expiration = date('Y-m-d H:i:s', strtotime("+{$hours} hours"));
+        
+        return $this->wpdb->insert( $this->wpdb->prefix . 'suite_reservas', [
+            'sku'        => sanitize_text_field($sku),
+            'cantidad'   => intval($qty),
+            'expira_en'  => $expiration
+        ] );
+        */
+        
+        return true; // Placeholder hasta construir la tabla
+    }
+}
+--- FIN DEL ARCHIVO: class-suite-model-inventory.php ---
+
+--- INICIO DEL ARCHIVO: class-suite-model-product.php ---
+<?php
+/**
+ * Modelo de Base de Datos: Productos y Precios
+ *
+ * Extrae la metadata de WooCommerce y la cruza con los precios (precios.csv)
+ * y el inventario en tiempo real (reporte_final.csv).
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Model_Product {
+
+    public function get_products_with_csv_prices( $term = '' ) {
+        global $wpdb;
+
+        // 1. CONSULTA SQL OPTIMIZADA A WOOCOMMERCE
+        $sql = "SELECT p.ID, p.post_title AS nombre, pm.meta_value AS sku
+                FROM {$wpdb->posts} p
+                LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_sku'
+                WHERE p.post_type = 'product' AND p.post_status = 'publish'";
+
+        if ( ! empty( $term ) ) {
+            $like = '%' . $wpdb->esc_like( $term ) . '%';
+            $sql .= $wpdb->prepare( " AND (p.post_title LIKE %s OR pm.meta_value LIKE %s)", $like, $like );
+        }
+
+        $sql .= " LIMIT 50"; // Límite de seguridad
+        $woo_products = $wpdb->get_results( $sql );
+
+        if ( empty( $woo_products ) ) {
+            return [];
+        }
+
+        // 2. PROCESAMIENTO DEL CSV DE PRECIOS
+        $csv_prices = [];
+        $csv_path_precios = SUITE_PATH . 'output/precios.csv';
+
+        if ( file_exists( $csv_path_precios ) && ( $handle = fopen( $csv_path_precios, 'r' ) ) !== false ) {
+            fgetcsv( $handle, 1000, ',' ); // Saltamos la cabecera
+
+            while ( ( $data = fgetcsv( $handle, 1000, ',' ) ) !== false ) {
+                $sku = isset( $data[0] ) ? trim( $data[0] ) : '';
+                
+                // Limpieza numérica estricta (Convierte "12.018,00" -> 12018.00)
+                $precio_raw = isset( $data[1] ) ? trim( $data[1] ) : '0';
+                $precio_raw = str_replace( '"', '', $precio_raw ); 
+                $precio_raw = str_replace( '.', '', $precio_raw ); 
+                $precio_raw = str_replace( ',', '.', $precio_raw ); 
+                $precio_float = floatval( $precio_raw );
+
+                if ( ! empty( $sku ) ) {
+                    $csv_prices[ strtoupper( $sku ) ] = $precio_float;
+                }
+            }
+            fclose( $handle );
+        }
+
+        // 3. PROCESAMIENTO DEL CSV DE INVENTARIO (reporte_final.csv)
+        $csv_inventory = [];
+        $csv_path_inventario = SUITE_PATH . 'output/reporte_final.csv';
+
+        if ( file_exists( $csv_path_inventario ) && ( $handle2 = fopen( $csv_path_inventario, 'r' ) ) !== false ) {
+            fgetcsv( $handle2, 1000, ',' ); // Saltamos la cabecera
+
+            while ( ( $data2 = fgetcsv( $handle2, 1000, ',' ) ) !== false ) {
+                $sku = isset( $data2[0] ) ? trim( $data2[0] ) : '';
+                
+                // Extraemos Stock Total (Columna 3) y Disponibilidad Galerías (Columna 8)
+                $stock_total = isset( $data2[3] ) ? trim( $data2[3] ) : '0';
+                $stock_gale  = isset( $data2[8] ) ? trim( $data2[8] ) : '0';
+
+                if ( ! empty( $sku ) ) {
+                    // Usamos intval(floatval()) para manejar casos donde el CSV diga "20.0" limpiándolo a "20"
+                    $csv_inventory[ strtoupper( $sku ) ] = [
+                        'total' => intval( floatval( $stock_total ) ),
+                        'gale'  => intval( floatval( $stock_gale ) )
+                    ];
+                }
+            }
+            fclose( $handle2 );
+        }
+
+        // 4. EL CRUCE TRIPLE (MERGE) EN MEMORIA
+        $final_products = [];
+
+        foreach ( $woo_products as $prod ) {
+            $sku_clean = ! empty( $prod->sku ) ? strtoupper( trim( $prod->sku ) ) : '';
+
+            // Regla de Negocio de Precios: Si existe en CSV usar precio, si no, es 0.00
+            $precio = ( $sku_clean && isset( $csv_prices[ $sku_clean ] ) ) ? $csv_prices[ $sku_clean ] : 0.00;
+
+            // Regla de Negocio de Inventario: Si existe el SKU extraemos stocks, sino 'N/D'
+            $stock_total = ( $sku_clean && isset( $csv_inventory[ $sku_clean ] ) ) ? $csv_inventory[ $sku_clean ]['total'] : 'N/D';
+            $stock_gale  = ( $sku_clean && isset( $csv_inventory[ $sku_clean ] ) ) ? $csv_inventory[ $sku_clean ]['gale']  : 'N/D';
+
+            $final_products[] = [
+                'id'          => $prod->ID,
+                'nombre'      => esc_html( $prod->nombre ),
+                'sku'         => $sku_clean ? $sku_clean : 'N/A',
+                'precio'      => number_format( $precio, 2, '.', '' ),
+                'stock_gale'  => (string) $stock_gale,
+                'stock_total' => (string) $stock_total
+            ];
+        }
+
+        return $final_products;
+    }
+}
+--- FIN DEL ARCHIVO: class-suite-model-product.php ---
+
+--- INICIO DEL ARCHIVO: class-suite-model-quote.php ---
+<?php
+/**
+ * Modelo de Base de Datos: Cotizaciones y Pedidos
+ *
+ * Maneja transacciones de ventas, Kanban y reglas de inmutabilidad.
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Model_Quote extends Suite_Model_Base {
+
+    protected function set_table_name() {
+        return 'suite_cotizaciones';
+    }
+
+    /**
+     * Crea una cotización completa usando Transacciones SQL Seguras y 
+     * validación cruzada de precios para evitar vulnerabilidades.
+     */
+    public function create_quote( $client_data, $items, $meta ) {
+        // 1. Iniciar Transacción
+        $this->wpdb->query( 'START TRANSACTION' );
+
+        try {
+            // --- GESTIÓN DEL CLIENTE ---
+            $client_model = new Suite_Model_Client();
+            
+            $rif_limpio = strtoupper( preg_replace( '/[^A-Z0-9]/', '', $client_data['rif_ci'] ) );
+            if ( empty( $rif_limpio ) ) throw new Exception( 'El RIF proporcionado no es válido.' );
+            $client_data['rif_ci'] = $rif_limpio;
+
+            $existing_client = $this->wpdb->get_row( $this->wpdb->prepare( "SELECT id FROM {$this->wpdb->prefix}suite_clientes WHERE rif_ci = %s", $rif_limpio ) );
+
+            $cliente_id = 0;
+            if ( $existing_client ) {
+                $cliente_id = $existing_client->id;
+            } else {
+                $cliente_id = $client_model->insert( $client_data );
+                if ( ! $cliente_id ) throw new Exception( 'Fallo al registrar el nuevo cliente.' );
+            }
+
+            // --- GENERACIÓN DE CÓDIGO ---
+            $hoy_start = date( 'Y-m-d 00:00:00' ); 
+            $hoy_end   = date( 'Y-m-d 23:59:59' );
+            $count = $this->wpdb->get_var( "SELECT COUNT(*) FROM {$this->table_name} WHERE fecha_emision BETWEEN '$hoy_start' AND '$hoy_end'" );
+            $codigo = date( 'Y' ) . str_pad( $count + 1, 2, '0', STR_PAD_LEFT ) . date( 'd' ) . date( 'm' );
+
+            // --- INSERCIÓN CABECERA ---
+            $quote_id = $this->insert( [
+                'codigo_cotizacion' => $codigo,
+                'cliente_id'        => $cliente_id,
+                'cliente_nombre'    => $client_data['nombre_razon'],
+                'cliente_rif'       => $rif_limpio,
+                'direccion_entrega' => $client_data['direccion'],
+                'vendedor_id'       => $meta['vendedor_id'],
+                'tasa_bcv'          => floatval( $meta['tasa'] ),
+                'validez_dias'      => intval( $meta['validez'] ),
+                'moneda'            => sanitize_text_field( $meta['moneda'] ),
+                'total_usd'         => 0, // Se actualizará luego del loop
+                'fecha_emision'     => current_time( 'mysql' ),
+                'estado'            => 'emitida'
+            ] );
+
+            if ( ! $quote_id ) throw new Exception( 'Fallo al generar la cabecera.' );
+
+            // --- INSERCIÓN DETALLE (Optimización N+1) ---
+            $total_usd = 0;
+            $table_items = $this->wpdb->prefix . 'suite_cotizaciones_items';
+            $table_inv   = $this->wpdb->prefix . 'suite_inventario_cache';
+
+            // 1. Pre-cargar todos los precios en 1 sola consulta
+            $skus_a_buscar = [];
+            foreach ( $items as $item ) {
+                if ( ! in_array( strtoupper( $item['sku'] ), ['MANUAL', 'GENERICO'] ) ) {
+                    $skus_a_buscar[] = sanitize_text_field( $item['sku'] );
+                }
+            }
+            
+            $precios_db = [];
+            if ( ! empty( $skus_a_buscar ) ) {
+                $placeholders = implode( ',', array_fill( 0, count( $skus_a_buscar ), '%s' ) );
+                $sql_precios = $this->wpdb->prepare( "SELECT sku, precio FROM {$table_inv} WHERE sku IN ($placeholders)", ...$skus_a_buscar );
+                $resultados_precios = $this->wpdb->get_results( $sql_precios );
+                foreach ( $resultados_precios as $rp ) {
+                    $precios_db[ strtoupper($rp->sku) ] = floatval( $rp->precio );
+                }
+            }
+
+            // 2. Procesar inserciones en memoria
+			foreach ( $items as $item ) {
+                $sku = sanitize_text_field( $item['sku'] );
+                $qty = intval( $item['qty'] );
+                $safe_price = floatval( $item['price'] ); // Precio introducido por el vendedor
+
+                if ( ! in_array( strtoupper( $sku ), ['MANUAL', 'GENERICO'] ) ) {
+                    if ( isset( $precios_db[ strtoupper($sku) ] ) ) {
+                        
+                        $precio_minimo_db = floatval( $precios_db[ strtoupper($sku) ] );
+                        
+                        // CANDADO INTELIGENTE: 
+                        // Solo forzamos el precio de la BD si el vendedor lo puso más barato.
+                        // Si el vendedor lo puso más caro, se respeta su $safe_price original.
+                        if ( $safe_price < $precio_minimo_db ) {
+                            $safe_price = $precio_minimo_db;
+                        }
+
+                    } else {
+                        throw new Exception( "El producto con SKU '{$sku}' no existe en el catálogo." );
+                    }
+                }
+
+                $sub = $qty * $safe_price;
+                $total_usd += $sub;
+
+                $this->wpdb->insert( $table_items, [
+                    'cotizacion_id'       => $quote_id,
+                    'sku'                 => $sku,
+                    'producto_nombre'     => sanitize_text_field( $item['name'] ),
+                    'cantidad'            => $qty,
+                    'precio_unitario_usd' => $safe_price,
+                    'tiempo_entrega'      => isset( $item['time'] ) ? sanitize_text_field( $item['time'] ) : 'Inmediata',
+                    'subtotal_usd'        => $sub
+                ] );
+            }
+
+            // --- ACTUALIZAR TOTALES ---
+            $this->update( $quote_id, [
+                'total_usd' => $total_usd,
+                'total_bs'  => $total_usd * floatval( $meta['tasa'] )
+            ] );
+
+            $this->wpdb->query( 'COMMIT' );
+            return [ 'id' => $codigo, 'internal_id' => $quote_id ];
+
+        } catch ( Exception $e ) {
+            $this->wpdb->query( 'ROLLBACK' );
+            return new WP_Error( 'db_error', $e->getMessage() );
+        }
+    }
+
+    /**
+     * Obtiene el historial de cotizaciones (Tabla)
+     */
+    public function get_vendor_history( $user_id, $limit = 50, $is_admin = false ) {
+        $tabla_cli = $this->wpdb->prefix . 'suite_clientes';
+        $sql = "SELECT c.*, cli.telefono as cliente_telefono, cli.nombre_razon as cliente_nombre_real 
+                FROM {$this->table_name} c 
+                LEFT JOIN {$tabla_cli} cli ON c.cliente_id = cli.id";
+        
+        if ( ! $is_admin ) $sql .= $this->wpdb->prepare( " WHERE c.vendedor_id = %d", $user_id );
+        
+        $sql .= $this->wpdb->prepare( " ORDER BY c.id DESC LIMIT %d", $limit );
+        return $this->wpdb->get_results( $sql );
+    }
+
+    /**
+     * Obtiene los pedidos agrupados por estado (Kanban)
+     */
+	public function get_kanban_orders( $vendedor_id = null, $is_admin = false ) {
+        // --- INICIO: REGLA 3 ZERO-TRUST (Visibilidad del Kanban) ---
+        $user = wp_get_current_user();
+        $roles = (array) $user->roles;
+        
+        $is_admin_real = current_user_can( 'manage_options' );
+        $is_gerente = in_array( 'suite_gerente', $roles ) || in_array( 'gerente', $roles );
+        $is_logistica = in_array( 'suite_logistica', $roles );
+        
+        // El acceso global se otorga si tiene el rol gerencial/logístico, o si el parámetro legacy es true
+        $tiene_acceso_global = ( $is_admin_real || $is_gerente || $is_logistica || $is_admin );
+        $current_vendedor_id = get_current_user_id();
+        // --- FIN: ZERO-TRUST ---
+
+		
+		
+        $tabla_cli = $this->wpdb->prefix . 'suite_clientes';
+        
+        $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, c.pod_url, cli.nombre_razon AS cliente_nombre
+                FROM {$this->table_name} c
+                LEFT JOIN {$tabla_cli} cli ON c.cliente_id = cli.id
+                WHERE 1=1";
+		
+		
+		
+
+        // 1. FILTRO DINÁMICO: Ocultar cotizaciones vencidas del Kanban (fecha_emision + validez < hoy)
+        $sql .= " AND NOT (c.estado = 'emitida' AND DATE_ADD(c.fecha_emision, INTERVAL c.validez_dias DAY) < NOW())";
+
+        // APLICACIÓN RLS: Si no tiene acceso global, forzamos a que solo vea lo suyo
+        if ( ! $tiene_acceso_global ) {
+            $sql .= $this->wpdb->prepare( " AND c.vendedor_id = %d", intval( $current_vendedor_id ) );
+        } elseif ( $vendedor_id && $vendedor_id != $current_vendedor_id ) {
+            // CORRECCIÓN BYPASS: Si es gerente/admin, aplicamos filtro específico si se solicitó
+            $sql .= $this->wpdb->prepare( " AND c.vendedor_id = %d", intval( $vendedor_id ) );
+        }
+        $sql .= " ORDER BY c.fecha_emision DESC LIMIT 200";
+        
+        $resultados = $this->wpdb->get_results( $sql );
+        
+        // AGREGADO: Únicamente la llave 'por_enviar' (Protegido de tu versión original)
+        $kanban_data = [ 'emitida' => [], 'proceso' => [], 'pagado' => [], 'por_enviar' => [], 'despachado' => [] ];
+        
+        foreach ( $resultados as $row ) {
+            $estado = empty( $row->estado ) ? 'emitida' : strtolower( $row->estado );
+            if ( ! isset( $kanban_data[ $estado ] ) ) $kanban_data[ $estado ] = [];
+
+            $row->total_fmt = number_format( floatval( $row->total_usd ), 2 );
+            $row->fecha_fmt = date( 'd/m', strtotime( $row->fecha_emision ) );
+
+            // PREVENCIÓN XSS: Escapar variables sensibles antes de enviarlas al JSON de Vue/Vanilla JS
+            $row->cliente_nombre    = esc_html( $row->cliente_nombre );
+            $row->codigo_cotizacion = esc_html( $row->codigo_cotizacion );
+
+            $kanban_data[ $estado ][] = $row;
+        }
+
+        return $kanban_data;
+    }
+
+    /**
+     * MÓDULO 2 Y 3: Inmutabilidad y Descuento de Inventario
+     * Actualiza el estado del pedido y ejecuta reglas de negocio financieras y logísticas.
+     */
+    public function update_order_status( $quote_id, $new_status ) {
+        $new_status = strtolower( sanitize_text_field( $new_status ) );
+        
+        // 1. Obtener estado actual del pedido
+        $current_order = $this->get( $quote_id );
+        if ( ! $current_order ) {
+            return new WP_Error( 'not_found', 'El pedido no existe.' );
+        }
+
+        $current_status = strtolower( $current_order->estado );
+        $protected_statuses = [ 'pagado', 'despachado' ];
+
+        // 2. CANDADO DE INMUTABILIDAD (Módulo 2)
+        $is_admin = current_user_can( 'manage_options' );
+        if ( in_array( $current_status, $protected_statuses ) && ! $is_admin ) {
+            return new WP_Error( 'immutable_lock', 'Candado de Inmutabilidad: Este pedido ya ha sido procesado (Pagado/Enviado) y no puede ser modificado por su nivel de acceso.' );
+        }
+
+        // 3. Actualizar el estado en Base de Datos de forma ATÓMICA (Bloqueo Optimista)
+        $sql_update = $this->wpdb->prepare(
+            "UPDATE {$this->table_name} SET estado = %s WHERE id = %d AND estado = %s",
+            $new_status, intval($quote_id), $current_status
+        );
+        $filas_afectadas = $this->wpdb->query( $sql_update );
+
+        // Si filas_afectadas es 0, otro proceso ya cambió el estado en este milisegundo (Race Condition)
+        if ( ! $filas_afectadas ) {
+            return new WP_Error( 'race_condition', 'Conflicto de concurrencia: El pedido ya fue procesado por otro usuario.' );
+        }
+
+        // 4. DESCUENTO DE INVENTARIO (Módulo 3)
+        if ( in_array( $new_status, $protected_statuses ) && ! in_array( $current_status, $protected_statuses ) ) {
+            $this->process_inventory_discount( $quote_id );
+        }
+
+        return true;
+    }
+
+    /**
+     * MÓDULO 3: Helper para el descuento de inventario.
+     */
+    private function process_inventory_discount( $quote_id ) {
+        // 1. Obtener los ítems de este pedido
+        $table_items = $this->wpdb->prefix . 'suite_cotizaciones_items';
+        $items = $this->wpdb->get_results( $this->wpdb->prepare(
+            "SELECT sku, cantidad FROM {$table_items} WHERE cotizacion_id = %d",
+            $quote_id
+        ), ARRAY_A );
+
+        if ( empty( $items ) ) return;
+
+        // 2. Instanciar el modelo de Inventario y descontar
+        $inventory_model = new Suite_Model_Inventory();
+        $inventory_model->discount_stock( $items );
+    }
+}
+--- FIN DEL ARCHIVO: class-suite-model-quote.php ---
+
+--- INICIO DEL ARCHIVO: class-suite-model-roles.php ---
+<?php
+/**
+ * Modelo de Base de Datos: Gestor Dinámico de Roles y Permisos
+ *
+ * Actúa como un Wrapper (envoltura) de la clase global WP_Roles de WordPress.
+ * Permite gestionar roles personalizados y asignar capacidades (Capabilities)
+ * de forma dinámica para el ERP.
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Suite_Model_Roles {
+
+    /**
+     * Devuelve el diccionario maestro de capacidades del ERP agrupadas por módulos.
+     * Este array alimenta la matriz de checkboxes en la interfaz de usuario.
+     *
+     * @return array
+     */
+	/**
+     * Devuelve el diccionario estructurado de capacidades de la Suite
+     */
+	public function get_capabilities_dictionary() {
+        // FASE 4.2: Diccionario Unificado de Capacidades (Sincronizado con Matriz RBAC)
+        return [
+            'Nivel 1 (Vistas)' => [
+                'suite_access'           => 'Acceso Base al Sistema (Login)',
+                'suite_view_crm'         => 'Ver Directorio de Clientes',
+                'suite_view_quotes'      => 'Ver Cotizador e Historial',
+                'suite_view_kanban'      => 'Ver Tablero Kanban (Pedidos)',
+                'suite_view_inventory'   => 'Ver Control de Inventario',
+                'suite_view_commissions' => 'Ver Panel de Comisiones y Ledger', // Actualizado
+                'suite_view_logistics'   => 'Ver Módulo de Logística',
+                'suite_view_marketing'   => 'Ver Módulo BI & Marketing',
+                'suite_manage_team'      => 'Gestión de Equipo (RBAC)'
+            ],
+            'Nivel 2 (Acciones Críticas)' => [
+                'suite_change_status'              => 'Cambiar Estados (Mover Kanban)',
+                'suite_action_approve_commissions' => 'Liquidar Pagos y Registrar Abonos', // Renombrado a su función real
+                'suite_freeze_commissions'         => 'Ejecutar Cierre de Mes (Premios)',  // NUEVO: Poder supremo mensual
+                'suite_action_reverse_logistics'   => 'Aprobar Logística Inversa'
+            ],
+            'Nivel 3 (Datos Sensibles)' => [
+                'suite_data_detailed_stock'    => 'Ver Costos Base de Stock',
+                'suite_data_marketing_transit' => 'Ver Data de Tránsito en BI'
+            ]
+        ];
+    }
+
+    /**
+     * Obtiene todos los roles registrados en el sistema WordPress.
+     *
+     * @return array Array de roles.
+     */
+    public function get_all_roles() {
+        global $wp_roles;
+        
+        // Asegurar que la clase global esté instanciada
+        if ( ! isset( $wp_roles ) ) {
+            $wp_roles = wp_roles();
+        }
+
+        return $wp_roles->roles;
+    }
+
+    /**
+     * Crea un rol nuevo o actualiza uno existente (Nombre y Capacidades).
+     *
+     * @param string $role_key Identificador único (slug) del rol (ej. 'vendedor_senior').
+     * @param string $display_name Nombre público del rol (ej. 'Vendedor Senior').
+     * @param array $capabilities_array Array simple con los keys de las capacidades activadas.
+     * @return true|WP_Error
+     */
+    public function create_or_update_role( $role_key, $display_name, $capabilities_array ) {
+        global $wp_roles;
+
+        if ( ! isset( $wp_roles ) ) {
+            $wp_roles = wp_roles();
+        }
+
+        $role_key     = sanitize_key( $role_key );
+        $display_name = sanitize_text_field( $display_name );
+        $role_obj     = get_role( $role_key );
+
+        if ( ! $role_obj ) {
+            // 1. CREACIÓN: El rol no existe, usar add_role
+            $role_obj = add_role( $role_key, $display_name );
+            if ( ! $role_obj ) {
+                return new WP_Error( 'role_creation_failed', 'Error interno al intentar crear el rol.' );
+            }
+        } else {
+            // 2. ACTUALIZACIÓN DE NOMBRE: WordPress no tiene función nativa para renombrar. 
+            // Se debe actualizar directamente en el array global y guardar en la BD.
+            $wp_roles->roles[ $role_key ]['name'] = $display_name;
+            $wp_roles->role_names[ $role_key ]    = $display_name;
+            update_option( $wp_roles->role_key, $wp_roles->roles );
+        }
+
+        // 3. LIMPIEZA DE CAPACIDADES: Revocar todas las capacidades específicas de la Suite
+        // Esto garantiza que si el usuario desmarcó un checkbox, el permiso se elimine.
+        $dictionary = $this->get_capabilities_dictionary();
+        foreach ( $dictionary as $group => $caps ) {
+            foreach ( $caps as $cap_key => $cap_label ) {
+                $role_obj->remove_cap( $cap_key );
+            }
+        }
+
+        // 4. ASIGNACIÓN: Otorgar las capacidades recibidas en el payload
+        if ( is_array( $capabilities_array ) && ! empty( $capabilities_array ) ) {
+            foreach ( $capabilities_array as $cap ) {
+                $role_obj->add_cap( sanitize_key( $cap ) );
+            }
+        }
+
+        // 5. PERMISOS BASE OBLIGATORIOS
+        $role_obj->add_cap( 'read' );         // Necesario para entrar al wp-admin/intranet
+        $role_obj->add_cap( 'suite_access' ); // Bandera general de pertenencia al ERP
+
+        return true;
+    }
+
+    /**
+     * Elimina un rol del sistema.
+     * Posee una barrera de seguridad para no destruir roles críticos.
+     *
+     * @param string $role_key Identificador único del rol.
+     * @return true|WP_Error
+     */
+    public function delete_role( $role_key ) {
+        $role_key = sanitize_key( $role_key );
+
+        // BARRERA DE SEGURIDAD: Prohibido borrar roles críticos
+        $protected_roles = [ 'administrator', 'subscriber', 'editor', 'author', 'contributor' ];
+        
+        if ( in_array( $role_key, $protected_roles, true ) ) {
+            return new WP_Error( 'protected_role', 'Seguridad: No se permite eliminar los roles nativos del núcleo de WordPress.' );
+        }
+
+        $role_obj = get_role( $role_key );
+        
+        if ( ! $role_obj ) {
+            return new WP_Error( 'role_not_found', 'El rol que intenta eliminar no existe.' );
+        }
+
+        // TODO: (Opcional Arquitectónico) Verificar si existen usuarios con este rol antes de borrarlo
+        // y pasarlos a un rol "subscriber" temporal.
+
+        remove_role( $role_key );
+
+        return true;
+    }
+
+}
+--- FIN DEL ARCHIVO: class-suite-model-roles.php ---
+

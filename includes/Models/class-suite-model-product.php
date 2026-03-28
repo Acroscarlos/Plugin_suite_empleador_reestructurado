@@ -35,67 +35,51 @@ class Suite_Model_Product {
             return [];
         }
 
-        // 2. PROCESAMIENTO DEL CSV DE PRECIOS
-        $csv_prices = [];
-        $csv_path_precios = SUITE_PATH . 'output/precios.csv';
+        // 2. PROCESAMIENTO DE LA MATRIZ UNIFICADA
+        $csv_data = [];
+        $csv_path = SUITE_PATH . 'output/Matriz_unificada_Woocommerce.csv';
 
-        if ( file_exists( $csv_path_precios ) && ( $handle = fopen( $csv_path_precios, 'r' ) ) !== false ) {
+        if ( file_exists( $csv_path ) && ( $handle = fopen( $csv_path, 'r' ) ) !== false ) {
             fgetcsv( $handle, 1000, ',' ); // Saltamos la cabecera
 
             while ( ( $data = fgetcsv( $handle, 1000, ',' ) ) !== false ) {
                 $sku = isset( $data[0] ) ? trim( $data[0] ) : '';
-                
-                // Limpieza numérica estricta (Convierte "12.018,00" -> 12018.00)
-                $precio_raw = isset( $data[1] ) ? trim( $data[1] ) : '0';
-                $precio_raw = str_replace( '"', '', $precio_raw ); 
-                $precio_raw = str_replace( '.', '', $precio_raw ); 
-                $precio_raw = str_replace( ',', '.', $precio_raw ); 
-                $precio_float = floatval( $precio_raw );
 
                 if ( ! empty( $sku ) ) {
-                    $csv_prices[ strtoupper( $sku ) ] = $precio_float;
+                    // Precio (Columna 2 = índice 2 en array PHP)
+                    $precio_raw = isset( $data[2] ) ? trim( $data[2] ) : '0';
+                    $precio_raw = str_replace( '"', '', $precio_raw ); 
+                    $precio_raw = str_replace( '.', '', $precio_raw ); 
+                    $precio_raw = str_replace( ',', '.', $precio_raw ); 
+                    $precio_float = floatval( $precio_raw );
+
+                    // Stocks (Columna 5 = índice 5, Columna 6 = índice 6)
+                    $stock_mille = isset( $data[5] ) ? floatval( $data[5] ) : 0;
+                    $stock_gale  = isset( $data[6] ) ? floatval( $data[6] ) : 0;
+                    
+                    // Cálculo al vuelo del Stock Total
+                    $stock_total = $stock_mille + $stock_gale;
+
+                    $csv_data[ strtoupper( $sku ) ] = [
+                        'precio' => $precio_float,
+                        'total'  => intval( $stock_total ),
+                        'gale'   => intval( $stock_gale )
+                    ];
                 }
             }
             fclose( $handle );
         }
 
-        // 3. PROCESAMIENTO DEL CSV DE INVENTARIO (reporte_final.csv)
-        $csv_inventory = [];
-        $csv_path_inventario = SUITE_PATH . 'output/reporte_final.csv';
-
-        if ( file_exists( $csv_path_inventario ) && ( $handle2 = fopen( $csv_path_inventario, 'r' ) ) !== false ) {
-            fgetcsv( $handle2, 1000, ',' ); // Saltamos la cabecera
-
-            while ( ( $data2 = fgetcsv( $handle2, 1000, ',' ) ) !== false ) {
-                $sku = isset( $data2[0] ) ? trim( $data2[0] ) : '';
-                
-                // Extraemos Stock Total (Columna 3) y Disponibilidad Galerías (Columna 8)
-                $stock_total = isset( $data2[3] ) ? trim( $data2[3] ) : '0';
-                $stock_gale  = isset( $data2[8] ) ? trim( $data2[8] ) : '0';
-
-                if ( ! empty( $sku ) ) {
-                    // Usamos intval(floatval()) para manejar casos donde el CSV diga "20.0" limpiándolo a "20"
-                    $csv_inventory[ strtoupper( $sku ) ] = [
-                        'total' => intval( floatval( $stock_total ) ),
-                        'gale'  => intval( floatval( $stock_gale ) )
-                    ];
-                }
-            }
-            fclose( $handle2 );
-        }
-
-        // 4. EL CRUCE TRIPLE (MERGE) EN MEMORIA
+        // 3. EL CRUCE EN MEMORIA (MERGE FINAL)
         $final_products = [];
 
         foreach ( $woo_products as $prod ) {
             $sku_clean = ! empty( $prod->sku ) ? strtoupper( trim( $prod->sku ) ) : '';
 
-            // Regla de Negocio de Precios: Si existe en CSV usar precio, si no, es 0.00
-            $precio = ( $sku_clean && isset( $csv_prices[ $sku_clean ] ) ) ? $csv_prices[ $sku_clean ] : 0.00;
-
-            // Regla de Negocio de Inventario: Si existe el SKU extraemos stocks, sino 'N/D'
-            $stock_total = ( $sku_clean && isset( $csv_inventory[ $sku_clean ] ) ) ? $csv_inventory[ $sku_clean ]['total'] : 'N/D';
-            $stock_gale  = ( $sku_clean && isset( $csv_inventory[ $sku_clean ] ) ) ? $csv_inventory[ $sku_clean ]['gale']  : 'N/D';
+            // Regla de Negocio: Extraídas de la matriz unificada en un solo paso
+            $precio      = ( $sku_clean && isset( $csv_data[ $sku_clean ] ) ) ? $csv_data[ $sku_clean ]['precio'] : 0.00;
+            $stock_total = ( $sku_clean && isset( $csv_data[ $sku_clean ] ) ) ? $csv_data[ $sku_clean ]['total'] : 'N/D';
+            $stock_gale  = ( $sku_clean && isset( $csv_data[ $sku_clean ] ) ) ? $csv_data[ $sku_clean ]['gale']  : 'N/D';
 
             $final_products[] = [
                 'id'          => $prod->ID,

@@ -17,27 +17,32 @@ const SuiteInventory = (function($) {
                 columns: [
                     { data: 'sku' },
                     { data: 'nombre' },
+                    { 
+                        data: 'precio_venta',
+                        render: function(data) { return '$' + parseFloat(data).toFixed(2); }
+                    },
                     { data: 'status' },
                     // Ocultamos estas columnas a Marketing (pero los vendedores las ven)
                     { data: 'stock_total', visible: !isMarketing },
                     { data: 'disponibilidad_galerias', visible: !isMarketing },
                     { data: 'disponibilidad_millennium', visible: !isMarketing },
                     { 
-                        data: 'cantidad_en_transito',
+                        data: 'inventario_entrante',
                         render: function(data, type, row) {
                             if (type === 'display') {
-                                let qty = parseInt(data) || 0;
+                                // El dato ahora es "Si" o "No" en lugar de un número
+                                let isIncoming = (data && data.toString().trim().toLowerCase() === 'si');
                                 
-                                // REGLA ESPECIAL PARA MARKETING (Binario)
+                                // REGLA ESPECIAL PARA MARKETING
                                 if (isMarketing) {
-                                    return qty > 0 
-                                        ? '<span class="status-pill pill-neutral" style="background:#e0f2fe; color:#0369a1;">Orden en tránsito</span>' 
+                                    return isIncoming 
+                                        ? '<span class="status-pill pill-neutral" style="background:#e0f2fe; color:#0369a1;">En camino</span>' 
                                         : '';
                                 }
                                 
-                                // REGLA PARA VENDEDORES (Número exacto + Badge si viene en camino)
-                                let badge = qty > 0 ? ` <span style="font-size:10px; color:#0284c7;">(En tránsito)</span>` : '';
-                                return `<strong>${qty}</strong>${badge}`;
+                                // REGLA PARA VENDEDORES
+                                let color = isIncoming ? '#059669' : '#64748b'; // Verde si viene en camino, gris si no
+                                return `<span style="color:${color}; font-weight:bold;">${data || 'No'}</span>`;
                             }
                             return data;
                         }

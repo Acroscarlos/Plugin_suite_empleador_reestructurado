@@ -83,7 +83,7 @@ class Suite_Model_Quote extends Suite_Model_Base {
             $precios_db = [];
             if ( ! empty( $skus_a_buscar ) ) {
                 $placeholders = implode( ',', array_fill( 0, count( $skus_a_buscar ), '%s' ) );
-                $sql_precios = $this->wpdb->prepare( "SELECT sku, precio FROM {$table_inv} WHERE sku IN ($placeholders)", ...$skus_a_buscar );
+                $sql_precios = $this->wpdb->prepare( "SELECT sku, precio_venta AS precio FROM {$table_inv} WHERE sku IN ($placeholders)", ...$skus_a_buscar );
                 $resultados_precios = $this->wpdb->get_results( $sql_precios );
                 foreach ( $resultados_precios as $rp ) {
                     $precios_db[ strtoupper($rp->sku) ] = floatval( $rp->precio );

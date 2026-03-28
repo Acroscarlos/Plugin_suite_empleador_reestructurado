@@ -72,7 +72,7 @@ class Suite_Ajax_Quote_Save extends Suite_AJAX_Controller {
             if ( ! empty( $skus_a_verificar ) ) {
                 // 1. Pre-cargar precios permitidos con un solo query (IN)
                 $placeholders = implode( ',', array_fill( 0, count( $skus_a_verificar ), '%s' ) );
-                $sql_precios = $wpdb->prepare( "SELECT sku, precio FROM {$tabla_inv} WHERE sku IN ($placeholders)", ...$skus_a_verificar );
+                $sql_precios = $wpdb->prepare( "SELECT sku, precio_venta AS precio FROM {$tabla_inv} WHERE sku IN ($placeholders)", ...$skus_a_verificar );
                 // Usamos OBJECT_K para que el array resultante tenga los SKUs como llaves
                 $resultados_precios = $wpdb->get_results( $sql_precios, OBJECT_K );
 

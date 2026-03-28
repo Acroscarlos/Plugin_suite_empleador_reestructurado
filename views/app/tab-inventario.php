@@ -19,11 +19,12 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
                     <tr>
                         <th>SKU</th>
                         <th>Nombre / Descripción</th>
+                        <th>Precio</th>
                         <th>Status</th>
                         <th>Stock Total</th>
                         <th>Disp. Galerías</th>
                         <th>Disp. Millennium</th>
-                        <th>En Tránsito</th>
+                        <th>Entrante</th>
                     </tr>
                 </thead>
                 <tbody>

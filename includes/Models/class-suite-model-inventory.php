@@ -46,7 +46,7 @@ class Suite_Model_Inventory extends Suite_Model_Base {
             // Esto previene condiciones de carrera si dos usuarios compran al mismo exacto milisegundo
             $sql = $this->wpdb->prepare(
                 "UPDATE {$this->table_name} 
-                 SET stock_gale = stock_gale - %d 
+                 SET disponibilidad_galerias = disponibilidad_galerias - %d 
                  WHERE sku = %s",
                 $qty,
                 $sku

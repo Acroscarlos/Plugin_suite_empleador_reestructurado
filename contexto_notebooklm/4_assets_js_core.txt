@@ -1,0 +1,212 @@
+=================================================================
+CONTEXTO DE CARPETA: assets\js\core
+Proyecto: ERP Vendedores (MVC y POO)
+=================================================================
+
+--- INICIO DEL ARCHIVO: api.js ---
+/**
+ * SuiteAPI - Orquestador de Peticiones AJAX
+ * * Centraliza las llamadas al servidor, inyectando automáticamente 
+ * credenciales de seguridad (Nonces) y enrutamiento (URL).
+ */
+const SuiteAPI = (function($) {
+    'use strict';
+
+    // Variables privadas extraídas de la localización de WP
+    const apiUrl = suite_vars.ajax_url;
+    const sysNonce = suite_vars.nonce;
+
+    /**
+     * Interceptor Global de Errores
+     * Captura expiración de sesión (401) o fallos de permisos (403)
+     */
+    const handleAjaxError = function(error, reject) {
+        if (error.status === 401 || error.status === 403) {
+            alert('🔒 Su sesión ha expirado o fue cerrada por seguridad. Por favor, recargue la página e inicie sesión nuevamente.');
+        }
+        reject(error);
+    };
+
+    /**
+     * Petición POST estándar para JSON
+     * * @param {string} action - El nombre del hook de WP (ej. 'suite_search_client_ajax')
+     * @param {object} data - Datos a enviar
+     * @returns {Promise}
+     */
+    const post = function(action, data = {}) {
+        return new Promise((resolve, reject) => {
+            // Inyección automática de parámetros obligatorios
+            const payload = {
+                ...data,
+                action: action,
+                nonce: sysNonce
+            };
+
+            $.post(apiUrl, payload)
+                .done(response => resolve(response))
+                .fail(error => handleAjaxError(error, reject)); // <-- Interceptor inyectado
+        });
+    };
+
+    /**
+     * Petición POST para subir archivos (FormData)
+     * Utilizado para la importación de CSV o futuras subidas de fotos (POD)
+     * * @param {string} action - El nombre del hook de WP
+     * @param {FormData} formData - Objeto FormData instanciado
+     * @returns {Promise}
+     */
+    const postForm = function(action, formData) {
+        return new Promise((resolve, reject) => {
+            // Inyección en FormData
+            formData.append('action', action);
+            formData.append('nonce', sysNonce);
+
+            $.ajax({
+                url: apiUrl,
+                type: 'POST',
+                data: formData,
+                processData: false, // Vital para que jQuery no procese el archivo
+                contentType: false, // Vital para que el navegador asigne el boundary multipart
+                success: response => resolve(response),
+                error: error => handleAjaxError(error, reject) // <-- Interceptor inyectado
+            });
+        });
+    };
+
+    // API Pública Revelada
+    return {
+        post: post,
+        postForm: postForm
+    };
+
+})(jQuery);
+--- FIN DEL ARCHIVO: api.js ---
+
+--- INICIO DEL ARCHIVO: state.js ---
+/**
+ * SuiteState - Manejador de Estado Inmutable (Store)
+ * 
+ * Centraliza los datos financieros y el carrito de compras.
+ * Previene la manipulación directa desde el objeto global window.
+ */
+const SuiteState = (function() {
+    'use strict';
+
+    // ==========================================
+    // VARIABLES PRIVADAS (El "Estado")
+    // ==========================================
+    let cart = [];
+    let totalUSD = 0.00;
+    let totalBS = 0.00;
+    let tasaBCV = 1.00; // Se actualizará al inicializar la app
+
+    // ==========================================
+    // MÉTODOS PRIVADOS
+    // ==========================================
+    
+    /**
+     * Recalcula los totales matemáticos cada vez que el carrito cambia.
+     * Mantiene la lógica financiera blindada.
+     */
+    const calculateTotals = function() {
+        totalUSD = cart.reduce((sum, item) => {
+            let qty = parseInt(item.qty) || 0;
+            let price = parseFloat(item.price) || 0;
+            return sum + (qty * price);
+        }, 0);
+
+        totalBS = totalUSD * tasaBCV;
+    };
+
+    // ==========================================
+    // API PÚBLICA (Métodos Revelados)
+    // ==========================================
+    return {
+        /**
+         * Retorna una COPIA INMUTABLE del carrito.
+         * Si alguien muta este array externamente, no afectará al original.
+         * @returns {Array}
+         */
+        getCart: function() {
+            return [...cart]; 
+        },
+
+        /**
+         * Añade un producto al carrito y recalcula.
+         * Si el SKU ya existe, suma la cantidad en lugar de duplicar la fila.
+         * @param {Object} item 
+         */
+        addItem: function(item) {
+            // Normalizar datos: Prohibir cantidades negativas o cero
+            item.qty = Math.max(1, parseInt(item.qty) || 1);
+            item.price = Math.max(0, parseFloat(item.price) || 0.00);
+
+            const existingIndex = cart.findIndex(i => i.sku === item.sku);
+            if (existingIndex > -1) {
+                cart[existingIndex].qty += item.qty;
+            } else {
+                cart.push(item);
+            }
+            calculateTotals();
+        },
+
+        /**
+         * Actualiza un campo específico de una fila (ej. cantidad o precio editado).
+         * @param {number} index - Índice en el array
+         * @param {string} field - 'qty' o 'price'
+         * @param {number|string} value - Nuevo valor
+         */
+        updateItem: function(index, field, value) {
+            if (cart[index]) {
+                if (field === 'qty') {
+                    cart[index][field] = Math.max(1, parseInt(value) || 1);
+                } else {
+                    cart[index][field] = Math.max(0, parseFloat(value) || 0);
+                }
+                calculateTotals();
+            }
+        },
+
+        /**
+         * Elimina un producto del carrito.
+         * @param {number} index 
+         */
+        removeItem: function(index) {
+            if (cart[index]) {
+                cart.splice(index, 1);
+                calculateTotals();
+            }
+        },
+
+        /**
+         * Vacía el carrito por completo (útil al guardar con éxito).
+         */
+        clearCart: function() {
+            cart = [];
+            calculateTotals();
+        },
+
+        /**
+         * Actualiza la tasa BCV del día.
+         * @param {number} tasa 
+         */
+        setTasa: function(tasa) {
+            tasaBCV = parseFloat(tasa) || 1;
+            calculateTotals();
+        },
+
+        /**
+         * Devuelve un snapshot de los totales financieros formateados.
+         * @returns {Object}
+         */
+        getTotals: function() {
+            return {
+                usd: totalUSD.toFixed(2),
+                bs: totalBS.toFixed(2),
+                tasa: tasaBCV.toFixed(2)
+            };
+        }
+    };
+})();
+--- FIN DEL ARCHIVO: state.js ---
+
