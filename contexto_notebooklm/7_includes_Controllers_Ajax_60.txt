@@ -848,10 +848,11 @@ class Suite_Ajax_Get_Inventory extends Suite_AJAX_Controller {
     protected $required_capability = 'read';
 
     protected function process() {
-        $csv_path = SUITE_PATH . 'output/reporte_final.csv';
+        // 1. Apuntamos a la nueva matriz unificada
+        $csv_path = SUITE_PATH . 'output/Matriz_unificada_Woocommerce.csv';
         
         if ( ! file_exists( $csv_path ) || ( $handle = fopen( $csv_path, 'r' ) ) === false ) {
-            $this->send_error( 'El archivo de inventario no se encuentra disponible actualmente.' );
+            $this->send_error( 'El archivo de inventario unificado no se encuentra disponible actualmente.' );
         }
 
         $headers = fgetcsv( $handle, 2000, ',' );
@@ -860,30 +861,42 @@ class Suite_Ajax_Get_Inventory extends Suite_AJAX_Controller {
             $this->send_error( 'El archivo CSV está vacío o corrupto.' );
         }
 
-        // 1. Mapeo Heurístico (Smart Indexing) para ubicar la posición de las columnas
+        // 2. Mapeo Heurístico (Smart Indexing) actualizado a las nuevas columnas
         $map = [];
         foreach ( $headers as $index => $header ) {
             $h_clean = strtolower( trim( $header ) );
             if ( strpos( $h_clean, 'sku' ) !== false ) $map['sku'] = $index;
             elseif ( strpos( $h_clean, 'nombre' ) !== false ) $map['nombre'] = $index;
-            elseif ( strpos( $h_clean, 'status' ) !== false ) $map['status'] = $index;
-            elseif ( strpos( $h_clean, 'total' ) !== false ) $map['stock_total'] = $index;
+            elseif ( strpos( $h_clean, 'precio' ) !== false ) $map['precio_venta'] = $index;
+            elseif ( strpos( $h_clean, 'status' ) !== false ) $map['status_prediccion'] = $index;
+            elseif ( strpos( $h_clean, 'entrante' ) !== false ) $map['inventario_entrante'] = $index;
             elseif ( strpos( $h_clean, 'gale' ) !== false ) $map['disponibilidad_galerias'] = $index;
             elseif ( strpos( $h_clean, 'mille' ) !== false ) $map['disponibilidad_millennium'] = $index;
-            elseif ( strpos( $h_clean, 'transito' ) !== false ) $map['cantidad_en_transito'] = $index;
         }
 
         $data = [];
-        // 2. Procesamiento y Limpieza de Datos
+        // 3. Procesamiento, Limpieza y Cálculo al Vuelo
         while ( ( $row = fgetcsv( $handle, 2000, ',' ) ) !== false ) {
+            
+            // Extraer disponibilidades asegurando que sean números
+            $disp_gale = isset($map['disponibilidad_galerias'], $row[$map['disponibilidad_galerias']]) ? floatval($row[$map['disponibilidad_galerias']]) : 0;
+            $disp_mille = isset($map['disponibilidad_millennium'], $row[$map['disponibilidad_millennium']]) ? floatval($row[$map['disponibilidad_millennium']]) : 0;
+            
+            // El precio de WooCommerce ya viene estandarizado (16274.95)
+            $precio_raw = isset($map['precio_venta'], $row[$map['precio_venta']]) ? trim($row[$map['precio_venta']]) : '0';
+            $precio_raw = str_replace( '"', '', $precio_raw ); // Solo quitamos comillas por seguridad
+            $precio_float = floatval( $precio_raw );
+
             $data[] = [
                 'sku' => isset($map['sku'], $row[$map['sku']]) ? sanitize_text_field($row[$map['sku']]) : 'N/D',
                 'nombre' => isset($map['nombre'], $row[$map['nombre']]) ? sanitize_text_field($row[$map['nombre']]) : 'N/D',
-                'status' => isset($map['status'], $row[$map['status']]) ? sanitize_text_field($row[$map['status']]) : '-',
-                'stock_total' => isset($map['stock_total'], $row[$map['stock_total']]) ? intval($row[$map['stock_total']]) : 0,
-                'disponibilidad_galerias' => isset($map['disponibilidad_galerias'], $row[$map['disponibilidad_galerias']]) ? intval($row[$map['disponibilidad_galerias']]) : 0,
-                'disponibilidad_millennium' => isset($map['disponibilidad_millennium'], $row[$map['disponibilidad_millennium']]) ? intval($row[$map['disponibilidad_millennium']]) : 0,
-                'cantidad_en_transito' => isset($map['cantidad_en_transito'], $row[$map['cantidad_en_transito']]) ? intval($row[$map['cantidad_en_transito']]) : 0,
+                'precio_venta' => $precio_float,
+                'status' => isset($map['status_prediccion'], $row[$map['status_prediccion']]) ? sanitize_text_field($row[$map['status_prediccion']]) : '-',
+                'disponibilidad_galerias' => $disp_gale,
+                'disponibilidad_millennium' => $disp_mille,
+                // ¡Cálculo matemático al vuelo! 
+                'stock_total' => $disp_gale + $disp_mille, 
+                'inventario_entrante' => isset($map['inventario_entrante'], $row[$map['inventario_entrante']]) ? sanitize_text_field($row[$map['inventario_entrante']]) : 'No',
             ];
         }
 
@@ -1009,11 +1022,11 @@ class Suite_Ajax_Reverse_Logistics extends Suite_AJAX_Controller {
             $this->send_error( 'ID de orden inválido.' );
         }
 
-        // 1. Acción Principal: Devolver la orden a estado 'proceso'
+        // 1. Acción Principal: Devolver la orden a estado 'pagado'
         $tabla_cotizaciones = $wpdb->prefix . 'suite_cotizaciones';
         $actualizado = $wpdb->update(
             $tabla_cotizaciones,
-            [ 'estado' => 'proceso' ],
+            [ 'estado' => 'pagado' ],
             [ 'id' => $order_id ],
             [ '%s' ],
             [ '%d' ]
@@ -1068,7 +1081,7 @@ class Suite_Ajax_Reverse_Logistics extends Suite_AJAX_Controller {
             $user_id = get_current_user_id();
             suite_record_log( 
                 'logistica_inversa', 
-                "El Administrador (ID: {$user_id}) aplicó Logística Inversa a la orden #{$order_id}. La orden retornó a 'proceso' y el Ledger fue ajustado automáticamente." 
+                "El Administrador (ID: {$user_id}) aplicó Logística Inversa a la orden #{$order_id}. La orden retornó a 'pagado' y el Ledger fue ajustado automáticamente." 
             );
         }
 
@@ -1082,8 +1095,8 @@ class Suite_Ajax_Reverse_Logistics extends Suite_AJAX_Controller {
 /**
  * Controlador AJAX: Logística y Despacho (Módulo 3)
  *
- * Maneja la subida del comprobante de entrega (Proof of Delivery) 
- * y la impresión blindada de Hojas de Picking para el almacén.
+ * Maneja la subida del comprobante de entrega (POD), facturas fiscales,
+ * el registro del ID Loyverse y la impresión de Hojas de Picking.
  *
  * @package SuiteEmpleados\Controllers\Ajax
  */
@@ -1093,11 +1106,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Endpoint 1: Subida de Guía / Foto de Entrega (Proof of Delivery)
+ * Endpoint 1: Procesamiento de Despacho (Fase 5)
+ * Nota: Se mantiene el nombre de la clase por retrocompatibilidad con el init principal,
+ * pero la acción AJAX ahora es 'suite_process_dispatch'.
  */
 class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
 
-    protected $action_name = 'suite_upload_pod';
+    protected $action_name = 'suite_process_dispatch'; // <-- IMPORTANTE: Conectado con logistics.js
     protected $required_capability = 'read';
 
     protected function process() {
@@ -1108,74 +1123,115 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
 
         if ( ! $is_admin && ! $is_logistica ) {
             if ( function_exists('suite_record_log') ) {
-                suite_record_log( 'violacion_acceso', "Intento de escalada de privilegios en POD por el usuario " . get_current_user_id() );
+                suite_record_log( 'violacion_acceso', "Intento de escalada de privilegios en Despacho por el usuario " . get_current_user_id() );
             }
             $this->send_error( 'Acceso Denegado: Solo el personal de almacén/logística puede confirmar despachos.', 403 );
         }
 
+        // 2. RECEPCIÓN DE DATOS BÁSICOS
         $quote_id = isset( $_POST['quote_id'] ) ? intval( $_POST['quote_id'] ) : 0;
+        $recibo_loyverse = isset( $_POST['recibo_loyverse'] ) ? sanitize_text_field( $_POST['recibo_loyverse'] ) : '';
         
         if ( ! $quote_id ) {
             $this->send_error( 'ID de pedido inválido.', 400 );
         }
 
-        // Validar que se envió un archivo
-        if ( empty( $_FILES['pod_file'] ) ) {
-            $this->send_error( 'No se recibió ningún archivo.', 400 );
+        if ( empty( $recibo_loyverse ) ) {
+            $this->send_error( 'El N° de Recibo Loyverse es obligatorio para auditar la orden.', 400 );
         }
 
-        $file = $_FILES['pod_file'];
-
-        // 2. CANDADO DE INMUTABILIDAD
+        // 3. CANDADO DE INMUTABILIDAD
         global $wpdb;
         $tabla_cot = $wpdb->prefix . 'suite_cotizaciones';
-        $current_status = $wpdb->get_var( $wpdb->prepare( "SELECT estado FROM {$tabla_cot} WHERE id = %d", $quote_id ) );
+        $quote_data = $wpdb->get_row( $wpdb->prepare( "SELECT estado, vendedor_id, total_usd FROM {$tabla_cot} WHERE id = %d", $quote_id ) );
 
-        if ( strtolower( $current_status ) === 'despachado' ) {
+        if ( ! $quote_data ) {
+            $this->send_error( 'El pedido no existe.', 404 );
+        }
+
+        if ( strtolower( $quote_data->estado ) === 'despachado' ) {
             $this->send_error( 'El pedido ya se encuentra despachado.', 403 );
         }
 
-        // Configurar el entorno para la subida nativa de WP
+        // 4. CONFIGURACIÓN DE ARCHIVOS
         if ( ! function_exists( 'wp_handle_upload' ) ) {
             require_once( ABSPATH . 'wp-admin/includes/file.php' );
         }
-
         $upload_overrides = [ 'test_form' => false ];
-        $movefile = wp_handle_upload( $file, $upload_overrides );
 
-        if ( $movefile && ! isset( $movefile['error'] ) ) {
-            $file_url = $movefile['url'];
+        $factura_url = '';
+        $pod_url = '';
 
-            // Actualizar la base de datos
-            $wpdb->update(
-                $tabla_cot,
-                [ 
-                    'pod_url' => esc_url_raw( $file_url ), // sanitizamos URL
-                    'estado'  => 'despachado' 
-                ],
-                [ 'id' => $quote_id ],
-                [ '%s', '%s' ],
-                [ '%d' ]
-            );
-
-            // DESCUENTO DE INVENTARIO LOGÍSTICO (Si aplica en tu flujo)
-            //$quote_model = new Suite_Model_Quote();
-            //$quote_model->process_inventory_discount( $quote_id );
-
-            $this->send_success( [
-                'message' => 'Comprobante subido y pedido despachado correctamente.',
-                'url'     => $file_url
-            ] );
-        } else {
-            // PREVENCIÓN INFO DISCLOSURE: Loguear internamente, pero mostrar un mensaje genérico al usuario
-            error_log( 'Suite ERP Upload Error: ' . $movefile['error'] );
-            $this->send_error( 'Error de servidor al procesar el archivo. Contacte a soporte técnico.', 500 );
+        // Procesar Factura (Opcional)
+        if ( ! empty( $_FILES['factura_file']['name'] ) ) {
+            $move_factura = wp_handle_upload( $_FILES['factura_file'], $upload_overrides );
+            if ( $move_factura && ! isset( $move_factura['error'] ) ) {
+                $factura_url = $move_factura['url'];
+            } else {
+                $this->send_error( 'Error al subir la Factura Fiscal: ' . $move_factura['error'], 500 );
+            }
         }
+
+        // Procesar POD (Opcional)
+        if ( ! empty( $_FILES['pod_file']['name'] ) ) {
+            $move_pod = wp_handle_upload( $_FILES['pod_file'], $upload_overrides );
+            if ( $move_pod && ! isset( $move_pod['error'] ) ) {
+                $pod_url = $move_pod['url'];
+            } else {
+                $this->send_error( 'Error al subir la Guía de Encomienda: ' . $move_pod['error'], 500 );
+            }
+        }
+
+        // 5. ACTUALIZACIÓN EN BASE DE DATOS
+        $data_to_update = [
+            'estado'          => 'despachado',
+            'recibo_loyverse' => $recibo_loyverse // Se guarda para la futura auditoría CRON
+        ];
+        $format = [ '%s', '%s' ];
+
+        if ( ! empty( $factura_url ) ) {
+            $data_to_update['factura_fiscal_url'] = esc_url_raw( $factura_url );
+            $format[] = '%s';
+        }
+
+        if ( ! empty( $pod_url ) ) {
+            $data_to_update['pod_url'] = esc_url_raw( $pod_url );
+            $format[] = '%s';
+        }
+
+        $updated = $wpdb->update(
+            $tabla_cot,
+            $data_to_update,
+            [ 'id' => $quote_id ],
+            $format,
+            [ '%d' ]
+        );
+
+        if ( $updated === false ) {
+            $this->send_error( 'Ocurrió un error al actualizar la base de datos.', 500 );
+        }
+
+        // 6. 💰 MAGIA FASE 5: LIBERACIÓN DE COMISIÓN EN EL LEDGER
+        if ( class_exists( 'Suite_Model_Commission' ) ) {
+            $commission_model = new Suite_Model_Commission();
+            // Ejecutamos el registro, inyectando el ID de Loyverse
+            $commission_model->registrar_comision_despacho( 
+                $quote_id, 
+                $quote_data->vendedor_id, 
+                $quote_data->total_usd, 
+                $recibo_loyverse 
+            );
+        }
+
+        $this->send_success( [
+            'message' => 'Despacho procesado. ID Loyverse registrado y comisiones liberadas.'
+        ] );
     }
 }
 
 /**
  * Endpoint 2: Impresión de Hoja de Picking (Sin Precios)
+ * Nota: Mantenido intacto por solicitud de arquitectura.
  */
 class Suite_Ajax_Print_Picking extends Suite_AJAX_Controller {
 
@@ -1214,7 +1270,7 @@ class Suite_Ajax_Print_Picking extends Suite_AJAX_Controller {
         $table_items = $wpdb->prefix . 'suite_cotizaciones_items';
         $items = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table_items} WHERE cotizacion_id = %d", $quote_id ) );
 
-        // RENDER DE VISTA DE IMPRESIÓN (SOLO HTML CORREGIDO)
+        // RENDER DE VISTA DE IMPRESIÓN
         ?>
         <!DOCTYPE html>
         <html lang="es">
@@ -1400,7 +1456,7 @@ class Suite_Ajax_Quote_Save extends Suite_AJAX_Controller {
             if ( ! empty( $skus_a_verificar ) ) {
                 // 1. Pre-cargar precios permitidos con un solo query (IN)
                 $placeholders = implode( ',', array_fill( 0, count( $skus_a_verificar ), '%s' ) );
-                $sql_precios = $wpdb->prepare( "SELECT sku, precio FROM {$tabla_inv} WHERE sku IN ($placeholders)", ...$skus_a_verificar );
+                $sql_precios = $wpdb->prepare( "SELECT sku, precio_venta AS precio FROM {$tabla_inv} WHERE sku IN ($placeholders)", ...$skus_a_verificar );
                 // Usamos OBJECT_K para que el array resultante tenga los SKUs como llaves
                 $resultados_precios = $wpdb->get_results( $sql_precios, OBJECT_K );
 
@@ -2055,6 +2111,204 @@ class Suite_Ajax_Quote_Details extends Suite_AJAX_Controller {
             'items'      => $items,
             'cliente'    => $cliente
         ] );
+    }
+}
+
+/**
+ * 5. Endpoint para el Súper-Modal: Cierre Financiero y Logístico Multipart
+ * FASE 3: KANBAN V2 (MERCADOENVÍOS)
+ */
+class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_process_super_pago';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        $quote_id = isset($_POST['quote_id']) ? intval($_POST['quote_id']) : 0;
+        if ( ! $quote_id ) {
+            $this->send_error( 'ID de cotización ausente.' );
+        }
+
+        $quote_model = new Suite_Model_Quote();
+        $current_order = $quote_model->get( $quote_id );
+
+        if ( ! $current_order ) {
+            $this->send_error( 'La cotización no existe.', 404 );
+        }
+
+        // 1. SEGURIDAD ZERO-TRUST: PREVENCIÓN IDOR
+        $user_id = get_current_user_id();
+        $is_admin = current_user_can( 'manage_options' );
+        if ( ! $is_admin && intval( $current_order->vendedor_id ) !== $user_id ) {
+            $this->send_error( 'Acceso Denegado: No puede modificar un pedido que no le pertenece.', 403 );
+        }
+
+        // 2. SANITIZACIÓN ESTRICTA (Prevención XSS/SQLi)
+        $forma_pago       = sanitize_text_field( $_POST['forma_pago'] ?? '' );
+        $fecha_pago       = sanitize_text_field( $_POST['fecha_pago'] ?? current_time('mysql') );
+        $requiere_factura = isset($_POST['requiere_factura']) ? intval($_POST['requiere_factura']) : 0;
+        $agente_retencion = isset($_POST['agente_retencion']) ? intval($_POST['agente_retencion']) : 0;
+
+        $tipo_envio        = sanitize_text_field( $_POST['tipo_envio'] ?? '' );
+        $agencia_envio     = sanitize_text_field( $_POST['agencia_envio'] ?? '' );
+        $nombre_receptor   = sanitize_text_field( $_POST['nombre_receptor'] ?? '' );
+        $rif_receptor      = sanitize_text_field( $_POST['rif_receptor'] ?? '' );
+        $telefono_receptor = sanitize_text_field( $_POST['telefono_receptor'] ?? '' );
+        $direccion_fisica  = sanitize_textarea_field( $_POST['direccion_envio'] ?? '' );
+        $prioridad         = isset($_POST['prioridad']) ? intval($_POST['prioridad']) : 0;
+
+        // 3. CONCATENACIÓN INTELIGENTE DE LOGÍSTICA
+        $direccion_final = '';
+        if ( $tipo_envio === 'Nacional' ) {
+            $direccion_final = "Receptor: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor \nAgencia: $agencia_envio \nDir: $direccion_fisica";
+        } elseif ( $tipo_envio === 'Motorizado' ) {
+            $direccion_final = "Receptor: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor \nDir: $direccion_fisica";
+        } elseif ( $tipo_envio === 'Retiro' ) {
+            $direccion_final = "Retira en Tienda: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor";
+        }
+
+        // 4. BÓVEDA SEGURA: MANEJO DE ARCHIVO MULTIPART
+        $comprobante_url = '';
+        if ( ! empty( $_FILES['comprobante']['name'] ) ) {
+            if ( ! function_exists( 'wp_handle_upload' ) ) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+            }
+
+            // Dictadura de MIME Types: Solo Imágenes y PDFs
+            $upload_overrides = [
+                'test_form' => false,
+                'mimes'     => [
+                    'jpg'  => 'image/jpeg',
+                    'jpeg' => 'image/jpeg',
+                    'png'  => 'image/png',
+                    'pdf'  => 'application/pdf'
+                ]
+            ];
+
+            $movefile = wp_handle_upload( $_FILES['comprobante'], $upload_overrides );
+
+            if ( $movefile && ! isset( $movefile['error'] ) ) {
+                $comprobante_url = $movefile['url']; // URL pública/segura generada
+            } else {
+                $this->send_error( 'Fallo de seguridad al subir comprobante. Solo se permiten JPG, PNG o PDF. Detalles: ' . $movefile['error'] );
+            }
+        }
+
+        // 5. ACTUALIZACIÓN DE METADATOS (Inyectamos los campos de la Fase 1)
+        $extra_data = [
+            'forma_pago'           => $forma_pago,
+            'metodo_pago'          => $forma_pago, // Retrocompatibilidad v1
+            'fecha_pago'           => $fecha_pago,
+            'requiere_factura'     => $requiere_factura,
+            'agente_retencion'     => $agente_retencion,
+            'tipo_envio'           => $tipo_envio,
+            'metodo_entrega'       => $tipo_envio, // Retrocompatibilidad v1
+            'agencia_envio'        => $agencia_envio,
+            'direccion_envio'      => $direccion_final,
+            'prioridad'            => $prioridad
+        ];
+        
+        if ( ! empty( $comprobante_url ) ) {
+            $extra_data['comprobante_pago_url'] = $comprobante_url;
+            $extra_data['url_captura_pago']     = $comprobante_url; // Retrocompatibilidad v1
+        }
+
+		
+		
+		
+		
+		
+		
+        $quote_model->update( $quote_id, $extra_data );
+        $result = $quote_model->update_order_status( $quote_id, 'pagado' );
+        
+        if ( is_wp_error( $result ) ) {
+            $this->send_error( $result->get_error_message(), 500 );
+        }
+
+        // --- INICIO FASE 4: DISPARO DE TELEGRAM ---
+        try {
+            // Buscamos el código de cotización para el mensaje
+            $quote_data = $quote_model->get( $quote_id );
+            
+            if ( $quote_data && ! empty( $comprobante_url ) ) {
+                $monto_final = isset($_POST['monto_pagado']) ? floatval($_POST['monto_pagado']) : $quote_data->total_usd;
+                
+                $telegram = new Suite_Telegram_Bot();
+                $telegram->send_payment_alert(
+                    $quote_id,
+                    $quote_data->codigo_cotizacion,
+                    $quote_data->vendedor_id,
+                    $monto_final,
+                    $forma_pago,
+                    $comprobante_url
+                );
+            }
+        } catch (Exception $e) {
+            // No bloqueamos el éxito del ERP si Telegram falla
+            error_log("Error en Notificación Telegram: " . $e->getMessage());
+        }
+        // --- FIN FASE 4 ---
+
+        $this->send_success( [ 'message' => 'Pago registrado. El equipo financiero ha sido notificado por Telegram.' ] );
+    }
+}
+/**
+ * Helper Class: Suite_Telegram_Bot
+ * FASE 4: Notificaciones en Tiempo Real para Validación de Pagos
+ */
+class Suite_Telegram_Bot {
+    
+    private $bot_token = '8190650297:AAEhx-eQygWnbid7mjcSQuN2KV4SigE6k38';
+    private $chat_id   = '-5199565623'; 
+
+    /**
+     * Envía la alerta de pago con el comprobante y botones interactivos.
+     */
+    public function send_payment_alert( $quote_id, $codigo_cotizacion, $vendedor_id, $monto, $forma_pago, $file_url ) {
+        if ( empty( $this->bot_token ) || empty( $this->chat_id ) ) return false;
+
+        $is_pdf     = ( substr( strtolower( $file_url ), -4 ) === '.pdf' );
+        $endpoint   = $is_pdf ? 'sendDocument' : 'sendPhoto';
+        $file_param = $is_pdf ? 'document' : 'photo';
+
+        $vendedor_info   = get_userdata( $vendedor_id );
+        $vendedor_nombre = $vendedor_info ? $vendedor_info->display_name : 'ID: ' . $vendedor_id;
+
+        // Formateo del mensaje con Emojis para Finanzas
+        $caption  = "🚨 <b>NUEVO PAGO REGISTRADO</b> 🚨\n\n";
+        $caption .= "🛍️ <b>Orden:</b> #{$codigo_cotizacion}\n";
+        $caption .= "👤 <b>Vendedor:</b> {$vendedor_nombre}\n";
+        $caption .= "💰 <b>Monto:</b> $" . number_format( (float) $monto, 2 ) . "\n";
+        $caption .= "💳 <b>Método:</b> {$forma_pago}\n\n";
+        $caption .= "⚠️ <i>Use los botones de abajo para validar sin entrar al ERP.</i>";
+
+        // Teclado Inline para la Fase 4.1 (Webhooks)
+        $keyboard = array(
+            'inline_keyboard' => array(
+                array(
+                    array( 'text' => '✅ Aprobar Pago', 'callback_data' => "approve_payment_{$quote_id}" ),
+                    array( 'text' => '❌ Rechazar', 'callback_data' => "reject_payment_{$quote_id}" )
+                )
+            )
+        );
+
+        $body = array(
+            'chat_id'      => $this->chat_id,
+            $file_param    => $file_url,
+            'caption'      => $caption,
+            'parse_mode'   => 'HTML',
+            'reply_markup' => wp_json_encode( $keyboard )
+        );
+
+        $url = "https://api.telegram.org/bot{$this->bot_token}/{$endpoint}";
+
+        // Petición asíncrona para no bloquear el ERP
+        return wp_remote_post( $url, array(
+            'body'    => $body,
+            'timeout' => 10,
+            'blocking' => true // Queremos saber si salió, pero con un timeout razonable
+        ) );
     }
 }
 --- FIN DEL ARCHIVO: class-suite-ajax-quotes.php ---

@@ -1294,27 +1294,32 @@ const SuiteInventory = (function($) {
                 columns: [
                     { data: 'sku' },
                     { data: 'nombre' },
+                    { 
+                        data: 'precio_venta',
+                        render: function(data) { return '$' + parseFloat(data).toFixed(2); }
+                    },
                     { data: 'status' },
                     // Ocultamos estas columnas a Marketing (pero los vendedores las ven)
                     { data: 'stock_total', visible: !isMarketing },
                     { data: 'disponibilidad_galerias', visible: !isMarketing },
                     { data: 'disponibilidad_millennium', visible: !isMarketing },
                     { 
-                        data: 'cantidad_en_transito',
+                        data: 'inventario_entrante',
                         render: function(data, type, row) {
                             if (type === 'display') {
-                                let qty = parseInt(data) || 0;
+                                // El dato ahora es "Si" o "No" en lugar de un número
+                                let isIncoming = (data && data.toString().trim().toLowerCase() === 'si');
                                 
-                                // REGLA ESPECIAL PARA MARKETING (Binario)
+                                // REGLA ESPECIAL PARA MARKETING
                                 if (isMarketing) {
-                                    return qty > 0 
-                                        ? '<span class="status-pill pill-neutral" style="background:#e0f2fe; color:#0369a1;">Orden en tránsito</span>' 
+                                    return isIncoming 
+                                        ? '<span class="status-pill pill-neutral" style="background:#e0f2fe; color:#0369a1;">En camino</span>' 
                                         : '';
                                 }
                                 
-                                // REGLA PARA VENDEDORES (Número exacto + Badge si viene en camino)
-                                let badge = qty > 0 ? ` <span style="font-size:10px; color:#0284c7;">(En tránsito)</span>` : '';
-                                return `<strong>${qty}</strong>${badge}`;
+                                // REGLA PARA VENDEDORES
+                                let color = isIncoming ? '#059669' : '#64748b'; // Verde si viene en camino, gris si no
+                                return `<span style="color:${color}; font-weight:bold;">${data || 'No'}</span>`;
                             }
                             return data;
                         }
@@ -1395,12 +1400,32 @@ const SuiteKanban = (function($) {
         if (order.estado === 'despachado' && order.pod_url) {
             podBtn = `<a href="${order.pod_url}" target="_blank" class="btn-modern-action small" style="color:#0284c7; border-color:#bae6fd;" title="Ver Guía / Comprobante de Entrega">📸 Guía</a>`;
         }
-        // --- FIN CORRECCIÓN ---
+		// --- INICIO: BOTONES DE VALIDACIÓN DE PAGO (SOLO ADMIN) ---
+        let adminValidationBtns = '';
+        if (order.estado === 'pagado' && suite_vars.is_admin) {
+            adminValidationBtns = `
+                <div style="display:flex; gap:5px; margin-top:10px; padding-top:10px; border-top:1px dashed #e2e8f0;">
+                    <button class="btn-modern-action trigger-view-payment" data-id="${order.id}" style="background:#3b82f6; color:white; border:none; padding:4px 8px; font-size:11px; flex:1;">👀 Ver Pago</button>
+                    <button class="btn-modern-action trigger-approve-payment" data-id="${order.id}" style="background:#10b981; color:white; border:none; padding:4px 8px; font-size:11px;" title="Aprobar y pasar a Logística">✅</button>
+                    <button class="btn-modern-action trigger-reject-payment" data-id="${order.id}" style="background:#ef4444; color:white; border:none; padding:4px 8px; font-size:11px;" title="No recibido (Devolver)">❌</button>
+                </div>
+            `;
+        }
+        // --- FIN: BOTONES VALIDACIÓN ---
+    
+        // --- INICIO: INDICADOR DE URGENCIA ---
+        let priorityBadge = (order.prioridad == '1') 
+            ? `<span style="background:#fee2e2; color:#dc2626; border: 1px solid #fca5a5; font-size:10px; font-weight:900; padding:2px 6px; border-radius:4px; margin-left:8px; box-shadow: 0 0 5px rgba(220, 38, 38, 0.4);">🚨 URGENTE</span>` 
+            : '';
+        // --- FIN: INDICADOR ---
 
-        return `
-        <div class="kanban-card" data-id="${order.id}" data-is-b2b="${order.vendedor_is_b2b ? '1' : '0'}">
-            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
-                <span style="font-weight:bold; color:#0f172a;">#${order.codigo_cotizacion}</span>
+        return `
+        <div class="kanban-card" style="${order.prioridad == '1' ? 'border-left: 4px solid #dc2626;' : ''}" data-id="${order.id}" data-is-b2b="${order.vendedor_is_b2b ? '1' : '0'}">
+            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                <div>
+                    <span style="font-weight:bold; color:#0f172a;">#${order.codigo_cotizacion}</span>
+                    ${priorityBadge}
+                </div>
             </div>
             <div style="font-size: 13px; color:#475569; margin-bottom: 10px;">
                 👤 ${order.cliente_nombre || 'Sin Nombre'} <br>
@@ -1412,6 +1437,7 @@ const SuiteKanban = (function($) {
                 <a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${order.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small" style="color:#475569;" title="Imprimir PDF">🖨️</a>
                 ${podBtn}
             </div>
+			${adminValidationBtns}
             ${reverseBtn}
         </div>
         `;
@@ -1446,7 +1472,7 @@ const SuiteKanban = (function($) {
                         const fromStatus = evt.from.getAttribute('data-status');
                         
                         // Zonas seguras para los Aliados Comerciales
-                        const allowedColumns = ['emitida', 'proceso']; 
+                        const allowedColumns = ['emitida', 'pagado']; 
 
                         // Si intenta arrastrar a un área financiera o logística, bloqueamos el movimiento en vivo
                         if (!allowedColumns.includes(toStatus) || !allowedColumns.includes(fromStatus)) {
@@ -1472,59 +1498,75 @@ const SuiteKanban = (function($) {
                     const oldStatus = fromCol.getAttribute('data-status'); // <-- AGREGADO: Necesario para validar de dónde viene
 
 					// ----------------------------------------------------
-                    // CANDADO MÓDULO 2: SECUENCIA ESTRICTA DE ESTADOS
-                    // ----------------------------------------------------
-                    const isMoveValid = function(oldS, newS) {
-                        // --- INICIO FASE 5.2: FÍSICA ZERO-TRUST PARA ALIADOS B2B ---
+                    // CANDADO MÓDULO 2: FÍSICA ZERO-TRUST ESTRICTA
+                    // ----------------------------------------------------
+                    const isMoveValid = function(oldS, newS) {
                         if (suite_vars.is_b2b) {
-                            // Aliados solo pueden mover entre Pendiente y En Proceso
-                            if (oldS === 'emitida' && newS === 'proceso') return true;
-                            if (oldS === 'proceso' && newS === 'emitida') return true;
-                            return false; // Prohibido tocar facturación o logística
+                            if (oldS === 'emitida' && newS === 'pagado') return true;
+                            if (oldS === 'pagado' && newS === 'emitida') return true;
+                            return false;
                         }
-                        // --- FIN FASE 5.2 ---
 
-                        // Reglas normales para empleados internos
-                        if (oldS === 'emitida' && newS === 'proceso') return true;
-                        if (oldS === 'proceso' && (newS === 'emitida' || newS === 'pagado')) return true;
-                        if (oldS === 'pagado' && newS === 'por_enviar') return true; // Avanza a Logística
-                        if (oldS === 'por_enviar' && newS === 'pagado') return true; // Excepción: Retrocede de Logística a Facturado
-                        return false; 
-                    };
+                        // REGLAS KANBAN V2: CANDADO ABSOLUTO
+                        // Solo permitimos 2 movimientos manuales (porque ambos son interceptados por Modales de Seguridad)
+                        if (oldS === 'emitida' && newS === 'pagado') return true; // Abre Modal de Pago
+                        if (oldS === 'pagado' && newS === 'emitida') return true; // Abre Alerta de Doble Confirmación (Admin)
+                        
+                        // TODO LO DEMÁS ESTÁ PROHIBIDO MANUALMENTE. 
+                        // Los avances a Logística y a Enviado se hacen EXCLUSIVAMENTE mediante los botones.
+                        return false; 
+                    };
 
                     if (!isMoveValid(oldStatus, newStatus)) {
-                        alert('⛔ Movimiento no permitido. Debe respetar la secuencia lógica (Pendiente ↔️ En Proceso ➡️ Facturado ↔️ Por Enviar).');
-                        revertCard(itemEl, fromCol, oldIndex); // Esta función ya la tienes en tu JS para devolver la tarjeta
+                        alert('⛔ Movimiento no permitido. Debe respetar la secuencia lógica (Pendiente ➡️ Pagado ➡️ Por Enviar ➡️ Enviado).');
+                        revertCard(itemEl, fromCol, oldIndex);
                         return;
                     }
 
                     // ----------------------------------------------------
-                    // INTERCEPTOR MÓDULO 4: Cierre de Venta
+                    // INTERCEPTOR SÚPER-MODAL Y CANDADOS DE REVERSO
                     // ----------------------------------------------------
-                    // PROTECCIÓN: Solo abrimos el modal si la tarjeta AVANZA desde "proceso" a "pagado"
-                    if (newStatus === 'pagado' && oldStatus === 'proceso') {
-                        // 1. Guardar contexto en memoria para no perder la tarjeta
+                    if (newStatus === 'pagado' && oldStatus === 'emitida') {
+                        
+                        // 1. Guardar contexto y revertir tarjeta visualmente
                         pendingDrop = { quoteId, itemEl, fromCol, toCol, oldIndex };
+                        revertCard(itemEl, fromCol, oldIndex);
                         
-                        // 2. Limpiar modal anterior y setear ID oculto
-                        $('#modal-cierre-venta input, #modal-cierre-venta select').val('');
-						$('#cierre-recibo-prefijo').val('F');
-                        $('#cierre-quote-id').val(quoteId);
+                        // 2. Limpiar Súper-Modal y preparar campos
+                        $('#form-super-pago')[0].reset();
+                        $('#sp-datos-envio-container, #box-agencia, #box-direccion').hide();
+                        $('#sp-quote-id').val(quoteId);
                         
-						// 3. Lógica B2B y Abrir Modal
-                        const isB2b = $(itemEl).attr('data-is-b2b') === '1';
-                        if (isB2b) {
-                            $('#container-b2b-percent').show();
-                            $('#cierre-b2b-percent').prop('required', true).val('');
-                        } else {
-                            $('#container-b2b-percent').hide();
-                            $('#cierre-b2b-percent').prop('required', false).val('');
+                        // Ajuste estricto de Zona Horaria (Caracas / Local)
+                        const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+                        const localISOTime = (new Date(Date.now() - tzOffset)).toISOString().slice(0, 10);
+                        $('#sp-fecha-pago').val(localISOTime);
+                        
+                        $('#modal-super-pago').fadeIn();
+
+                    } else if (oldStatus === 'pagado' && newStatus === 'emitida') {
+                        
+                        // --- CANDADO ZERO-TRUST: REVERSO DE PAGO ---
+                        if (!suite_vars.is_admin) {
+                            alert('⛔ Acceso Denegado: Una vez en "Pagado", la tarjeta queda bloqueada. Solo un Administrador puede devolverla.');
+                            revertCard(itemEl, fromCol, oldIndex);
+                            return;
                         }
 
-                        $('#modal-cierre-venta').fadeIn();
-						
+                        // Si es Admin, exigimos doble confirmación
+                        const seguro = confirm('⚠️ MODO ADMIN: ¿Estás totalmente seguro de devolver esta orden a "Pendiente"?\n\nEl equipo de Logística no verá este pedido hasta que se vuelva a procesar el pago.');
+                        
+                        if (!seguro) {
+                            revertCard(itemEl, fromCol, oldIndex);
+                            return;
+                        }
+
+                        // Si el Admin confirma, dejamos que el sistema haga el cambio
+                        updateCounters();
+                        updateOrderStatus(quoteId, newStatus, itemEl, fromCol, oldIndex);
+
                     } else {
-                        // Si es otro estado (ej. de Emitida a Proceso, o de Pagado a Por Enviar), enviar directo
+                        // Cualquier otro movimiento legal (Ej: Pagado -> Por Enviar)
                         updateCounters();
                         updateOrderStatus(quoteId, newStatus, itemEl, fromCol, oldIndex);
                     }
@@ -1565,6 +1607,61 @@ const SuiteKanban = (function($) {
     // LISTENERS DEL MODAL DE CIERRE DE VENTA
     // ==========================================
 	const bindModalEvents = function() {
+		
+		// --- INICIO FASE 2: LISTENERS SÚPER-MODAL ---
+        // Multiplexor de campos logísticos dinámicos
+        $('#sp-tipo-envio').on('change', function() {
+            const tipo = $(this).val();
+            const container = $('#sp-datos-envio-container');
+            const boxAgencia = $('#box-agencia');
+            const boxDireccion = $('#box-direccion');
+            
+            // Elementos DOM
+            const baseInputs = $('#sp-nombre-receptor, #sp-rif-receptor, #sp-telefono-receptor');
+            const inputAgencia = $('#sp-agencia-envio');
+            const inputDireccion = $('#sp-direccion-envio');
+
+            if (tipo) {
+                container.slideDown();
+                baseInputs.prop('required', true); // Siempre requeridos (Retiro, Moto, Nacional)
+
+                if (tipo === 'Retiro') {
+                    boxAgencia.hide();
+                    inputAgencia.prop('required', false).val('');
+                    boxDireccion.hide();
+                    inputDireccion.prop('required', false).val('');
+                } 
+                else if (tipo === 'Motorizado') {
+                    boxAgencia.hide();
+                    inputAgencia.prop('required', false).val('');
+                    boxDireccion.slideDown();
+                    inputDireccion.prop('required', true);
+                } 
+                else if (tipo === 'Nacional') {
+                    boxAgencia.slideDown();
+                    inputAgencia.prop('required', true);
+                    boxDireccion.slideDown();
+                    inputDireccion.prop('required', true);
+                }
+            } else {
+                container.slideUp();
+                baseInputs.prop('required', false);
+                inputAgencia.prop('required', false);
+                inputDireccion.prop('required', false);
+            }
+        });
+
+        // Cancelar y cerrar Súper-Modal
+        $('#close-super-pago, #btn-cancel-sp').on('click', function() {
+            if (pendingDrop) {
+                revertCard(pendingDrop.itemEl, pendingDrop.fromCol, pendingDrop.oldIndex);
+                pendingDrop = null;
+                updateCounters();
+            }
+            $('#modal-super-pago').fadeOut();
+        });
+        // --- FIN FASE 2 ---
+
         
         // 1. Cerrar o cancelar Modal (Botón "X" o click por fuera)
         $('#close-modal-cierre').on('click', function() {
@@ -1637,12 +1734,11 @@ const SuiteKanban = (function($) {
         });
 
         // 3. Trigger manual (Mobile) para "Pagar" sin arrastrar
-        $('#kb-col-emitida, #kb-col-proceso, #kb-col-pagado, #kb-col-despachado').on('click', '.trigger-mobile-pay', function(e) {
+        $('#kb-col-emitida, #kb-col-pagado, #kb-col-por_enviar, #kb-col-despachado').on('click', '.trigger-mobile-pay', function(e) {
             e.preventDefault();
             const quoteId = $(this).data('id');
-            const col = $(this).data('col'); // Estado actual (ej: 'emitida')
+            const col = $(this).data('col');
             
-            // Simular el objeto pendingDrop para evitar fallos lógicos
             pendingDrop = { 
                 quoteId: quoteId, 
                 itemEl: $(this).closest('.kanban-card')[0], 
@@ -1651,22 +1747,16 @@ const SuiteKanban = (function($) {
                 oldIndex: $(this).closest('.kanban-card').index()
             };
             
-            // Limpiar y preparar Modal
-            $('#modal-cierre-venta input, #modal-cierre-venta select').val('');
-			$('#cierre-recibo-prefijo').val('F');
-            $('#cierre-quote-id').val(quoteId);
+            $('#form-super-pago')[0].reset();
+            $('#sp-datos-envio-container, #box-agencia, #box-direccion').hide();
+            $('#sp-quote-id').val(quoteId);
             
-			// Lógica B2B y Mostrar Modal
-            const isB2b = $(this).closest('.kanban-card').attr('data-is-b2b') === '1';
-            if (isB2b) {
-                $('#container-b2b-percent').show();
-                $('#cierre-b2b-percent').prop('required', true).val('');
-            } else {
-                $('#container-b2b-percent').hide();
-                $('#cierre-b2b-percent').prop('required', false).val('');
-            }
+            // Ajuste estricto de Zona Horaria (Caracas / Local)
+            const tzOffsetMobile = (new Date()).getTimezoneOffset() * 60000;
+            const localISOTimeMobile = (new Date(Date.now() - tzOffsetMobile)).toISOString().slice(0, 10);
+            $('#sp-fecha-pago').val(localISOTimeMobile);
 
-            $('#modal-cierre-venta').fadeIn();
+            $('#modal-super-pago').fadeIn();
         });
 		
         // 4. TRIGGER EXCLUSIVO ADMIN: LOGÍSTICA INVERSA
@@ -1674,7 +1764,7 @@ const SuiteKanban = (function($) {
             e.preventDefault();
 
             const orderId = $(this).data('id');
-            const seguro = confirm('⚠️ ¿Estás seguro de aplicar logística inversa? Esto afectará las comisiones y devolverá la orden a estado "En proceso".');
+            const seguro = confirm('⚠️ ¿Estás seguro de aplicar logística inversa? Esto reversará la comisión y devolverá la orden a "Pagado" para su reevaluación.');
 
             if (!seguro) return;
 
@@ -1703,6 +1793,183 @@ const SuiteKanban = (function($) {
             });
         });
 		
+		// 5. EVENTO SUBMIT DEL NUEVO SÚPER-MODAL (FASE 3)
+        $('#form-super-pago').on('submit', function(e) {
+            e.preventDefault();
+
+            if (!pendingDrop) {
+                alert("Error: No se encontró la tarjeta original. Recargue la página.");
+                return;
+            }
+
+            // Prevención de doble envío
+            const btnSubmit = $(this).find('button[type="submit"]');
+            const originalText = btnSubmit.html();
+            btnSubmit.prop('disabled', true).text('⏳ Subiendo y Cifrando...');
+
+            // 1. Instancia de FormData
+            let formData = new FormData();
+
+            // 2. Enrutamiento y Seguridad
+            formData.append('action', 'suite_process_super_pago');
+            formData.append('nonce', suite_vars.nonce);
+            formData.append('quote_id', $('#sp-quote-id').val());
+
+            // 3. Sección A: Pago
+            formData.append('forma_pago', $('#sp-forma-pago').val());
+            formData.append('fecha_pago', $('#sp-fecha-pago').val());
+            formData.append('monto_pagado', $('#sp-monto-pagado').val());
+            formData.append('requiere_factura', $('#sp-factura').is(':checked') ? 1 : 0);
+            formData.append('agente_retencion', $('#sp-retencion').is(':checked') ? 1 : 0);
+
+            // Archivo Comprobante (CORRECCIÓN JQUERY a Nativo)
+            const fileInput = $('#sp-comprobante')[0].files[0];
+            if (fileInput) {
+                formData.append('comprobante', fileInput);
+            }
+
+            // 4. Sección B: Logística
+            formData.append('tipo_envio', $('#sp-tipo-envio').val());
+            formData.append('agencia_envio', $('#sp-agencia-envio').val());
+            formData.append('nombre_receptor', $('#sp-nombre-receptor').val());
+            formData.append('rif_receptor', $('#sp-rif-receptor').val());
+            formData.append('telefono_receptor', $('#sp-telefono-receptor').val());
+            formData.append('direccion_envio', $('#sp-direccion-envio').val());
+
+            // 5. Sección C: Prioridad
+            formData.append('prioridad', $('#sp-prioridad').is(':checked') ? 1 : 0);
+
+            // 6. Disparo AJAX crudo blindado (Multipart)
+            $.ajax({
+                url: suite_vars.ajax_url,
+                type: 'POST',
+                data: formData,
+                processData: false, 
+                contentType: false, 
+                dataType: 'json',
+                success: function(res) {
+                    try {
+                        if (res && res.success) {
+                            $('#modal-super-pago').fadeOut();
+                            pendingDrop = null; 
+                            alert('✅ ' + (res.data.message || 'Cierre de venta procesado con éxito.'));
+                            location.reload(); // Recarga a prueba de balas para evitar desincronización
+                        } else {
+                            alert('❌ Error: ' + (res?.data?.message || res?.data || 'Desconocido'));
+                            if (pendingDrop) revertCard(pendingDrop.itemEl, pendingDrop.fromCol, pendingDrop.oldIndex);
+                            $('#modal-super-pago').fadeOut();
+                            pendingDrop = null;
+                            updateCounters();
+                        }
+                    } catch (error) {
+                        console.error(error);
+                        location.reload(); // Salvavidas: Si algo falla en JS, recarga la página.
+                    }
+                },
+                error: function(xhr) {
+                    console.error("AJAX Error:", xhr.responseText);
+                    alert('⚠️ El archivo se procesó, actualizando tablero...');
+                    location.reload(); 
+                },
+                complete: function() {
+                    btnSubmit.prop('disabled', false).html(originalText);
+                }
+            });
+        });
+		
+		
+		// --- ACCIONES ADMIN: APROBAR O RECHAZAR PAGO ---
+        
+        // 1. APROBAR PAGO (Pasa a Por Enviar)
+        $('.kanban-board').on('click', '.trigger-approve-payment', function(e) {
+            e.preventDefault();
+            const quoteId = $(this).data('id');
+            const btn = $(this);
+            
+            if(!confirm('¿Confirmas que el dinero está en la cuenta? La orden pasará a Logística.')) return;
+            
+            btn.prop('disabled', true).text('⏳');
+            updateOrderStatus(quoteId, 'por_enviar', null, null, null); // Reutilizamos tu función existente
+        });
+
+        // 2. RECHAZAR PAGO (Devuelve a Pendiente)
+        $('.kanban-board').on('click', '.trigger-reject-payment', function(e) {
+            e.preventDefault();
+            const quoteId = $(this).data('id');
+            const btn = $(this);
+            
+            const motivo = prompt('Escribe el motivo del rechazo (Ej: Captura falsa, Monto incompleto). La orden volverá a Pendiente:');
+            if(motivo === null) return; // Canceló el prompt
+            
+            btn.prop('disabled', true).text('⏳');
+            updateOrderStatus(quoteId, 'emitida', null, null, null); 
+            // Opcional: Podrías hacer un AJAX especial que además borre los datos de pago en la BD y guarde el motivo.
+        });
+
+        // 3. VER DETALLES DEL PAGO Y COMPROBANTE
+        $('.kanban-board').on('click', '.trigger-view-payment', function(e) {
+            e.preventDefault();
+            const quoteId = $(this).data('id');
+            
+            const btn = $(this); 
+            const originalHtml = btn.html();
+            btn.html('⏳').prop('disabled', true);
+
+            SuiteAPI.post('suite_get_quote_details_ajax', { id: quoteId }).then(res => {
+                btn.html(originalHtml).prop('disabled', false);
+                if (res.success) {
+                    const cot = res.data.cotizacion;
+                    
+                    // 1. Procesar la imagen o el PDF
+                    let imgHtml = '';
+                    if (cot.comprobante_pago_url) {
+                        const fileUrl = cot.comprobante_pago_url;
+                        if (fileUrl.toLowerCase().endsWith('.pdf')) {
+                            imgHtml = `<a href="${fileUrl}" target="_blank" class="btn-modern-action" style="background:#dc2626; color:white; display:block; text-align:center; padding:10px; margin-bottom:15px; text-decoration:none;">📄 ABRIR PDF DEL COMPROBANTE</a>`;
+                        } else {
+                            imgHtml = `<a href="${fileUrl}" target="_blank"><img src="${fileUrl}" style="width:100%; max-height:300px; object-fit:contain; border:1px solid #cbd5e1; border-radius:8px; margin-bottom:15px; background:#fff; cursor:zoom-in;" title="Clic para ampliar"></a>`;
+                        }
+                    } else {
+                        imgHtml = `<div style="background:#fee2e2; color:#dc2626; padding:10px; border-radius:5px; text-align:center; margin-bottom:15px; font-weight:bold;">⚠️ El vendedor no adjuntó archivo físico.</div>`;
+                    }
+
+                    // 2. Procesar tabla de datos (Añadidas Alertas Fiscales y Urgencia)
+                    let fiscalHtml = '';
+                    if (cot.requiere_factura == '1') fiscalHtml += '<span style="background:#dbeafe; color:#1d4ed8; border: 1px solid #bfdbfe; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:11px; margin-right:5px;">🧾 FACTURA FISCAL</span>';
+                    if (cot.agente_retencion == '1') fiscalHtml += '<span style="background:#fef9c3; color:#a16207; border: 1px solid #fde047; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:11px;">✂️ AGENTE RETENCIÓN</span>';
+                    if (!fiscalHtml) fiscalHtml = '<span style="color:#64748b; font-style:italic;">No solicitado</span>';
+
+                    let detallesUrgencia = (cot.prioridad == '1') ? '<tr><td colspan="2" style="background:#fee2e2; color:#dc2626; font-weight:bold; text-align:center; padding:10px;">🚨 ESTA ORDEN ESTÁ MARCADA COMO URGENTE</td></tr>' : '';
+
+                    let detailsHtml = `
+                        ${imgHtml}
+                        <table class="widefat striped" style="font-size:13px; border-collapse: collapse;">
+                            <tbody>
+                                ${detallesUrgencia}
+                                <tr><td style="width:120px;"><strong>💰 Monto / Forma:</strong></td><td>${cot.forma_pago}</td></tr>
+                                <tr><td><strong>📅 Fecha Pago:</strong></td><td>${cot.fecha_pago}</td></tr>
+                                <tr><td><strong>⚖️ Req. Fiscales:</strong></td><td>${fiscalHtml}</td></tr>
+                                <tr><td><strong>🚚 Logística:</strong></td><td>${cot.tipo_envio}</td></tr>
+                                <tr><td><strong>📍 Destino:</strong></td><td>${(cot.direccion_envio || '').replace(/\n/g, '<br>')}</td></tr>
+                            </tbody>
+                        </table>
+                    `;
+                    
+                    $('#vp-content').html(detailsHtml);
+                    $('#modal-ver-pago').fadeIn();
+                } else {
+                    alert('❌ Error al cargar los detalles del pago.');
+                }
+            }).catch(() => {
+                btn.html(originalHtml).prop('disabled', false);
+                alert('❌ Error de red al consultar el pago.');
+            });
+        });
+
+        // 4. Cerrar Modal de Ver Pago
+        $('#close-ver-pago, #btn-cerrar-ver-pago').on('click', function() {
+            $('#modal-ver-pago').fadeOut();
+        });
 		
     };
     // ==========================================
@@ -1717,8 +1984,7 @@ const SuiteKanban = (function($) {
                     const data = res.data;
                     $('.kanban-column-body').empty(); 
                     
-                    const columnasPermitidas = ['emitida', 'proceso', 'pagado', 'por_enviar', 'despachado'];
-                    
+                    const columnasPermitidas = ['emitida', 'pagado', 'por_enviar', 'despachado'];
                     columnasPermitidas.forEach(status => {
                         let colHtml = '';
                         if (data[status] && data[status].length > 0) {
@@ -1754,14 +2020,11 @@ const SuiteKanban = (function($) {
 --- INICIO DEL ARCHIVO: logistics.js ---
 /**
  * SuiteLogistics - Módulo del Panel de Almacén y Despacho
- * 
- * Gestiona la apertura de modales de logística y la subida segura
- * de comprobantes de entrega (POD) mediante FormData.
+ * * Gestiona la apertura de modales de logística y la subida segura
+ * de comprobantes (POD), Facturas y Recibos Loyverse mediante FormData.
  */
 const SuiteLogistics = (function($) {
     'use strict';
-
-    let currentQuoteId = null;
 
     // ==========================================
     // MÉTODOS PRIVADOS Y EVENT LISTENERS
@@ -1769,72 +2032,126 @@ const SuiteLogistics = (function($) {
 
     const bindEvents = function() {
         
-        // Procesar subida del comprobante
-		$('#btn-procesar-despacho').on('click', function(e) {
+        // 1. ABRIR MODAL Y CONFIGURAR UX FISCAL
+        // Usamos delegación de eventos (.on) porque la tabla se genera dinámicamente
+        $(document).on('click', '.trigger-dispatch', function(e) {
+            e.preventDefault();
+            
+            // A. Limpiar formulario nativamente
+            $('#form-confirm-dispatch')[0].reset();
+            
+            // B. Extraer metadata de los atributos data-* del HTML
+            const quoteId = $(this).data('id');
+            const quoteCode = $(this).data('code');
+            const isFiscal = $(this).data('fiscal');
+            
+            // C. Inyectar ID en el hidden y código en la cabecera
+            $('#disp-quote-id').val(quoteId);
+            $('#dispatch-info-box').html(`<strong>Despachando Orden:</strong> #${quoteCode}`);
+            
+            // D. Lógica UX: Requisito Fiscal
+            const labelFactura = $('#label-factura-fiscal');
+            const boxFactura = $('#box-factura-fiscal');
+            
+            if (isFiscal == 1 || isFiscal === true || isFiscal === '1') {
+                boxFactura.css({'border-color': '#dc2626', 'background': '#fef2f2'});
+                labelFactura.css('color', '#dc2626').text('📸 Subir Factura Fiscal (¡REQUERIDA!)');
+                $('#disp-factura-file').prop('required', true); 
+            } else {
+                boxFactura.css({'border-color': '#e2e8f0', 'background': '#ffffff'});
+                labelFactura.css('color', '#475569').text('📸 Adjuntar Factura Fiscal Física (Opcional)');
+                $('#disp-factura-file').prop('required', false);
+            }
+            
+            // E. Mostrar Modal
+            $('#modal-confirm-dispatch').fadeIn();
+        });
+
+        // 2. CERRAR MODAL
+        $('#close-modal-dispatch, #btn-cancel-dispatch').on('click', function(e) {
+            e.preventDefault();
+            $('#modal-confirm-dispatch').fadeOut();
+        });
+
+        // 3. REFRESCAR TABLA MANUALMENTE
+        $('#btn-refresh-logistics').on('click', function(e) {
+            e.preventDefault();
+            location.reload();
+        });
+
+        // 4. PROCESAR SUBIDA (Integrando tu SuiteAPI y el UX de desvanecimiento)
+        $('#form-confirm-dispatch').on('submit', function(e) {
             e.preventDefault();
 
-            const fileInput = $('#log-pod-file').prop('files');
-            if (!fileInput || fileInput.length === 0) {
-                return alert('⚠️ Por favor, selecciona una imagen o archivo PDF como comprobante.');
-            }
+            // Bloquear botón para evitar múltiples envíos
+            const btnSubmit = $(this).find('button[type="submit"]');
+            const originalText = btnSubmit.html();
+            btnSubmit.prop('disabled', true).text('⏳ Cifrando y Subiendo...');
 
-            const btn = $(this);
-            btn.prop('disabled', true).text('Subiendo Archivo...');
-
+            const quoteId = $('#disp-quote-id').val();
+            
             // Instanciar FormData para envío de archivos (Multipart)
             const fd = new FormData();
-            fd.append('pod_file', fileInput[0]); // <--- ÚNICA CORRECCIÓN: Agregar [0] aquí
-            fd.append('quote_id', currentQuoteId);
+            
+            // Agregamos los campos de texto
+            fd.append('quote_id', quoteId);
+            fd.append('recibo_loyverse', $('#disp-loyverse').val());
 
-            SuiteAPI.postForm('suite_upload_pod', fd).then(res => {
+            // Agregamos Archivos solo si fueron seleccionados
+            const facturaInput = $('#disp-factura-file')[0].files;
+            if (facturaInput && facturaInput.length > 0) {
+                fd.append('factura_file', facturaInput[0]);
+            }
+
+            const podInput = $('#disp-pod-file')[0].files;
+            if (podInput && podInput.length > 0) {
+                fd.append('pod_file', podInput[0]);
+            }
+
+            // Usamos tu API unificada (El action ahora es 'suite_process_dispatch')
+            SuiteAPI.postForm('suite_process_dispatch', fd).then(res => {
                 if (res.success) {
-                    alert('✅ ' + (res.data.message || 'Pedido marcado como despachado.'));
                     
-                    // Cerrar Modal
-                    $('#modal-confirmar-despacho').fadeOut();
+                    $('#modal-confirm-dispatch').fadeOut();
+                    alert('✅ ' + (res.data.message || 'Pedido despachado exitosamente. Comisiones liberadas.'));
                     
-                    // Efecto visual: Eliminar la fila de la tabla suavemente
-                    $('#log-row-' + currentQuoteId).fadeOut('slow', function() { 
+                    // UX: Efecto visual de tu código original (Eliminar fila suavemente)
+                    $('#log-row-' + quoteId).fadeOut('slow', function() { 
                         $(this).remove(); 
                         
-                        // Si la tabla queda vacía, podríamos mostrar un mensaje, 
-                        // pero con recargar la vista del Kanban en background es suficiente.
-                        if (typeof SuiteKanban !== 'undefined') {
+                        // Sincronizar Kanban en background si la función existe
+                        if (typeof SuiteKanban !== 'undefined' && typeof SuiteKanban.loadBoard === 'function') {
                             SuiteKanban.loadBoard();
                         }
                     });
 
                 } else {
-                    alert('❌ Error: ' + (res.data.message || res.data));
+                    alert('❌ Error: ' + (res.data.message || res.data || 'Error desconocido.'));
                 }
             }).catch(err => {
-                alert('❌ Error de conexión al subir el archivo.');
+                console.error(err);
+                alert('❌ Error de red o conexión al subir los archivos.');
             }).finally(() => {
-                btn.prop('disabled', false).text('Subir y Marcar Despachado');
+                btnSubmit.prop('disabled', false).html(originalText);
             });
         });
     };
 
     // ==========================================
-    // API PÚBLICA (Métodos Revelados)
+    // API PÚBLICA
     // ==========================================
     return {
-        /**
-         * Abre el modal y guarda el ID del pedido en memoria
-         * @param {number} id - ID del pedido
-         */
-        openModal: function(id) {
-            currentQuoteId = id;
-            $('#log-pod-file').val(''); // Limpiar input residual
-            $('#modal-confirmar-despacho').fadeIn();
-        },
-
         init: function() {
             bindEvents();
         }
     };
 
 })(jQuery);
+
+// Inicializar al cargar el DOM (Modo seguro de WordPress)
+jQuery(document).ready(function($) {
+    SuiteLogistics.init();
+});
 --- FIN DEL ARCHIVO: logistics.js ---
 
 --- INICIO DEL ARCHIVO: marketing.js ---

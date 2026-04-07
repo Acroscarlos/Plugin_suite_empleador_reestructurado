@@ -60,10 +60,11 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-stats.php';
 	// Controladores de la API REST
 	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-sync.php';
+	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-telegram-webhook.php'; // <--- FASE 4.1: WEBHOOK TELEGRAM
+
 
     // Controlador del Administrador / Frontend (Shortcodes y Vistas)
     require_once SUITE_PATH . 'includes/Controllers/Admin/class-suite-shortcode-controller.php';
-
 
     // --- B. INSTANCIACIÓN DE CONTROLADORES (Encendiendo los motores) ---
 
@@ -83,6 +84,7 @@ function suite_empleados_init() {
 	new Suite_Ajax_Get_Products();
 	new Suite_Ajax_Quote_Details();
 	new Suite_Ajax_Get_Inventory();
+	new Suite_Ajax_Process_Super_Pago();
 	
     // Módulo 1: Tablero Kanban (Pedidos)
     new Suite_Ajax_Kanban_Data();
@@ -119,7 +121,10 @@ function suite_empleados_init() {
     new Suite_Shortcode_Controller();
 }
 add_action( 'plugins_loaded', 'suite_empleados_init' );
-
+add_action( 'rest_api_init', function () {
+	$telegram_webhook = new Suite_Telegram_Webhook();
+	$telegram_webhook->register_routes();
+	});
 
 /**
  * 4. ACTIVACIÓN DEL PLUGIN

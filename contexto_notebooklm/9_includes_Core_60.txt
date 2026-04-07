@@ -26,12 +26,11 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             id bigint(20) NOT NULL AUTO_INCREMENT,
             sku VARCHAR(100) NOT NULL,
             nombre_producto VARCHAR(255),
-            stock_gale INT DEFAULT 0,
-            stock_mille INT DEFAULT 0,
-            stock_transito INT DEFAULT 0,
-            status_alerta VARCHAR(50),
-            velocidad_ventas FLOAT DEFAULT 0,
-            precio DECIMAL(10,2) DEFAULT 0,
+            precio_venta DECIMAL(10,2) DEFAULT 0,
+            status_prediccion VARCHAR(50),
+            inventario_entrante VARCHAR(10),
+            disponibilidad_millennium FLOAT DEFAULT 0,
+            disponibilidad_galerias FLOAT DEFAULT 0,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY  (id),
             UNIQUE KEY idx_sku (sku)
@@ -77,6 +76,20 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             url_captura_pago TEXT,
             recibo_loyverse VARCHAR(100),
             pod_url TEXT,
+            
+            /* --- INICIO FASE 1: NUEVOS CAMPOS KANBAN V2 --- */
+            forma_pago VARCHAR(50),
+            fecha_pago DATETIME,
+            requiere_factura TINYINT(1) DEFAULT 0,
+            agente_retencion TINYINT(1) DEFAULT 0,
+            comprobante_pago_url TEXT,
+            tipo_envio VARCHAR(50),
+            agencia_envio VARCHAR(100),
+            direccion_envio TEXT,
+            prioridad TINYINT(1) DEFAULT 0,
+            alerta_loyverse TEXT,
+            /* --- FIN FASE 1 --- */
+            
             PRIMARY KEY  (id)
         ) $charset_collate;";
 

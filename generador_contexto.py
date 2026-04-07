@@ -21,7 +21,7 @@ def consolidar_plugin_por_carpetas(directorio_raiz):
     if os.path.exists(dir_salida):
         shutil.rmtree(dir_salida)
     os.makedirs(dir_salida)
-
+    Version = 60
     contador_archivos = 1
 
     # Recorremos el árbol de directorios
@@ -58,7 +58,7 @@ def consolidar_plugin_por_carpetas(directorio_raiz):
             # Reemplazamos slashes y backslashes por guiones bajos
             nombre_base = ruta_relativa_carpeta.replace('\\', '_').replace('/', '_')
         
-        nombre_archivo_txt = f"{contador_archivos}_{nombre_base}.txt"
+        nombre_archivo_txt = f"{contador_archivos}_{nombre_base}_{Version}.txt"
         ruta_txt_salida = os.path.join(dir_salida, nombre_archivo_txt)
 
         # Creamos el archivo txt para esta carpeta

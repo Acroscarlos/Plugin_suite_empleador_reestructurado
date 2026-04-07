@@ -44,8 +44,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     }
     /* Acentos de color por columna */
     .col-emitida .kanban-column-header { border-bottom-color: #f59e0b; }
-    .col-proceso .kanban-column-header { border-bottom-color: #3b82f6; }
-    .col-pagado .kanban-column-header { border-bottom-color: #10b981; }
+    .col-pagado .kanban-column-header { border-bottom-color: #10b981; } /* Pagado ahora es el paso 2 */
 	.col-por_enviar .kanban-column-header { border-bottom-color: #f97316; }
     .col-despachado .kanban-column-header { border-bottom-color: #8b5cf6; }
 
@@ -133,18 +132,9 @@ if ( ! defined( 'ABSPATH' ) ) {
         </div>
 
         <!-- Columna 2: En Proceso -->
-        <div class="kanban-column-wrapper col-proceso">
-            <div class="kanban-column-header">
-                <span>🔵 En Proceso</span>
-                <span class="count-badge pill-neutral" id="count-proceso">0</span>
-            </div>
-            <div class="kanban-column-body" id="kb-col-proceso" data-status="proceso"></div>
-        </div>
-
-        <!-- Columna 3: Facturado / Pagado -->
         <div class="kanban-column-wrapper col-pagado">
             <div class="kanban-column-header">
-                <span>🟢 Facturado</span>
+                <span>💰 Pagado</span>
                 <span class="count-badge pill-neutral" id="count-pagado">0</span>
             </div>
             <div class="kanban-column-body" id="kb-col-pagado" data-status="pagado"></div>
@@ -274,5 +264,133 @@ if ( ! defined( 'ABSPATH' ) ) {
         <button class="btn-save-big" id="btn-confirmar-pago" style="margin-top:15px; background-color: #10b981;">
             Confirmar y Procesar Pago
         </button>
+    </div>
+</div>
+
+<div id="modal-super-pago" class="suite-modal" style="display: none;">
+    <div class="suite-modal-content" style="max-width: 650px; background: #f8fafc;">
+        <span class="close-modal" id="close-super-pago">&times;</span>
+        <h2 style="margin-top:0; color:#0f172a; display:flex; align-items:center; gap:10px;">
+            💸 <span>Cierre de Venta y Logística</span>
+        </h2>
+        <p style="color:#64748b; font-size:13px; margin-top:-10px; margin-bottom:20px;">Complete los datos financieros y de entrega para validar el pago.</p>
+
+        <form id="form-super-pago">
+            <input type="hidden" id="sp-quote-id" value="">
+
+            <div style="background:#ffffff; padding:20px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:15px;">
+                <h3 style="border-bottom: 2px solid #f1f5f9; padding-bottom: 5px; color:#1e293b; margin-top:0; font-size:15px;">Sección A: El Pago</h3>
+
+                <div class="form-group-row">
+                    <div style="flex:1;">
+                        <label style="font-size:12px; font-weight:bold; color:#475569;">Forma de Pago *</label>
+                        <select id="sp-forma-pago" class="widefat" required>
+                            <option value="">Seleccione...</option>
+                            <option value="Transferencia">Transferencia Bancaria</option>
+                            <option value="Pago Movil">Pago Móvil</option>
+                            <option value="Zelle">Zelle</option>
+                            <option value="Efectivo">Efectivo (Divisas)</option>
+                            <option value="Binance">Binance (USDT)</option>
+                        </select>
+                    </div>
+                    <div style="flex:1;">
+                        <label style="font-size:12px; font-weight:bold; color:#475569;">Fecha de Pago *</label>
+                        <input type="date" id="sp-fecha-pago" class="widefat" required>
+                    </div>
+                </div>
+
+                <div class="form-group-row">
+                    <div style="flex:1;">
+                        <label style="font-size:12px; font-weight:bold; color:#475569;">Monto Pagado *</label>
+                        <input type="number" step="0.01" id="sp-monto-pagado" class="widefat" placeholder="Ej: 150.00" required>
+                    </div>
+                    <div style="flex:1;">
+                        <label style="font-size:12px; font-weight:bold; color:#475569;">Comprobante (Imagen o PDF) *</label>
+                        <input type="file" id="sp-comprobante" class="widefat" accept=".jpg,.jpeg,.png,.pdf" style="padding: 5px; font-size: 12px; cursor: pointer;" required>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap: 20px; margin-top: 10px; padding-top:10px; border-top:1px dashed #e2e8f0;">
+                    <label style="font-size:13px; color:#334155; cursor:pointer;"><input type="checkbox" id="sp-factura"> Requiere Factura Fiscal</label>
+                    <label style="font-size:13px; color:#334155; cursor:pointer;"><input type="checkbox" id="sp-retencion"> Agente de Retención</label>
+                </div>
+            </div>
+
+			<div style="background:#ffffff; padding:20px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:20px;">
+                <h3 style="border-bottom: 2px solid #f1f5f9; padding-bottom: 5px; color:#1e293b; margin-top:0; font-size:15px;">Sección B: Logística y Envío</h3>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="font-size:12px; font-weight:bold; color:#475569;">Tipo de Despacho *</label>
+                    <select id="sp-tipo-envio" class="widefat" required>
+                        <option value="">Seleccione el método...</option>
+                        <option value="Retiro">🏢 Retiro en Tienda</option>
+                        <option value="Motorizado">🛵 Delivery / Motorizado (Local)</option>
+                        <option value="Nacional">📦 Envío Nacional (Encomienda)</option>
+                    </select>
+                </div>
+
+                <div id="sp-datos-envio-container" style="display:none; background:#f8fafc; padding:15px; border-radius:8px; border: 1px solid #cbd5e1;">
+                    
+                    <div class="form-group-row">
+                        <div style="flex:1; display:none;" id="box-agencia">
+                            <label style="font-size:12px; font-weight:bold; color:#475569;">Agencia *</label>
+                            <select id="sp-agencia-envio" class="widefat">
+                                <option value="">Seleccione...</option>
+                                <option value="MRW">MRW</option>
+                                <option value="Zoom">Zoom</option>
+                                <option value="Tealca">Tealca</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:12px; font-weight:bold; color:#475569;">Nombre y Apellido (Receptor) *</label>
+                            <input type="text" id="sp-nombre-receptor" class="widefat">
+                        </div>
+                    </div>
+
+                    <div class="form-group-row">
+                        <div style="flex:1;">
+                            <label style="font-size:12px; font-weight:bold; color:#475569;">RIF / Cédula *</label>
+                            <input type="text" id="sp-rif-receptor" class="widefat">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:12px; font-weight:bold; color:#475569;">Teléfono *</label>
+                            <input type="text" id="sp-telefono-receptor" class="widefat">
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 10px; display:none;" id="box-direccion">
+                        <label style="font-size:12px; font-weight:bold; color:#475569;">Dirección Exacta de Destino *</label>
+                        <textarea id="sp-direccion-envio" class="widefat" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+			
+
+            <div style="background:#fee2e2; padding:15px; border-radius:8px; border:2px solid #fca5a5; margin-bottom:20px;">
+                <label style="color:#dc2626; font-weight:900; font-size:14px; display:flex; align-items:center; gap:10px; cursor:pointer;">
+                    <input type="checkbox" id="sp-prioridad" style="width:20px; height:20px; accent-color: #dc2626;">
+                    🚨 MARCAR ESTA ORDEN COMO PRIORIDAD URGENTE
+                </label>
+            </div>
+
+            <div style="display:flex; justify-content: flex-end; gap:10px;">
+                <button type="button" class="btn-modern-action" id="btn-cancel-sp" style="background:#64748b; color:white; padding:12px 20px;">Cancelar</button>
+                <button type="submit" class="btn-save-big" style="background:#059669; padding:12px 20px;">✅ Confirmar Datos</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="modal-ver-pago" class="suite-modal" style="display: none;">
+    <div class="suite-modal-content" style="max-width: 500px; background: #f8fafc;">
+        <span class="close-modal" id="close-ver-pago">&times;</span>
+        <h2 style="margin-top:0; color:#0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">
+            👀 Verificación de Pago
+        </h2>
+        <div id="vp-content" style="margin-top: 15px;">
+            </div>
+        <div style="text-align: right; margin-top: 15px;">
+            <button class="btn-modern-action" id="btn-cerrar-ver-pago" style="background:#64748b; color:white; padding:8px 15px;">Cerrar Vista</button>
+        </div>
     </div>
 </div>

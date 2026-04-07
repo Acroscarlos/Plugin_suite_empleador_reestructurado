@@ -62,7 +62,21 @@ class Suite_Model_Quote extends Suite_Model_Base {
                 'moneda'            => sanitize_text_field( $meta['moneda'] ),
                 'total_usd'         => 0, // Se actualizará luego del loop
                 'fecha_emision'     => current_time( 'mysql' ),
-                'estado'            => 'emitida'
+                'estado'            => 'emitida',
+                
+                // --- INICIO FASE 1: INICIALIZACIÓN KANBAN V2 ---
+                'forma_pago'           => '',
+                'fecha_pago'           => null, // Se llenará cuando el estado pase a 'pagado'
+                'requiere_factura'     => 0,
+                'agente_retencion'     => 0,
+                'comprobante_pago_url' => '',
+                'tipo_envio'           => '',
+                'agencia_envio'        => '',
+                'direccion_envio'      => $client_data['direccion'], // Por defecto la del cliente
+                'prioridad'            => 0,
+                'alerta_loyverse'      => ''
+                // Nota: recibo_loyverse se actualiza en otra parte del flujo
+                // --- FIN FASE 1 ---
             ] );
 
             if ( ! $quote_id ) throw new Exception( 'Fallo al generar la cabecera.' );
@@ -178,7 +192,13 @@ class Suite_Model_Quote extends Suite_Model_Base {
 		
         $tabla_cli = $this->wpdb->prefix . 'suite_clientes';
         
-        $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, c.pod_url, cli.nombre_razon AS cliente_nombre
+        // Añadimos TODAS las columnas necesarias para el Kanban y Logística (Fase 5)
+        $sql = "SELECT c.id, c.codigo_cotizacion, c.total_usd, c.fecha_emision, c.estado, c.vendedor_id, 
+                       c.pod_url, c.prioridad, 
+                       c.requiere_factura, c.agente_retencion, 
+                       c.comprobante_pago_url, c.url_captura_pago, 
+                       c.tipo_envio, c.metodo_entrega, c.agencia_envio, c.direccion_envio, c.direccion_entrega,
+                       cli.nombre_razon AS cliente_nombre
                 FROM {$this->table_name} c
                 LEFT JOIN {$tabla_cli} cli ON c.cliente_id = cli.id
                 WHERE 1=1";

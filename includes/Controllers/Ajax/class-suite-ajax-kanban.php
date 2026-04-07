@@ -113,11 +113,11 @@ class Suite_Ajax_Reverse_Logistics extends Suite_AJAX_Controller {
             $this->send_error( 'ID de orden inválido.' );
         }
 
-        // 1. Acción Principal: Devolver la orden a estado 'proceso'
+        // 1. Acción Principal: Devolver la orden a estado 'pagado'
         $tabla_cotizaciones = $wpdb->prefix . 'suite_cotizaciones';
         $actualizado = $wpdb->update(
             $tabla_cotizaciones,
-            [ 'estado' => 'proceso' ],
+            [ 'estado' => 'pagado' ],
             [ 'id' => $order_id ],
             [ '%s' ],
             [ '%d' ]
@@ -172,7 +172,7 @@ class Suite_Ajax_Reverse_Logistics extends Suite_AJAX_Controller {
             $user_id = get_current_user_id();
             suite_record_log( 
                 'logistica_inversa', 
-                "El Administrador (ID: {$user_id}) aplicó Logística Inversa a la orden #{$order_id}. La orden retornó a 'proceso' y el Ledger fue ajustado automáticamente." 
+                "El Administrador (ID: {$user_id}) aplicó Logística Inversa a la orden #{$order_id}. La orden retornó a 'pagado' y el Ledger fue ajustado automáticamente." 
             );
         }
 

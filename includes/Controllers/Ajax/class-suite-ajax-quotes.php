@@ -729,3 +729,201 @@ class Suite_Ajax_Quote_Details extends Suite_AJAX_Controller {
         ] );
     }
 }
+
+/**
+ * 5. Endpoint para el Súper-Modal: Cierre Financiero y Logístico Multipart
+ * FASE 3: KANBAN V2 (MERCADOENVÍOS)
+ */
+class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_process_super_pago';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        $quote_id = isset($_POST['quote_id']) ? intval($_POST['quote_id']) : 0;
+        if ( ! $quote_id ) {
+            $this->send_error( 'ID de cotización ausente.' );
+        }
+
+        $quote_model = new Suite_Model_Quote();
+        $current_order = $quote_model->get( $quote_id );
+
+        if ( ! $current_order ) {
+            $this->send_error( 'La cotización no existe.', 404 );
+        }
+
+        // 1. SEGURIDAD ZERO-TRUST: PREVENCIÓN IDOR
+        $user_id = get_current_user_id();
+        $is_admin = current_user_can( 'manage_options' );
+        if ( ! $is_admin && intval( $current_order->vendedor_id ) !== $user_id ) {
+            $this->send_error( 'Acceso Denegado: No puede modificar un pedido que no le pertenece.', 403 );
+        }
+
+        // 2. SANITIZACIÓN ESTRICTA (Prevención XSS/SQLi)
+        $forma_pago       = sanitize_text_field( $_POST['forma_pago'] ?? '' );
+        $fecha_pago       = sanitize_text_field( $_POST['fecha_pago'] ?? current_time('mysql') );
+        $requiere_factura = isset($_POST['requiere_factura']) ? intval($_POST['requiere_factura']) : 0;
+        $agente_retencion = isset($_POST['agente_retencion']) ? intval($_POST['agente_retencion']) : 0;
+
+        $tipo_envio        = sanitize_text_field( $_POST['tipo_envio'] ?? '' );
+        $agencia_envio     = sanitize_text_field( $_POST['agencia_envio'] ?? '' );
+        $nombre_receptor   = sanitize_text_field( $_POST['nombre_receptor'] ?? '' );
+        $rif_receptor      = sanitize_text_field( $_POST['rif_receptor'] ?? '' );
+        $telefono_receptor = sanitize_text_field( $_POST['telefono_receptor'] ?? '' );
+        $direccion_fisica  = sanitize_textarea_field( $_POST['direccion_envio'] ?? '' );
+        $prioridad         = isset($_POST['prioridad']) ? intval($_POST['prioridad']) : 0;
+
+        // 3. CONCATENACIÓN INTELIGENTE DE LOGÍSTICA
+        $direccion_final = '';
+        if ( $tipo_envio === 'Nacional' ) {
+            $direccion_final = "Receptor: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor \nAgencia: $agencia_envio \nDir: $direccion_fisica";
+        } elseif ( $tipo_envio === 'Motorizado' ) {
+            $direccion_final = "Receptor: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor \nDir: $direccion_fisica";
+        } elseif ( $tipo_envio === 'Retiro' ) {
+            $direccion_final = "Retira en Tienda: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor";
+        }
+
+        // 4. BÓVEDA SEGURA: MANEJO DE ARCHIVO MULTIPART
+        $comprobante_url = '';
+        if ( ! empty( $_FILES['comprobante']['name'] ) ) {
+            if ( ! function_exists( 'wp_handle_upload' ) ) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+            }
+
+            // Dictadura de MIME Types: Solo Imágenes y PDFs
+            $upload_overrides = [
+                'test_form' => false,
+                'mimes'     => [
+                    'jpg'  => 'image/jpeg',
+                    'jpeg' => 'image/jpeg',
+                    'png'  => 'image/png',
+                    'pdf'  => 'application/pdf'
+                ]
+            ];
+
+            $movefile = wp_handle_upload( $_FILES['comprobante'], $upload_overrides );
+
+            if ( $movefile && ! isset( $movefile['error'] ) ) {
+                $comprobante_url = $movefile['url']; // URL pública/segura generada
+            } else {
+                $this->send_error( 'Fallo de seguridad al subir comprobante. Solo se permiten JPG, PNG o PDF. Detalles: ' . $movefile['error'] );
+            }
+        }
+
+        // 5. ACTUALIZACIÓN DE METADATOS (Inyectamos los campos de la Fase 1)
+        $extra_data = [
+            'forma_pago'           => $forma_pago,
+            'metodo_pago'          => $forma_pago, // Retrocompatibilidad v1
+            'fecha_pago'           => $fecha_pago,
+            'requiere_factura'     => $requiere_factura,
+            'agente_retencion'     => $agente_retencion,
+            'tipo_envio'           => $tipo_envio,
+            'metodo_entrega'       => $tipo_envio, // Retrocompatibilidad v1
+            'agencia_envio'        => $agencia_envio,
+            'direccion_envio'      => $direccion_final,
+            'prioridad'            => $prioridad
+        ];
+        
+        if ( ! empty( $comprobante_url ) ) {
+            $extra_data['comprobante_pago_url'] = $comprobante_url;
+            $extra_data['url_captura_pago']     = $comprobante_url; // Retrocompatibilidad v1
+        }
+
+		
+		
+		
+		
+		
+		
+        $quote_model->update( $quote_id, $extra_data );
+        $result = $quote_model->update_order_status( $quote_id, 'pagado' );
+        
+        if ( is_wp_error( $result ) ) {
+            $this->send_error( $result->get_error_message(), 500 );
+        }
+
+        // --- INICIO FASE 4: DISPARO DE TELEGRAM ---
+        try {
+            // Buscamos el código de cotización para el mensaje
+            $quote_data = $quote_model->get( $quote_id );
+            
+            if ( $quote_data && ! empty( $comprobante_url ) ) {
+                $monto_final = isset($_POST['monto_pagado']) ? floatval($_POST['monto_pagado']) : $quote_data->total_usd;
+                
+                $telegram = new Suite_Telegram_Bot();
+                $telegram->send_payment_alert(
+                    $quote_id,
+                    $quote_data->codigo_cotizacion,
+                    $quote_data->vendedor_id,
+                    $monto_final,
+                    $forma_pago,
+                    $comprobante_url
+                );
+            }
+        } catch (Exception $e) {
+            // No bloqueamos el éxito del ERP si Telegram falla
+            error_log("Error en Notificación Telegram: " . $e->getMessage());
+        }
+        // --- FIN FASE 4 ---
+
+        $this->send_success( [ 'message' => 'Pago registrado. El equipo financiero ha sido notificado por Telegram.' ] );
+    }
+}
+/**
+ * Helper Class: Suite_Telegram_Bot
+ * FASE 4: Notificaciones en Tiempo Real para Validación de Pagos
+ */
+class Suite_Telegram_Bot {
+    
+    private $bot_token = '8190650297:AAEhx-eQygWnbid7mjcSQuN2KV4SigE6k38';
+    private $chat_id   = '-5199565623'; 
+
+    /**
+     * Envía la alerta de pago con el comprobante y botones interactivos.
+     */
+    public function send_payment_alert( $quote_id, $codigo_cotizacion, $vendedor_id, $monto, $forma_pago, $file_url ) {
+        if ( empty( $this->bot_token ) || empty( $this->chat_id ) ) return false;
+
+        $is_pdf     = ( substr( strtolower( $file_url ), -4 ) === '.pdf' );
+        $endpoint   = $is_pdf ? 'sendDocument' : 'sendPhoto';
+        $file_param = $is_pdf ? 'document' : 'photo';
+
+        $vendedor_info   = get_userdata( $vendedor_id );
+        $vendedor_nombre = $vendedor_info ? $vendedor_info->display_name : 'ID: ' . $vendedor_id;
+
+        // Formateo del mensaje con Emojis para Finanzas
+        $caption  = "🚨 <b>NUEVO PAGO REGISTRADO</b> 🚨\n\n";
+        $caption .= "🛍️ <b>Orden:</b> #{$codigo_cotizacion}\n";
+        $caption .= "👤 <b>Vendedor:</b> {$vendedor_nombre}\n";
+        $caption .= "💰 <b>Monto:</b> $" . number_format( (float) $monto, 2 ) . "\n";
+        $caption .= "💳 <b>Método:</b> {$forma_pago}\n\n";
+        $caption .= "⚠️ <i>Use los botones de abajo para validar sin entrar al ERP.</i>";
+
+        // Teclado Inline para la Fase 4.1 (Webhooks)
+        $keyboard = array(
+            'inline_keyboard' => array(
+                array(
+                    array( 'text' => '✅ Aprobar Pago', 'callback_data' => "approve_payment_{$quote_id}" ),
+                    array( 'text' => '❌ Rechazar', 'callback_data' => "reject_payment_{$quote_id}" )
+                )
+            )
+        );
+
+        $body = array(
+            'chat_id'      => $this->chat_id,
+            $file_param    => $file_url,
+            'caption'      => $caption,
+            'parse_mode'   => 'HTML',
+            'reply_markup' => wp_json_encode( $keyboard )
+        );
+
+        $url = "https://api.telegram.org/bot{$this->bot_token}/{$endpoint}";
+
+        // Petición asíncrona para no bloquear el ERP
+        return wp_remote_post( $url, array(
+            'body'    => $body,
+            'timeout' => 10,
+            'blocking' => true // Queremos saber si salió, pero con un timeout razonable
+        ) );
+    }
+}

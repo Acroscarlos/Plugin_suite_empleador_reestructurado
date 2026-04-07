@@ -70,6 +70,20 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             url_captura_pago TEXT,
             recibo_loyverse VARCHAR(100),
             pod_url TEXT,
+            
+            /* --- INICIO FASE 1: NUEVOS CAMPOS KANBAN V2 --- */
+            forma_pago VARCHAR(50),
+            fecha_pago DATETIME,
+            requiere_factura TINYINT(1) DEFAULT 0,
+            agente_retencion TINYINT(1) DEFAULT 0,
+            comprobante_pago_url TEXT,
+            tipo_envio VARCHAR(50),
+            agencia_envio VARCHAR(100),
+            direccion_envio TEXT,
+            prioridad TINYINT(1) DEFAULT 0,
+            alerta_loyverse TEXT,
+            /* --- FIN FASE 1 --- */
+            
             PRIMARY KEY  (id)
         ) $charset_collate;";
 

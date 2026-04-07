@@ -2,8 +2,8 @@
 /**
  * Controlador AJAX: Logística y Despacho (Módulo 3)
  *
- * Maneja la subida del comprobante de entrega (Proof of Delivery) 
- * y la impresión blindada de Hojas de Picking para el almacén.
+ * Maneja la subida del comprobante de entrega (POD), facturas fiscales,
+ * el registro del ID Loyverse y la impresión de Hojas de Picking.
  *
  * @package SuiteEmpleados\Controllers\Ajax
  */
@@ -13,11 +13,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Endpoint 1: Subida de Guía / Foto de Entrega (Proof of Delivery)
+ * Endpoint 1: Procesamiento de Despacho (Fase 5)
+ * Nota: Se mantiene el nombre de la clase por retrocompatibilidad con el init principal,
+ * pero la acción AJAX ahora es 'suite_process_dispatch'.
  */
 class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
 
-    protected $action_name = 'suite_upload_pod';
+    protected $action_name = 'suite_process_dispatch'; // <-- IMPORTANTE: Conectado con logistics.js
     protected $required_capability = 'read';
 
     protected function process() {
@@ -28,74 +30,115 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
 
         if ( ! $is_admin && ! $is_logistica ) {
             if ( function_exists('suite_record_log') ) {
-                suite_record_log( 'violacion_acceso', "Intento de escalada de privilegios en POD por el usuario " . get_current_user_id() );
+                suite_record_log( 'violacion_acceso', "Intento de escalada de privilegios en Despacho por el usuario " . get_current_user_id() );
             }
             $this->send_error( 'Acceso Denegado: Solo el personal de almacén/logística puede confirmar despachos.', 403 );
         }
 
+        // 2. RECEPCIÓN DE DATOS BÁSICOS
         $quote_id = isset( $_POST['quote_id'] ) ? intval( $_POST['quote_id'] ) : 0;
+        $recibo_loyverse = isset( $_POST['recibo_loyverse'] ) ? sanitize_text_field( $_POST['recibo_loyverse'] ) : '';
         
         if ( ! $quote_id ) {
             $this->send_error( 'ID de pedido inválido.', 400 );
         }
 
-        // Validar que se envió un archivo
-        if ( empty( $_FILES['pod_file'] ) ) {
-            $this->send_error( 'No se recibió ningún archivo.', 400 );
+        if ( empty( $recibo_loyverse ) ) {
+            $this->send_error( 'El N° de Recibo Loyverse es obligatorio para auditar la orden.', 400 );
         }
 
-        $file = $_FILES['pod_file'];
-
-        // 2. CANDADO DE INMUTABILIDAD
+        // 3. CANDADO DE INMUTABILIDAD
         global $wpdb;
         $tabla_cot = $wpdb->prefix . 'suite_cotizaciones';
-        $current_status = $wpdb->get_var( $wpdb->prepare( "SELECT estado FROM {$tabla_cot} WHERE id = %d", $quote_id ) );
+        $quote_data = $wpdb->get_row( $wpdb->prepare( "SELECT estado, vendedor_id, total_usd FROM {$tabla_cot} WHERE id = %d", $quote_id ) );
 
-        if ( strtolower( $current_status ) === 'despachado' ) {
+        if ( ! $quote_data ) {
+            $this->send_error( 'El pedido no existe.', 404 );
+        }
+
+        if ( strtolower( $quote_data->estado ) === 'despachado' ) {
             $this->send_error( 'El pedido ya se encuentra despachado.', 403 );
         }
 
-        // Configurar el entorno para la subida nativa de WP
+        // 4. CONFIGURACIÓN DE ARCHIVOS
         if ( ! function_exists( 'wp_handle_upload' ) ) {
             require_once( ABSPATH . 'wp-admin/includes/file.php' );
         }
-
         $upload_overrides = [ 'test_form' => false ];
-        $movefile = wp_handle_upload( $file, $upload_overrides );
 
-        if ( $movefile && ! isset( $movefile['error'] ) ) {
-            $file_url = $movefile['url'];
+        $factura_url = '';
+        $pod_url = '';
 
-            // Actualizar la base de datos
-            $wpdb->update(
-                $tabla_cot,
-                [ 
-                    'pod_url' => esc_url_raw( $file_url ), // sanitizamos URL
-                    'estado'  => 'despachado' 
-                ],
-                [ 'id' => $quote_id ],
-                [ '%s', '%s' ],
-                [ '%d' ]
-            );
-
-            // DESCUENTO DE INVENTARIO LOGÍSTICO (Si aplica en tu flujo)
-            //$quote_model = new Suite_Model_Quote();
-            //$quote_model->process_inventory_discount( $quote_id );
-
-            $this->send_success( [
-                'message' => 'Comprobante subido y pedido despachado correctamente.',
-                'url'     => $file_url
-            ] );
-        } else {
-            // PREVENCIÓN INFO DISCLOSURE: Loguear internamente, pero mostrar un mensaje genérico al usuario
-            error_log( 'Suite ERP Upload Error: ' . $movefile['error'] );
-            $this->send_error( 'Error de servidor al procesar el archivo. Contacte a soporte técnico.', 500 );
+        // Procesar Factura (Opcional)
+        if ( ! empty( $_FILES['factura_file']['name'] ) ) {
+            $move_factura = wp_handle_upload( $_FILES['factura_file'], $upload_overrides );
+            if ( $move_factura && ! isset( $move_factura['error'] ) ) {
+                $factura_url = $move_factura['url'];
+            } else {
+                $this->send_error( 'Error al subir la Factura Fiscal: ' . $move_factura['error'], 500 );
+            }
         }
+
+        // Procesar POD (Opcional)
+        if ( ! empty( $_FILES['pod_file']['name'] ) ) {
+            $move_pod = wp_handle_upload( $_FILES['pod_file'], $upload_overrides );
+            if ( $move_pod && ! isset( $move_pod['error'] ) ) {
+                $pod_url = $move_pod['url'];
+            } else {
+                $this->send_error( 'Error al subir la Guía de Encomienda: ' . $move_pod['error'], 500 );
+            }
+        }
+
+        // 5. ACTUALIZACIÓN EN BASE DE DATOS
+        $data_to_update = [
+            'estado'          => 'despachado',
+            'recibo_loyverse' => $recibo_loyverse // Se guarda para la futura auditoría CRON
+        ];
+        $format = [ '%s', '%s' ];
+
+        if ( ! empty( $factura_url ) ) {
+            $data_to_update['factura_fiscal_url'] = esc_url_raw( $factura_url );
+            $format[] = '%s';
+        }
+
+        if ( ! empty( $pod_url ) ) {
+            $data_to_update['pod_url'] = esc_url_raw( $pod_url );
+            $format[] = '%s';
+        }
+
+        $updated = $wpdb->update(
+            $tabla_cot,
+            $data_to_update,
+            [ 'id' => $quote_id ],
+            $format,
+            [ '%d' ]
+        );
+
+        if ( $updated === false ) {
+            $this->send_error( 'Ocurrió un error al actualizar la base de datos.', 500 );
+        }
+
+        // 6. 💰 MAGIA FASE 5: LIBERACIÓN DE COMISIÓN EN EL LEDGER
+        if ( class_exists( 'Suite_Model_Commission' ) ) {
+            $commission_model = new Suite_Model_Commission();
+            // Ejecutamos el registro, inyectando el ID de Loyverse
+            $commission_model->registrar_comision_despacho( 
+                $quote_id, 
+                $quote_data->vendedor_id, 
+                $quote_data->total_usd, 
+                $recibo_loyverse 
+            );
+        }
+
+        $this->send_success( [
+            'message' => 'Despacho procesado. ID Loyverse registrado y comisiones liberadas.'
+        ] );
     }
 }
 
 /**
  * Endpoint 2: Impresión de Hoja de Picking (Sin Precios)
+ * Nota: Mantenido intacto por solicitud de arquitectura.
  */
 class Suite_Ajax_Print_Picking extends Suite_AJAX_Controller {
 
@@ -134,7 +177,7 @@ class Suite_Ajax_Print_Picking extends Suite_AJAX_Controller {
         $table_items = $wpdb->prefix . 'suite_cotizaciones_items';
         $items = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table_items} WHERE cotizacion_id = %d", $quote_id ) );
 
-        // RENDER DE VISTA DE IMPRESIÓN (SOLO HTML CORREGIDO)
+        // RENDER DE VISTA DE IMPRESIÓN
         ?>
         <!DOCTYPE html>
         <html lang="es">
