@@ -197,11 +197,14 @@ class Suite_Ajax_Client_Profile extends Suite_AJAX_Controller {
         if ( ! empty( $history ) ) {
             foreach ( $history as $h ) {
                 $history_fmt[] = [
-                    'id'     => $h->id,
-                    'fecha'  => date( 'd/m/Y', strtotime( $h->fecha ) ),
-                    'codigo' => $h->codigo,
-                    'total'  => number_format( floatval( $h->total ), 2 ),
-                    'estado' => $h->estado,
+                    'id'                 => $h->id,
+                    'fecha'              => date( 'd/m/Y', strtotime( $h->fecha ) ),
+                    'codigo'             => $h->codigo,
+                    'total'              => number_format( floatval( $h->total ), 2 ),
+                    'estado'             => $h->estado,
+                    // EXTRAEMOS LAS RUTAS DE LOS ARCHIVOS Y EVITAMOS ERRORES SI NO EXISTEN
+                    'factura_fiscal_url' => isset($h->factura_fiscal_url) ? $h->factura_fiscal_url : '',
+                    'pod_url'            => isset($h->pod_url) ? $h->pod_url : ''
                 ];
             }
         }

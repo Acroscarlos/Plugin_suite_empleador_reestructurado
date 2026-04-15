@@ -87,7 +87,7 @@ const SuiteCommissions = (function($) {
 			
 			
 			columns: [
-                // NUEVA COLUMNA: Checkboxes de selección múltiple
+                // 0: Checkboxes de selección múltiple
                 { 
                     data: 'id', 
                     visible: suite_vars.is_admin,
@@ -99,32 +99,71 @@ const SuiteCommissions = (function($) {
                         return '🔒';
                     }
                 },
+                // 1: ID Orden
                 { data: 'quote_id', render: data => data > 0 ? `<strong>#${data}</strong>` : '<span style="color:#64748b;">Premio/Bono/Abono</span>' },
+                
+                // 2: INYECCIÓN FASE 5 - Recibo Loyverse
+                { data: 'recibo_loyverse', render: data => data ? `<span style="font-family:monospace; font-weight:bold; color:#0f172a;">🧾 #${data}</span>` : '<span style="color:#94a3b8;">N/A</span>' },
+                
+                // 3: Vendedor
                 { data: 'vendedor_nombre', render: (data, type, row) => {
-                    // DETECCIÓN VISUAL B2B
                     let badge = (row.notas && row.notas.includes('B2B')) 
                         ? ' <span style="background:#0ea5e9; color:white; padding:2px 6px; border-radius:4px; font-size:10px; margin-left:5px;">B2B</span>' 
                         : '';
                     return `<strong>${data}</strong>${badge}`;
                 }},
+                
+                // 4: Monto Base
                 { data: 'monto_base_usd', render: data => `$${parseFloat(data).toFixed(2)}` },
+                
+                // 5: Comisión
                 { data: 'comision_ganada_usd', render: data => {
                     let val = parseFloat(data);
                     let color = val < 0 ? '#dc2626' : '#059669';
                     return `<strong style="color:${color};">${val < 0 ? '' : '+'}$${val.toFixed(2)}</strong>`;
                 }},
+                
+                // 6: Estado de Pago
                 { data: 'estado_pago', render: data => {
                     let bg = data === 'pagado' ? '#d1fae5' : (data === 'anulado' ? '#fee2e2' : '#fef3c7');
                     let cl = data === 'pagado' ? '#065f46' : (data === 'anulado' ? '#991b1b' : '#92400e');
                     return `<span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; background:${bg}; color:${cl};">${data.toUpperCase()}</span>`;
                 }},
+
+                // 7: INYECCIÓN FASE 5 - Auditoría POS
+                { data: 'estado_auditoria', render: (data, type, row) => {
+                    if (!row.recibo_loyverse) return '<span style="color:#cbd5e1;">N/A</span>';
+
+                    let audit_bg = '#f1f5f9', audit_cl = '#64748b', audit_icon = '⏳', audit_text = 'Pendiente API';
+                    if (data === 'verificado') {
+                        audit_bg = '#dcfce7'; audit_cl = '#166534'; audit_icon = '✅'; audit_text = 'Verificado';
+                    } else if (data === 'incongruente') {
+                        audit_bg = '#fee2e2'; audit_cl = '#991b1b'; audit_icon = '🚨'; audit_text = 'Incongruencia';
+                    }
+
+                    let html = `<span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; background:${audit_bg}; color:${audit_cl}; display:inline-block; margin-bottom:5px;">${audit_icon} ${audit_text}</span>`;
+
+                    // CORRECCIÓN: Botones de acción para Admin habilitados en estado 'incongruente' Y 'pendiente'
+                    if (suite_vars.is_admin && (data === 'incongruente' || data === 'pendiente') && row.estado_pago === 'pendiente') {
+                        html += `
+                        <div style="display: flex; gap: 4px;">
+                            <button class="btn-modern-action small trigger-audit-force" data-id="${row.id}" title="Aprobar Manualmente" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; padding:2px 6px;">✔️ Aprobar</button>
+                            <button class="btn-modern-action small trigger-audit-reject" data-id="${row.id}" title="Anular (Fraude/Error)" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:2px 6px;">🚫 Anular</button>
+                        </div>`;
+                    }
+                    return html;
+                }},
+
+                // 8: Fecha Operación
                 { data: 'created_at', render: data => {
                     let d = new Date(data);
                     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
                 }}
             ],
             
-            order: [[6, 'desc']] // CORRECCIÓN: Ahora ordenamos por la columna 6 porque añadimos los checkboxes al inicio
+            // CORRECCIÓN: Como insertamos 2 columnas nuevas antes de la fecha, 
+            // la fecha pasó del índice 6 al índice 8.
+            order: [[8, 'desc']]
 			
 			
 			
@@ -172,6 +211,31 @@ const SuiteCommissions = (function($) {
     // ==========================================
     const bindEvents = function() {
         
+		// Acción del Auditor Manual (Loyverse)
+        $('#btn-force-audit-sync').on('click', function(e) {
+            e.preventDefault(); // <--- BLOQUEO DE RECARGA NATIVA
+            
+            const btn = $(this);
+            Swal.fire({
+                title: '¿Iniciar Auditoría Manual?',
+                text: 'El sistema consultará la API de Loyverse para todos los registros pendientes. Esto puede tardar unos segundos.',
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, iniciar barrido'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    btn.prop('disabled', true).text('⏳ Sincronizando...');
+                    SuiteAPI.post('suite_run_manual_audit').then(res => {
+                        Swal.fire('Auditoría Completa', res.data.message, 'success');
+                        if (auditTable) auditTable.ajax.reload(null, false);
+                    }).finally(() => {
+                        btn.prop('disabled', false).text('🔄 Sincronizar con Loyverse Ahora');
+                    });
+                }
+            });
+        });
+		
+		
         // Acción de Cierre de Mes con Adjudicación de Premios (Fase 2.2)
         $('#btn-cierre-mes').on('click', async function(e) {
             e.preventDefault();
@@ -244,6 +308,52 @@ const SuiteCommissions = (function($) {
                 btn.prop('disabled', false).text('🔒 Ejecutar Cierre de Mes');
             });
         });
+		
+		
+		// =========================================================
+        // INICIO FASE 5: ACCIONES DEL AUDITOR DE LOYVERSE
+        // =========================================================
+        $('#auditTable').on('click', '.trigger-audit-force, .trigger-audit-reject', function(e) {
+            e.preventDefault();
+            const id = $(this).data('id');
+            const isForce = $(this).hasClass('trigger-audit-force');
+            
+            const actionType = isForce ? 'force_approve' : 'reject_fraud';
+            const titleText = isForce ? '¿Aprobación Forzada?' : '¿Anular por Fraude?';
+            const descText = isForce 
+                ? '¿Confirmas que esta comisión es válida a pesar de la alerta de Loyverse? El estado pasará a "Verificado".'
+                : '¿Confirmas que este registro es inválido? La comisión será ANULADA permanentemente.';
+            const confirmColor = isForce ? '#059669' : '#dc2626';
+            const confirmText = isForce ? 'Sí, Aprobar' : 'Sí, Anular';
+
+            Swal.fire({
+                title: titleText,
+                text: descText,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: confirmColor,
+                cancelButtonColor: '#64748b',
+                confirmButtonText: confirmText,
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    SuiteAPI.post('suite_process_audit_action', { 
+                        ledger_id: id, 
+                        audit_action: actionType 
+                    }).then(res => {
+                        if (res.success) {
+                            Swal.fire('¡Procesado!', res.data.message || 'El estado de auditoría fue actualizado.', 'success');
+                            if (auditTable) auditTable.ajax.reload(null, false);
+                        } else {
+                            Swal.fire('Error', res.data.message || 'No se pudo actualizar.', 'error');
+                        }
+                    }).catch(() => {
+                        Swal.fire('Error', 'Fallo de conexión con el servidor.', 'error');
+                    });
+                }
+            });
+        });
+        // --- FIN ACCIONES DEL AUDITOR ---
 
 		// =========================================================
         // INICIO REPARACIÓN FASE 6.1: LISTENERS DE LIQUIDACIÓN Y ABONOS

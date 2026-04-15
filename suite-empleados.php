@@ -99,10 +99,11 @@ function suite_empleados_init() {
     new Suite_Ajax_Dashboard_Stats();
 	new Suite_Ajax_Freeze_Commissions();
 	new Suite_Ajax_Commission_Audit(); 
+	new Suite_Ajax_Process_Audit_Action();
     new Suite_Ajax_Hall_of_Fame();
 	new Suite_Ajax_Pay_Selected();
 	new Suite_Ajax_Register_Abono();
-	
+	new Suite_Ajax_Run_Manual_Audit();
 	
     // Módulo 5: Cerebro de Demanda (REST API)
     new Suite_API_Stats();

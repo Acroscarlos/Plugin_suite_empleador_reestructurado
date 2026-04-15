@@ -1,9 +1,9 @@
 <?php
 /**
  * Clase Gestora de Tareas Programadas (Cron Jobs)
- * 
- * Módulo 5: Data Lake y Cerebro de Demanda.
+ * * Módulo 5: Data Lake y Cerebro de Demanda.
  * Recopila series de tiempo (Time Series) para modelos predictivos.
+ * Incluye Fase 5.2: Auditoría Automática de Loyverse.
  *
  * @package SuiteEmpleados\Core
  */
@@ -16,8 +16,10 @@ class Suite_Cron_Jobs {
 
     public function __construct() {
         add_action( 'suite_daily_inventory_snapshot', [ $this, 'take_inventory_snapshot' ] );
-        // NUEVO: Hook para el archivo semanal
+        // Hook para el archivo semanal
         add_action( 'suite_weekly_archive_orders', [ $this, 'archive_dispatched_orders' ] );
+        // NUEVO FASE 5: Hook para la auditoría de Loyverse
+        add_action( 'suite_cron_loyverse_audit', [ $this, 'run_loyverse_audit' ] );
     }
 
     public function schedule_events() {
@@ -25,9 +27,14 @@ class Suite_Cron_Jobs {
             wp_schedule_event( strtotime( 'midnight' ), 'daily', 'suite_daily_inventory_snapshot' );
         }
         
-        // NUEVO: Programación para todos los domingos a las 23:00:00 (Usa el intervalo 'weekly' nativo de WP 5.4+)
+        // Programación para todos los domingos a las 23:00:00
         if ( ! wp_next_scheduled( 'suite_weekly_archive_orders' ) ) {
             wp_schedule_event( strtotime( 'next sunday 23:00:00', current_time( 'timestamp' ) ), 'weekly', 'suite_weekly_archive_orders' );
+        }
+        
+        // Programar Auditoría de Loyverse cada hora
+        if ( ! wp_next_scheduled( 'suite_cron_loyverse_audit' ) ) {
+            wp_schedule_event( time(), 'hourly', 'suite_cron_loyverse_audit' );
         }
     }
 
@@ -37,15 +44,34 @@ class Suite_Cron_Jobs {
             wp_unschedule_event( $timestamp, 'suite_daily_inventory_snapshot' );
         }
 
-        // NUEVO: Limpieza del evento semanal al desactivar el plugin
+        // Limpieza del evento semanal
         $timestamp_weekly = wp_next_scheduled( 'suite_weekly_archive_orders' );
         if ( $timestamp_weekly ) {
             wp_unschedule_event( $timestamp_weekly, 'suite_weekly_archive_orders' );
         }
+
+        // NUEVO FASE 5: Limpieza del evento del Auditor
+        $timestamp_audit = wp_next_scheduled( 'suite_cron_loyverse_audit' );
+        if ( $timestamp_audit ) {
+            wp_unschedule_event( $timestamp_audit, 'suite_cron_loyverse_audit' );
+        }
     }
 
     /**
-     * NUEVO MÉTODO: Limpieza Semanal del Kanban (Domingos 11:00 PM)
+     * FASE 5: Ejecuta el auditor de Loyverse en segundo plano.
+     */
+    public function run_loyverse_audit() {
+        if ( class_exists( 'Suite_Loyverse_Auditor' ) ) {
+            $auditor = new Suite_Loyverse_Auditor();
+            $auditor->run_nightly_audit();
+        } else {
+            // Si la clase aún no está creada, dejamos un log silencioso
+            error_log('Suite INFO: La clase Suite_Loyverse_Auditor aún no ha sido implementada. Auditoría Cron omitida.');
+        }
+    }
+
+    /**
+     * MÉTODO: Limpieza Semanal del Kanban (Domingos 11:00 PM)
      * Pasa todas las tarjetas "Despachadas" al archivo histórico.
      */
     public function archive_dispatched_orders() {

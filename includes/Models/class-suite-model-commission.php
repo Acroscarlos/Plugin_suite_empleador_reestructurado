@@ -23,55 +23,6 @@ class Suite_Model_Commission extends Suite_Model_Base {
 
 
     /**
-     * Calcula y registra la comisión dividiendo equitativamente entre los beneficiarios.
-     * ARCHIVO: includes/Models/class-suite-model-commission.php
-     * 
-     * @param int $quote_id ID de la cotización
-     * @param int $vendedor_id ID del vendedor titular
-     * @param float $total_usd Monto total de la venta
-     * @param array $colaboradores Array con los IDs de los vendedores secundarios
-     * @return true|false
-     */
-    public function calculate_and_save_commission( $quote_id, $vendedor_id, $total_usd, $colaboradores = [] ) {
-        // Regla de Negocio: Comisión Fija del 1.5%
-        $porcentaje = 0.015;
-        $comision_total = floatval( $total_usd ) * $porcentaje;
-
-        if ( $comision_total <= 0 ) return false;
-
-        // 1. Armar el pool unificado de beneficiarios (Titular + Colaboradores)
-        $beneficiarios = [ intval( $vendedor_id ) ];
-        
-        if ( is_array( $colaboradores ) && !empty( $colaboradores ) ) {
-            foreach ( $colaboradores as $colab_id ) {
-                $colab_id = intval( $colab_id );
-                // Evitar IDs inválidos o duplicar al titular
-                if ( $colab_id > 0 && ! in_array( $colab_id, $beneficiarios ) ) {
-                    $beneficiarios[] = $colab_id;
-                }
-            }
-        }
-
-        // 2. Ejecutar división financiera
-        $cantidad_vendedores = count( $beneficiarios );
-        $base_dividida       = round( floatval( $total_usd ) / $cantidad_vendedores, 2 );
-        $comision_dividida   = round( $comision_total / $cantidad_vendedores, 2 );
-
-        // 3. Insertar registro en el Ledger por cada vendedor
-        foreach ( $beneficiarios as $ben_id ) {
-            $this->insert( [
-                'quote_id'            => intval( $quote_id ),
-                'vendedor_id'         => $ben_id,
-                'monto_base_usd'      => $base_dividida,
-                'comision_ganada_usd' => $comision_dividida,
-                'estado_pago'         => 'pendiente' // Se liquida a fin de mes
-            ] );
-        }
-
-        return true;
-    }
-
-    /**
      * Analiza la base de datos para determinar los ganadores de la Gamificación.
      * Solo cuenta ventas efectivamente cerradas ('pagado', 'despachado').
      *
@@ -286,6 +237,84 @@ class Suite_Model_Commission extends Suite_Model_Base {
                 'estado_pago'         => 'pendiente'
             ]);
         }
+    }
+	
+	
+	/**
+     * FASE 5 (ARMONIZADA): Registra la comisión al momento del despacho, 
+     * validando fraude por recibo duplicado y soportando ventas compartidas al 1.5%.
+     */
+    public function registrar_comision_despacho( $quote_id, $vendedor_id, $monto_base_usd, $recibo_loyverse, $colaboradores = [] ) {
+        global $wpdb;
+        $tabla_ledger = $wpdb->prefix . 'suite_comisiones_ledger';
+
+        $recibo_limpio = sanitize_text_field( trim( $recibo_loyverse ) );
+
+        if ( empty( $recibo_limpio ) ) {
+            return new WP_Error( 'fraude_loyverse', 'El número de recibo Loyverse es obligatorio para comisionar.' );
+        }
+
+        // 1. BLINDAJE ANTI-DUPLICIDAD: ¿Este recibo ya entró al Ledger en un despacho anterior?
+        // Nota: Si es una venta compartida, entrarán 2 registros a la vez al final de esta función, 
+        // por lo que revisar una sola vez al principio es 100% seguro y no bloquea a los colaboradores.
+        $existe_recibo = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$tabla_ledger} WHERE recibo_loyverse = %s LIMIT 1",
+            $recibo_limpio
+        ) );
+
+        if ( $existe_recibo ) {
+            if ( function_exists('suite_record_log') ) {
+                suite_record_log( 'alerta_fraude', "Intento de duplicidad de comisión. Recibo #{$recibo_limpio} ya existe (ID: {$existe_recibo})." );
+            }
+            return new WP_Error( 'fraude_loyverse', "FRAUDE DETECTADO: El recibo Loyverse #{$recibo_limpio} ya fue registrado." );
+        }
+
+        // 2. REGLA DE NEGOCIO: Comisión Fija del 1.5%
+        $porcentaje = 0.015;
+        $comision_total = floatval( $monto_base_usd ) * $porcentaje;
+
+        if ( $comision_total <= 0 ) return false;
+
+        // 3. ARMAR EL POOL DE BENEFICIARIOS (Titular + Colaboradores)
+        $beneficiarios = [ intval( $vendedor_id ) ];
+        
+        if ( is_array( $colaboradores ) && !empty( $colaboradores ) ) {
+            foreach ( $colaboradores as $colab_id ) {
+                $colab_id = intval( $colab_id );
+                if ( $colab_id > 0 && ! in_array( $colab_id, $beneficiarios ) ) {
+                    $beneficiarios[] = $colab_id;
+                }
+            }
+        }
+
+        // 4. EJECUTAR DIVISIÓN FINANCIERA
+        $cantidad_vendedores = count( $beneficiarios );
+        $base_dividida       = round( floatval( $monto_base_usd ) / $cantidad_vendedores, 2 );
+        $comision_dividida   = round( $comision_total / $cantidad_vendedores, 2 );
+
+        // 5. INSERCIÓN MÚLTIPLE EN EL LEDGER
+        $inserted_ids = [];
+        foreach ( $beneficiarios as $ben_id ) {
+            $insertado = $wpdb->insert( $tabla_ledger, [
+                'quote_id'            => intval( $quote_id ),
+                'vendedor_id'         => $ben_id,
+                'monto_base_usd'      => $base_dividida,
+                'comision_ganada_usd' => $comision_dividida,
+                'recibo_loyverse'     => $recibo_limpio,
+                'estado_pago'         => 'pendiente',
+                'estado_auditoria'    => 'pendiente' // Nace pendiente para Fase 5.2
+            ] );
+
+            if ( $insertado ) {
+                $inserted_ids[] = $wpdb->insert_id;
+            }
+        }
+
+        if ( empty( $inserted_ids ) ) {
+            return new WP_Error( 'db_error', 'Error interno al registrar la comisión en el Ledger.' );
+        }
+
+        return $inserted_ids;
     }
 	
 	

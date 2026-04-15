@@ -69,6 +69,7 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             metodo_entrega VARCHAR(100),
             url_captura_pago TEXT,
             recibo_loyverse VARCHAR(100),
+			factura_fiscal_url VARCHAR(255),
             pod_url TEXT,
             
             /* --- INICIO FASE 1: NUEVOS CAMPOS KANBAN V2 --- */
@@ -95,6 +96,9 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             monto_base_usd DECIMAL(15,2) DEFAULT 0,
             comision_ganada_usd DECIMAL(15,2) DEFAULT 0,
             estado_pago VARCHAR(20) DEFAULT 'pendiente',
+            /* --- FASE 5: AUDITORÍA LOYVERSE --- */
+            recibo_loyverse VARCHAR(100) DEFAULT NULL,
+            estado_auditoria VARCHAR(20) DEFAULT 'pendiente',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY  (id),
             KEY idx_vendedor (vendedor_id)
@@ -173,6 +177,19 @@ if ( ! function_exists( 'suite_install_db' ) ) {
         $column_check = $wpdb->get_results( "SHOW COLUMNS FROM {$wpdb->prefix}suite_clientes LIKE 'vendedor_id'" );
         if ( empty( $column_check ) ) {
             $wpdb->query( "ALTER TABLE {$wpdb->prefix}suite_clientes ADD vendedor_id bigint(20) DEFAULT 0 AFTER id" );
+        }
+		
+		// --- PARCHE EN CALIENTE FASE 5: Añadir columnas al Ledger ---
+        $tabla_ledger_check = $wpdb->prefix . 'suite_comisiones_ledger';
+        
+        $col_loyverse = $wpdb->get_results( "SHOW COLUMNS FROM {$tabla_ledger_check} LIKE 'recibo_loyverse'" );
+        if ( empty( $col_loyverse ) ) {
+            $wpdb->query( "ALTER TABLE {$tabla_ledger_check} ADD recibo_loyverse VARCHAR(100) DEFAULT NULL" );
+        }
+
+        $col_auditoria = $wpdb->get_results( "SHOW COLUMNS FROM {$tabla_ledger_check} LIKE 'estado_auditoria'" );
+        if ( empty( $col_auditoria ) ) {
+            $wpdb->query( "ALTER TABLE {$tabla_ledger_check} ADD estado_auditoria VARCHAR(20) DEFAULT 'pendiente'" );
         }
 
         // --- CREACIÓN DE ROLES (Ejecutar una vez) ---

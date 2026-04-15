@@ -26,8 +26,7 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
         // 1. SEGURIDAD: Control Estricto de Rol (Solo Logística y Admin)
         $user = wp_get_current_user();
         $is_admin = current_user_can( 'manage_options' );
-        $is_logistica = in_array( 'suite_logistica', (array) $user->roles );
-
+		$is_logistica = in_array( 'suite_logistica', (array) $user->roles ) || current_user_can( 'suite_view_logistics' );
         if ( ! $is_admin && ! $is_logistica ) {
             if ( function_exists('suite_record_log') ) {
                 suite_record_log( 'violacion_acceso', "Intento de escalada de privilegios en Despacho por el usuario " . get_current_user_id() );
@@ -35,9 +34,10 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
             $this->send_error( 'Acceso Denegado: Solo el personal de almacén/logística puede confirmar despachos.', 403 );
         }
 
-        // 2. RECEPCIÓN DE DATOS BÁSICOS
+        // 2. RECEPCIÓN DE DATOS BÁSICOS Y FORMATEO
         $quote_id = isset( $_POST['quote_id'] ) ? intval( $_POST['quote_id'] ) : 0;
-        $recibo_loyverse = isset( $_POST['recibo_loyverse'] ) ? sanitize_text_field( $_POST['recibo_loyverse'] ) : '';
+        // Limpiamos espacios laterales desde el inicio
+        $recibo_loyverse = isset( $_POST['recibo_loyverse'] ) ? trim( sanitize_text_field( $_POST['recibo_loyverse'] ) ) : '';
         
         if ( ! $quote_id ) {
             $this->send_error( 'ID de pedido inválido.', 400 );
@@ -46,6 +46,14 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
         if ( empty( $recibo_loyverse ) ) {
             $this->send_error( 'El N° de Recibo Loyverse es obligatorio para auditar la orden.', 400 );
         }
+
+        // --- BARRERA DE SEGURIDAD: EXCLUSIVAMENTE NÚMEROS ---
+        if ( ! preg_match( '/^[0-9]+$/', $recibo_loyverse ) ) {
+            $this->send_error( 'Acceso Denegado: El N° de Recibo Loyverse debe contener ÚNICAMENTE números.', 400 );
+        }
+
+        // --- MAGIA FASE 5: Relleno de ceros a la izquierda (Exactamente 8 dígitos) ---
+        $recibo_loyverse = str_pad( $recibo_loyverse, 8, '0', STR_PAD_LEFT );
 
         // 3. CANDADO DE INMUTABILIDAD
         global $wpdb;
@@ -89,10 +97,31 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
             }
         }
 
-        // 5. ACTUALIZACIÓN EN BASE DE DATOS
+        // 5. 💰 MAGIA FASE 5: BARRERA DE COMISIÓN (DEBE IR ANTES DE ACTUALIZAR LA ORDEN)
+        if ( class_exists( 'Suite_Model_Commission' ) ) {
+            $commission_model = new Suite_Model_Commission();
+            
+            if ( method_exists( $commission_model, 'registrar_comision_despacho' ) ) {
+                $resultado_comision = $commission_model->registrar_comision_despacho( 
+                    $quote_id, 
+                    $quote_data->vendedor_id, 
+                    $quote_data->total_usd, 
+                    $recibo_loyverse 
+                );
+
+                // ESCUDO ACTIVADO: Si la comisión rebota (ej. Recibo duplicado), ABORTAMOS AQUÍ.
+                if ( is_wp_error( $resultado_comision ) ) {
+                    $this->send_error( 'Fallo de Auditoría: ' . $resultado_comision->get_error_message(), 400 );
+                }
+            } else {
+                error_log("Suite INFO: El método registrar_comision_despacho aún no existe.");
+            }
+        }
+
+        // 6. ACTUALIZACIÓN EN BASE DE DATOS (Solo se ejecuta si la comisión pasó limpia)
         $data_to_update = [
             'estado'          => 'despachado',
-            'recibo_loyverse' => $recibo_loyverse // Se guarda para la futura auditoría CRON
+            'recibo_loyverse' => $recibo_loyverse
         ];
         $format = [ '%s', '%s' ];
 
@@ -118,20 +147,8 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
             $this->send_error( 'Ocurrió un error al actualizar la base de datos.', 500 );
         }
 
-        // 6. 💰 MAGIA FASE 5: LIBERACIÓN DE COMISIÓN EN EL LEDGER
-        if ( class_exists( 'Suite_Model_Commission' ) ) {
-            $commission_model = new Suite_Model_Commission();
-            // Ejecutamos el registro, inyectando el ID de Loyverse
-            $commission_model->registrar_comision_despacho( 
-                $quote_id, 
-                $quote_data->vendedor_id, 
-                $quote_data->total_usd, 
-                $recibo_loyverse 
-            );
-        }
-
         $this->send_success( [
-            'message' => 'Despacho procesado. ID Loyverse registrado y comisiones liberadas.'
+            'message' => "✅ Despacho procesado (Loyverse: $recibo_loyverse). Comisiones en espera de auditoría."
         ] );
     }
 }
@@ -158,7 +175,7 @@ class Suite_Ajax_Print_Picking extends Suite_AJAX_Controller {
         $user = wp_get_current_user();
         $roles = (array) $user->roles;
         $is_admin = current_user_can( 'manage_options' );
-        $is_logistica = in_array( 'suite_logistica', $roles );
+        $is_logistica = in_array( 'suite_logistica', $roles ) || current_user_can( 'suite_view_logistics' );
 
         if ( ! $is_admin && ! $is_logistica ) {
             wp_die( 'Privilegios insuficientes. Se requiere el rol de Logística para generar hojas de picking.', 'Acceso Denegado', [ 'response' => 403 ] );

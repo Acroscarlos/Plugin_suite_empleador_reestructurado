@@ -57,7 +57,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 							
 							
                             
-                            <td style="padding: 15px; font-weight: 500; color: #334155;">
+                            <td style="padding: 15px; font-weight: 500; color: #334155; max-width: 200px; white-space: normal; word-wrap: break-word;">
                                 👤 <?php echo esc_html( $pedido->cliente_nombre ); ?>
                             </td>
                             
@@ -92,6 +92,10 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
                                 <div style="display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;">
                                     <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=suite_print_quote&id=' . $pedido->id . '&nonce=' . wp_create_nonce('suite_quote_nonce') ) ); ?>" target="_blank" class="btn-modern-action" style="background: #f1f5f9; color: #475569; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight:bold;" title="Imprimir Orden">
                                         🖨️ Orden
+                                    </a>
+                                    
+                                    <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=suite_print_picking&id=' . $pedido->id . '&nonce=' . wp_create_nonce('suite_quote_nonce') ) ); ?>" target="_blank" class="btn-modern-action" style="background: #f59e0b; color: white; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight:bold; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);" title="Generar Hoja de Picking">
+                                        📋 Picking
                                     </a>
                                     
                                     <?php if ( $has_comprobante ) : ?>

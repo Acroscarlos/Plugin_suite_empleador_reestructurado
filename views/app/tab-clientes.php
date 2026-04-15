@@ -374,12 +374,17 @@ if ( ! defined( 'ABSPATH' ) ) {
                     <div class="history-scroll">
                         <table class="suite-modern-table" id="cli-history-table" style="width: 100%; border-collapse: collapse;">
                             <thead>
+								
+								
                                 <tr>
                                     <th style="position: sticky; top: 0; z-index: 2; background: #f8fafc;">Fecha</th>
                                     <th style="position: sticky; top: 0; z-index: 2; background: #f8fafc;">Código</th>
                                     <th style="position: sticky; top: 0; z-index: 2; background: #f8fafc;">Total</th>
+                                    <th style="position: sticky; top: 0; z-index: 2; background: #f8fafc; text-align:center;">Estado</th>
                                     <th style="position: sticky; top: 0; z-index: 2; background: #f8fafc;">Acción</th>
                                 </tr>
+								
+								
                             </thead>
                             <tbody id="prof-history-body">
                                 <tr><td colspan="4" style="text-align: center; padding: 30px; color: #94a3b8;">Cargando datos del cliente...</td></tr>

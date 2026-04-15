@@ -1,9 +1,0 @@
-=================================================================
-CONTEXTO DE CARPETA: assets\js
-Proyecto: ERP Vendedores (MVC y POO)
-=================================================================
-
---- INICIO DEL ARCHIVO: main.js ---
-/* JS Module: assets/js/main.js */
---- FIN DEL ARCHIVO: main.js ---
-

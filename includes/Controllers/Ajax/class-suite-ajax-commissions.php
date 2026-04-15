@@ -175,6 +175,13 @@ class Suite_Ajax_Freeze_Commissions extends Suite_AJAX_Controller {
     }
 }
 
+
+
+
+
+
+
+
 /**
  * Controlador AJAX: Auditoría de Comisiones (RLS Aplicado)
  */
@@ -195,8 +202,10 @@ class Suite_Ajax_Commission_Audit extends Suite_AJAX_Controller {
         $tabla_ledger = $wpdb->prefix . 'suite_comisiones_ledger';
         $tabla_users  = $wpdb->users;
 
-        // Sentencia SQL Base (Actualizada V32 para soportar Checkboxes y B2B)
-        $sql = "SELECT l.id, l.quote_id, l.monto_base_usd, l.comision_ganada_usd, l.estado_pago, l.created_at, u.display_name AS vendedor_nombre 
+        // Sentencia SQL Base (Sanitizada: Retiramos 'l.notas' para evitar fallos de esquema)
+        $sql = "SELECT l.id, l.quote_id, l.monto_base_usd, l.comision_ganada_usd, 
+                       l.estado_pago, l.recibo_loyverse, l.estado_auditoria, l.created_at, 
+                       u.display_name AS vendedor_nombre 
                 FROM {$tabla_ledger} l
                 LEFT JOIN {$tabla_users} u ON l.vendedor_id = u.ID";
 
@@ -209,10 +218,190 @@ class Suite_Ajax_Commission_Audit extends Suite_AJAX_Controller {
 
         $resultados = $wpdb->get_results( $sql );
 
-        // Enviamos la data cruda a la vista. El DataTables (JS) se encargará de darle formato a la fecha.
+        // Enviamos la data a la vista. El DataTables (JS) ahora sí tiene todas las piezas.
         $this->send_success( $resultados );
     }
 }
+
+
+
+
+
+/**
+ * Controlador AJAX: Acciones Manuales del Auditor de Loyverse (Fase 5.2)
+ * Permite al administrador aprobar forzosamente o anular comisiones incongruentes.
+ */
+class Suite_Ajax_Process_Audit_Action extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_process_audit_action';
+    
+    // BARRERA ABSOLUTA: Solo los administradores financieros pueden tocar esto
+    protected $required_capability = 'manage_options'; 
+
+    protected function process() {
+        global $wpdb;
+        $tabla_ledger = $wpdb->prefix . 'suite_comisiones_ledger';
+
+        $ledger_id = isset( $_POST['ledger_id'] ) ? intval( $_POST['ledger_id'] ) : 0;
+        $action    = isset( $_POST['audit_action'] ) ? sanitize_text_field( $_POST['audit_action'] ) : '';
+
+        if ( ! $ledger_id || ! in_array( $action, ['force_approve', 'reject_fraud'] ) ) {
+            $this->send_error( 'Datos de auditoría inválidos o corruptos.', 400 );
+        }
+
+        if ( $action === 'force_approve' ) {
+            // APROBACIÓN FORZADA: Pasa la auditoría a verificado, el pago sigue pendiente hasta cierre de mes.
+            $actualizado = $wpdb->update(
+                $tabla_ledger,
+                [ 'estado_auditoria' => 'verificado' ],
+                [ 'id' => $ledger_id ],
+                [ '%s' ],
+                [ '%d' ]
+            );
+
+            if ( $actualizado === false ) $this->send_error('Error al aprobar en BD.');
+            $this->send_success( ['message' => 'Comisión verificada forzosamente.'] );
+
+        } elseif ( $action === 'reject_fraud' ) {
+            // ANULACIÓN POR FRAUDE: Mata la auditoría y anula el pago permanentemente.
+            $actualizado = $wpdb->update(
+                $tabla_ledger,
+                [ 
+                    'estado_auditoria' => 'incongruente',
+                    'estado_pago'      => 'anulado'
+                ],
+                [ 'id' => $ledger_id ],
+                [ '%s', '%s' ],
+                [ '%d' ]
+            );
+
+            if ( $actualizado === false ) $this->send_error('Error al anular en BD.');
+            $this->send_success( ['message' => 'Comisión anulada permanentemente por fraude o error.'] );
+        }
+    }
+}
+
+
+
+/**
+ * Controlador AJAX: Ejecución Manual del Auditor de Loyverse (Fase 5.3)
+ * Conecta con la API REST de Loyverse, aplica sanitización de formato y concilia montos.
+ */
+class Suite_Ajax_Run_Manual_Audit extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_run_manual_audit';
+    
+    // Solo la gerencia/administración puede disparar la auditoría masiva
+    protected $required_capability = 'manage_options'; 
+
+    protected function process() {
+        global $wpdb;
+        $tabla_ledger = $wpdb->prefix . 'suite_comisiones_ledger';
+
+        // 🚨 ATENCIÓN CARLOS: Pega aquí tu Token de Loyverse
+        $api_token = '012d2a9b2e0a4930a60d76ce769f1ec8';
+
+        // 1. AGRUPACIÓN INTELIGENTE
+        $pendientes = $wpdb->get_results( "
+            SELECT recibo_loyverse, SUM(monto_base_usd) as total_erp
+            FROM {$tabla_ledger}
+            WHERE estado_auditoria = 'pendiente' 
+              AND recibo_loyverse IS NOT NULL 
+              AND recibo_loyverse != ''
+            GROUP BY recibo_loyverse
+            LIMIT 50
+        " );
+
+        if ( empty( $pendientes ) ) {
+            $this->send_success( ['message' => 'El Ledger está limpio. No hay recibos pendientes por auditar.'] );
+        }
+
+        $verificados = 0;
+        $incongruentes = 0;
+
+        // 2. CICLO DE AUDITORÍA
+        foreach ( $pendientes as $req ) {
+            
+            // --- INICIO MAGIA DE FORMATEO (Fase 5.3) ---
+            $raw_receipt = trim( $req->recibo_loyverse );
+            
+            // A. Quitamos guiones accidentales y todos los ceros a la izquierda
+            $clean_receipt = ltrim( str_replace('-', '', $raw_receipt), '0' );
+            
+            // B. Aplicamos máscara "nn-nnnn" o "n-nnnn" (Guion antes de los últimos 4 dígitos)
+            $len = strlen( $clean_receipt );
+            if ( $len >= 5 ) {
+                $formatted_receipt = substr( $clean_receipt, 0, $len - 4 ) . '-' . substr( $clean_receipt, -4 );
+            } else {
+                // Si el recibo es extrañamente corto, lo mandamos tal cual para que Loyverse decida
+                $formatted_receipt = $clean_receipt;
+            }
+            
+            // Codificamos para URL segura (ej: 45-1243)
+            $recibo_url = urlencode( $formatted_receipt );
+            // --- FIN MAGIA DE FORMATEO ---
+
+            $url = "https://api.loyverse.com/v1.0/receipts/{$recibo_url}";
+
+            $response = wp_remote_get( $url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $api_token,
+                    'Accept'        => 'application/json'
+                ],
+                'timeout' => 10 
+            ]);
+
+			
+            $nuevo_estado = 'incongruente';
+			$log_detalle = "Recibo: {$formatted_receipt} | ";
+
+			if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) == 200 ) {
+				$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+				if ( isset( $body['total_money'] ) ) {
+					$monto_loyverse = floatval( $body['total_money'] );
+					$monto_erp      = floatval( $req->total_erp );
+
+					$diferencia = abs( $monto_loyverse - $monto_erp );
+					$log_detalle .= "Loyverse: {$monto_loyverse} | ERP: {$monto_erp} | Dif: {$diferencia}";
+
+					if ( $diferencia <= 0.05 ) {
+						$nuevo_estado = 'verificado';
+					}
+				}
+			} else {
+				$code = wp_remote_retrieve_response_code( $response );
+				$log_detalle .= "ERROR API: Código HTTP {$code}";
+			}
+
+			// REGISTRO DE TELEMETRÍA: Para que veas qué pasó en la tabla suite_logs
+			if ( function_exists('suite_record_log') ) {
+				suite_record_log( 'auditoria_pos', $log_detalle );
+			}
+
+            // 4. ACTUALIZACIÓN DEL LEDGER EN MASA (Usamos el recibo original guardado en la BD para el WHERE)
+            $wpdb->update(
+                $tabla_ledger,
+                [ 'estado_auditoria' => $nuevo_estado ],
+                [ 'recibo_loyverse' => $req->recibo_loyverse, 'estado_auditoria' => 'pendiente' ],
+                [ '%s' ],
+                [ '%s', '%s' ]
+            );
+
+            if ( $nuevo_estado === 'verificado' ) {
+                $verificados++;
+            } else {
+                $incongruentes++;
+            }
+        }
+
+        $this->send_success( [
+            'message' => "Auditoría finalizada.<br>✅ <b>{$verificados}</b> Verificados.<br>🚨 <b>{$incongruentes}</b> Incongruencias o errores."
+        ] );
+    }
+}
+
+
 
 /**
  * Controlador AJAX: Salón de la Fama Histórico

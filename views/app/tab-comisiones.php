@@ -199,26 +199,34 @@ color: #7c3aed; margin-top: 2px;">Evaluado a fin de mes según Kanban de Proyect
             </div>
         </div>
 
-	</div> </div> </div> <?php endif; ?> <div id="comisiones-audit-view" style="display: <?php echo $is_b2b ? 'block' : 'none'; ?>; padding: 25px;">
-    <?php if ( current_user_can('manage_options') || current_user_can('suite_action_approve_commissions') ) : ?>
-	
-	
-	
-    <div style="margin-bottom: 20px; display:flex; gap:10px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
-        <button id="btn-pay-selected" class="btn-modern-action" style="background:#059669; color:white; border:none; padding:8px 15px;">
-            💵 Liquidar Seleccionados
-        </button>
-        <button id="btn-register-abono" class="btn-modern-action" style="background:#0284c7; color:white; border:none; padding:8px 15px;">
-            💸 Registrar Abono / Anticipo
-        </button>
-    </div>
-    <?php endif; ?>
+	</div> </div> </div> <?php endif; ?> 
     
+    <div id="comisiones-audit-view" style="display: <?php echo $is_b2b ? 'block' : 'none'; ?>; padding: 25px;">
+        
+        <?php if ( current_user_can('manage_options') || current_user_can('suite_action_approve_commissions') ) : ?>
+        <div style="margin-bottom: 20px; display:flex; gap:10px; flex-wrap: wrap; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+            
+            <button id="btn-pay-selected" class="btn-modern-action" style="background:#059669; color:white; border:none; padding:8px 15px;">
+                💵 Liquidar Seleccionados
+            </button>
+            
+            <button id="btn-register-abono" class="btn-modern-action" style="background:#0284c7; color:white; border:none; padding:8px 15px;">
+                💸 Registrar Abono / Anticipo
+            </button>
+
+            <?php if ( current_user_can('manage_options') ) : ?>
+                <button id="btn-force-audit-sync" class="btn-modern-action" style="background:#4b5563; color:white; border:none; padding:8px 15px;">
+                    🔄 Sincronizar con Loyverse Ahora
+                </button>
+            <?php endif; ?>
+
+        </div>
+        <?php endif; ?>
+        
         <h3 style="color: #0f172a; margin-bottom: 15px; font-size: 18px;">📝 Auditoría General del Ledger</h3>
         <table class="suite-modern-table" id="auditTable" style="width: 100%;">
             <thead>
                 <tr>
-                    <!-- INYECCIÓN: El <th> faltante que espera DataTables para la columna 0 (Checkboxes) -->
                     <th style="width: 30px;">
                         <?php if ( current_user_can('manage_options') || current_user_can('suite_action_approve_commissions') ) : ?>
                             <input type="checkbox" id="chk-all-com" style="cursor:pointer;" title="Seleccionar todos">
@@ -227,10 +235,12 @@ color: #7c3aed; margin-top: 2px;">Evaluado a fin de mes según Kanban de Proyect
                         <?php endif; ?>
                     </th>
                     <th>ID Orden</th>
+                    <th>Recibo Loyverse</th> 
                     <th>Vendedor</th>
                     <th>Monto Base</th>
                     <th>Comisión</th>
                     <th>Estado</th>
+                    <th>Auditoría POS</th> 
                     <th>Fecha Operación</th>
                 </tr>
             </thead>

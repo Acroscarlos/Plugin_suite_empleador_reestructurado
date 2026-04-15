@@ -326,13 +326,6 @@ class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
                             // Mantener soporte para Venta Compartida (Colaboradores)
                             $colaboradores_raw = isset( $_POST['colaboradores'] ) ? $_POST['colaboradores'] : [];
                             $colaboradores_clean = is_array( $colaboradores_raw ) ? array_map( 'intval', $colaboradores_raw ) : [];
-
-                            $commission_model->calculate_and_save_commission( 
-                                $quote_id, 
-                                $vendedor_id, 
-                                $monto_base_usd, 
-                                $colaboradores_clean 
-                            );
                         }
                     }
                 }

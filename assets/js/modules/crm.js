@@ -263,26 +263,68 @@ const SuiteCRM = (function($) {
                 $('#kpi-count').text(s.count);
                 $('#kpi-last').text(s.last);
 
+				
+				
+				
 				// Llenar Historial de Compras
 				let hHtml = '';
 				if (h.length > 0) {
 					h.forEach(r => {
+						// 1. Lógica de UI para Estados (Badges semánticos)
+						let badgeBg = '#f1f5f9', badgeCl = '#64748b'; // Default: Gris
+						let estadoTxt = r.estado ? r.estado.toUpperCase() : 'DESCONOCIDO';
+						
+						if (r.estado === 'despachado' || r.estado === 'pagado') {
+							badgeBg = '#dcfce7'; badgeCl = '#166534'; // Verde
+						} else if (r.estado === 'por_enviar' || r.estado === 'proceso' || r.estado === 'pendiente') {
+							badgeBg = '#fef08a'; badgeCl = '#854d0e'; // Amarillo
+						} else if (r.estado === 'emitida') {
+							badgeBg = '#dbeafe'; badgeCl = '#1d4ed8'; // Azul
+						} else if (r.estado === 'archivado') {
+							badgeBg = '#f1f5f9'; badgeCl = '#475569'; // Gris oscuro
+						}
+
+						// 2. Lógica Condicional para Botones (Archivos PDF/Imágenes)
+						let btnFactura = (r.factura_fiscal_url && r.factura_fiscal_url !== '') 
+							? `<a href="${r.factura_fiscal_url}" target="_blank" class="btn-modern-action small" style="background:#fee2e2; color:#dc2626; text-decoration:none; padding:4px 8px; margin-right:5px; border-radius:4px;" title="Ver Factura">📄</a>` 
+							: '';
+							
+						let btnPod = (r.pod_url && r.pod_url !== '') 
+							? `<a href="${r.pod_url}" target="_blank" class="btn-modern-action small" style="background:#e0e7ff; color:#4f46e5; text-decoration:none; padding:4px 8px; margin-right:5px; border-radius:4px;" title="Ver Comprobante de Entrega">📦</a>` 
+							: '';
+
+						// Mantenemos tu botón original de Imprimir
+						let btnPrint = `<a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${r.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small" style="background:#f8fafc; color:#475569; border: 1px solid #cbd5e1; padding:4px 8px; border-radius:4px; font-size:11px; text-decoration:none;" title="Imprimir PDF">🖨️ Imprimir</a>`;
+
+						// 3. Renderizado final de la fila (5 COLUMNAS EXACTAS)
 						hHtml += `
 							<tr>
-								<td>${r.fecha}</td>
+								<td style="font-size:13px; color:#64748b;">${r.fecha}</td>
 								<td><strong>${r.codigo}</strong></td>
-								<td class="text-green">$${r.total}</td>
+								<td><strong style="color:#059669;">$${r.total}</strong></td>
 								<td>
-									<a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${r.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small">📄 Imprimir</a>
+									<span style="background:${badgeBg}; color:${badgeCl}; padding:4px 10px; border-radius:12px; font-size:11px; font-weight:800; letter-spacing:0.5px; display:inline-block;">
+										${estadoTxt}
+									</span>
+								</td>
+								<td style="display:flex; align-items:center; gap: 4px;">
+									${btnFactura}
+									${btnPod}
+									${btnPrint}
 								</td>
 							</tr>
 						`;
 					});
 				} else {
-					hHtml = '<tr><td colspan="4" class="text-center text-gray-500 py-4">Sin compras registradas.</td></tr>';
+					// Actualizamos el colspan a 5 para cuando no haya resultados
+					hHtml = '<tr><td colspan="5" class="text-center text-gray-500 py-4" style="text-align:center; color:#94a3b8; padding:20px;">Sin compras registradas.</td></tr>';
 				}
-                
-                $('#prof-history-body').html(hHtml);
+                
+                $('#prof-history-body').html(hHtml);
+				
+				
+				
+				
 
                 // Mostrar Modal (Asumimos que openModal es global o lo manejamos aquí)
                 if (typeof window.openModal === 'function') {

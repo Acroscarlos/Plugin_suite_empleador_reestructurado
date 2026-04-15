@@ -11,6 +11,22 @@ const SuiteLogistics = (function($) {
     // ==========================================
 
     const bindEvents = function() {
+		
+		// --- UX FASE 5: Restricción numérica y formateo automático ---
+        // 1. Bloquear letras y caracteres especiales en tiempo real
+        $(document).on('input', '#disp-loyverse', function() {
+            // Reemplaza cualquier cosa que NO sea un número (0-9) por nada ('')
+            this.value = this.value.replace(/[^0-9]/g, ''); 
+        });
+
+        // 2. Formatear a 8 dígitos con ceros a la izquierda al salir del campo
+        $(document).on('blur', '#disp-loyverse', function() {
+            let val = $(this).val().trim();
+            if (val.length > 0) {
+                $(this).val(val.padStart(8, '0'));
+            }
+        });
+        // --------------------------------------------------------------
         
         // 1. ABRIR MODAL Y CONFIGURAR UX FISCAL
         // Usamos delegación de eventos (.on) porque la tabla se genera dinámicamente
@@ -56,11 +72,11 @@ const SuiteLogistics = (function($) {
         // 3. REFRESCAR TABLA MANUALMENTE
         $('#btn-refresh-logistics').on('click', function(e) {
             e.preventDefault();
-            location.reload();
+            alert('La tabla se actualiza automáticamente al despachar.');
         });
 
         // 4. PROCESAR SUBIDA (Integrando tu SuiteAPI y el UX de desvanecimiento)
-        $('#form-confirm-dispatch').on('submit', function(e) {
+        $('#form-confirm-dispatch').off('submit').on('submit', function(e) {
             e.preventDefault();
 
             // Bloquear botón para evitar múltiples envíos
