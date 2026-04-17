@@ -1,0 +1,2630 @@
+=================================================================
+🧩 MÓDULO LÓGICO: Slice_B_Cotizador_Historial
+Contiene el Stack completo: Base Core + Vistas + JS + AJAX + Models
+=================================================================
+
+=================================================================
+🏛️ ARCHIVOS CORE (COMPARTIDOS)
+Clases base, singletons, API handlers y estilos globales.
+=================================================================
+
+--- INICIO DEL ARCHIVO: suite-empleados.php ---
+<?php
+/**
+ * Plugin Name: Suite de Empleados (ERP Intranet)
+ * Plugin URI: https://mitiendaunit.com/intranet_1
+ * Description: Sistema modular V8.0 para gestión de Inventario, CRM, Logística, Gamificación y Cerebro de Demanda (IA). Arquitectura MVC.
+ * Version: 8.0.0
+ * Author: DevOps Team & RV Automation Technology
+ * Text Domain: suite-empleados
+ * License: GPLv2 or later
+ */
+
+// 1. SEGURIDAD: Evitar acceso directo
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+// 2. CONSTANTES DEL SISTEMA
+define( 'SUITE_VERSION', '8.0.0' );
+define( 'SUITE_PATH', plugin_dir_path( __FILE__ ) );
+define( 'SUITE_URL', plugin_dir_url( __FILE__ ) );
+
+/**
+ * 3. INICIALIZADOR DEL SISTEMA (Orquestador MVC)
+ * Se engancha a 'plugins_loaded' para asegurar que el core de WP esté listo.
+ */
+function suite_empleados_init() {
+    
+    // --- A. CARGA DE DEPENDENCIAS (REQUIRE_ONCE) ---
+    // [Error 1.1 Corregido]: Rutas apuntando a los nombres reales de los archivos.
+
+    // Core
+    require_once SUITE_PATH . 'includes/Core/class-activator.php';
+    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
+
+    // Modelos (Capa de Base de Datos y Lógica de Negocio)
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-base.php';
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-client.php';
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-quote.php';
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-inventory.php';
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-commission.php';
+	require_once SUITE_PATH . 'includes/Models/class-suite-model-roles.php';    
+    require_once SUITE_PATH . 'includes/Models/class-suite-model-employee.php'; 
+	require_once SUITE_PATH . 'includes/Models/class-suite-model-product.php';
+
+
+    // Controladores Base
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-controller.php';
+
+    // Controladores AJAX (Módulos de la UI)
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-client.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-quotes.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-kanban.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-commissions.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-logistics.php';
+	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-employees.php';
+    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-roles.php';
+	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-products.php';
+	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-inventory.php';
+    // Controladores API REST (Data Lake y Machine Learning)
+    require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-stats.php';
+	// Controladores de la API REST
+	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-sync.php';
+	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-telegram-webhook.php'; // <--- FASE 4.1: WEBHOOK TELEGRAM
+
+
+    // Controlador del Administrador / Frontend (Shortcodes y Vistas)
+    require_once SUITE_PATH . 'includes/Controllers/Admin/class-suite-shortcode-controller.php';
+
+    // --- B. INSTANCIACIÓN DE CONTROLADORES (Encendiendo los motores) ---
+
+    // Módulo de Clientes (CRM) - [Las 5 nuevas clases divididas]
+    new Suite_Ajax_Client_Search();
+    new Suite_Ajax_Client_Add();
+    new Suite_Ajax_Client_Import();
+    new Suite_Ajax_Client_Delete();
+    new Suite_Ajax_Client_Profile();
+	new Suite_Ajax_Log_Export();
+
+    // Módulo de Cotizaciones
+    new Suite_Ajax_Quote_Save();
+    new Suite_Ajax_Quote_History();
+    new Suite_Ajax_Quote_Status();
+	new Suite_Ajax_Print_Quote();
+	new Suite_Ajax_Get_Products();
+	new Suite_Ajax_Quote_Details();
+	new Suite_Ajax_Get_Inventory();
+	new Suite_Ajax_Process_Super_Pago();
+	
+    // Módulo 1: Tablero Kanban (Pedidos)
+    new Suite_Ajax_Kanban_Data();
+    new Suite_Ajax_Kanban_Status();
+	new Suite_Ajax_Reverse_Logistics();
+
+    // Módulo 3: Logística y Despacho
+    new Suite_Ajax_Upload_POD();
+    new Suite_Ajax_Print_Picking();
+
+    // Módulo 4: Dashboard de Comisiones y Gamificación
+    new Suite_Ajax_Dashboard_Stats();
+	new Suite_Ajax_Freeze_Commissions();
+	new Suite_Ajax_Commission_Audit(); 
+	new Suite_Ajax_Process_Audit_Action();
+    new Suite_Ajax_Hall_of_Fame();
+	new Suite_Ajax_Pay_Selected();
+	new Suite_Ajax_Register_Abono();
+	new Suite_Ajax_Run_Manual_Audit();
+	
+    // Módulo 5: Cerebro de Demanda (REST API)
+    new Suite_API_Stats();
+	new Suite_API_Sync();
+	
+	// Módulo 6:--- NUEVO MÓDULO: GESTIÓN DE EQUIPO Y ROLES (RBAC) ---
+    new Suite_Ajax_Employee_List();
+    new Suite_Ajax_Employee_Save();
+    new Suite_Ajax_Employee_Delete();
+    new Suite_Ajax_Role_List();
+    new Suite_Ajax_Role_Save();
+    new Suite_Ajax_Role_Delete();
+	new Suite_Ajax_Update_Role_Cap();
+
+    // Gestor de la Vista Principal (Shortcode y encolado de assets)
+    new Suite_Shortcode_Controller();
+}
+add_action( 'plugins_loaded', 'suite_empleados_init' );
+add_action( 'rest_api_init', function () {
+	$telegram_webhook = new Suite_Telegram_Webhook();
+	$telegram_webhook->register_routes();
+	});
+
+/**
+ * 4. ACTIVACIÓN DEL PLUGIN
+ * Crea las tablas, define roles usando dbDelta y programa Cron Jobs.
+ */
+function suite_plugin_activate() {
+    // 1. Instalación de BD y Roles
+    require_once SUITE_PATH . 'includes/Core/class-activator.php';
+    if ( class_exists( 'Suite_Activator' ) && method_exists( 'Suite_Activator', 'activate' ) ) {
+        Suite_Activator::activate();
+    } elseif ( function_exists( 'suite_install_db' ) ) {
+        suite_install_db(); 
+    }
+
+    // 2. Programación de Tareas Automáticas (Data Lake)
+    // [Error 3.1 Corregido]: El Cron ahora se registra ESTRICTAMENTE UNA VEZ en la activación.
+    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
+    if ( class_exists( 'Suite_Cron_Jobs' ) ) {
+        $cron_jobs = new Suite_Cron_Jobs();
+        $cron_jobs->schedule_events();
+    }
+}
+register_activation_hook( __FILE__, 'suite_plugin_activate' );
+
+
+/**
+ * 5. DESACTIVACIÓN DEL PLUGIN
+ * Limpia los Cron Jobs activos para no dejar basura en la memoria de WordPress.
+ */
+function suite_plugin_deactivate() {
+    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
+    if ( class_exists( 'Suite_Cron_Jobs' ) ) {
+        $cron_jobs = new Suite_Cron_Jobs();
+        $cron_jobs->clear_events();
+    }
+}
+register_deactivation_hook( __FILE__, 'suite_plugin_deactivate' );
+--- FIN DEL ARCHIVO: suite-empleados.php ---
+
+--- INICIO DEL ARCHIVO: assets/css/suite-styles.css ---
+/* ==========================================
+   MODALES, PESTAÑAS Y FORMULARIOS
+   ========================================== */
+.suite-modal {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+
+.suite-modal-content {
+    background-color: #ffffff;
+    padding: 25px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.close-modal {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #64748b;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.close-modal:hover {
+    color: #0f172a;
+}
+
+.suite-tabs-modern {
+    display: flex;
+	flex-wrap: nowrap !important;      /* Impide que salten de línea */
+    overflow-x: auto;                  /* Activa el scroll horizontal en pantallas pequeñas */
+    -webkit-overflow-scrolling: touch;
+    gap: 10px;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 20px;
+    background: #f8fafc;
+    padding: 10px 10px 0 10px;
+    border-radius: 8px 8px 0 0;
+	scrollbar-width: none;             /* Firefox */
+    -ms-overflow-style: none;
+}
+.suite-tabs-modern::-webkit-scrollbar {
+    display: none;
+}
+
+.tab-btn {
+	flex-shrink: 0;                    /* Evita que los botones se achiquen si no caben */
+    white-space: nowrap;
+    padding: 12px 20px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-weight: 600;
+    color: #64748b;
+    border-radius: 8px 8px 0 0;
+    transition: all 0.3s;
+}
+
+.tab-btn:hover {
+    background: #f1f5f9;
+    color: #334155;
+}
+
+.tab-btn.active {
+    background: #ffffff;
+    color: #0073aa;
+    border: 1px solid #e2e8f0;
+    border-bottom: 2px solid #ffffff;
+    margin-bottom: -2px;
+}
+
+.form-group-row {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    margin-bottom: 15px;
+}
+.form-group-row > div {
+    flex: 1;
+}
+--- FIN DEL ARCHIVO: suite-styles.css ---
+
+--- INICIO DEL ARCHIVO: assets/js/core/api.js ---
+/**
+ * SuiteAPI - Orquestador de Peticiones AJAX
+ * * Centraliza las llamadas al servidor, inyectando automáticamente 
+ * credenciales de seguridad (Nonces) y enrutamiento (URL).
+ */
+const SuiteAPI = (function($) {
+    'use strict';
+
+    // Variables privadas extraídas de la localización de WP
+    const apiUrl = suite_vars.ajax_url;
+    const sysNonce = suite_vars.nonce;
+
+    /**
+     * Interceptor Global de Errores
+     * Captura expiración de sesión (401) o fallos de permisos (403)
+     */
+    const handleAjaxError = function(error, reject) {
+        if (error.status === 401 || error.status === 403) {
+            alert('🔒 Su sesión ha expirado o fue cerrada por seguridad. Por favor, recargue la página e inicie sesión nuevamente.');
+        }
+        reject(error);
+    };
+
+    /**
+     * Petición POST estándar para JSON
+     * * @param {string} action - El nombre del hook de WP (ej. 'suite_search_client_ajax')
+     * @param {object} data - Datos a enviar
+     * @returns {Promise}
+     */
+    const post = function(action, data = {}) {
+        return new Promise((resolve, reject) => {
+            // Inyección automática de parámetros obligatorios
+            const payload = {
+                ...data,
+                action: action,
+                nonce: sysNonce
+            };
+
+            $.post(apiUrl, payload)
+                .done(response => resolve(response))
+                .fail(error => handleAjaxError(error, reject)); // <-- Interceptor inyectado
+        });
+    };
+
+    /**
+     * Petición POST para subir archivos (FormData)
+     * Utilizado para la importación de CSV o futuras subidas de fotos (POD)
+     * * @param {string} action - El nombre del hook de WP
+     * @param {FormData} formData - Objeto FormData instanciado
+     * @returns {Promise}
+     */
+    const postForm = function(action, formData) {
+        return new Promise((resolve, reject) => {
+            // Inyección en FormData
+            formData.append('action', action);
+            formData.append('nonce', sysNonce);
+
+            $.ajax({
+                url: apiUrl,
+                type: 'POST',
+                data: formData,
+                processData: false, // Vital para que jQuery no procese el archivo
+                contentType: false, // Vital para que el navegador asigne el boundary multipart
+                success: response => resolve(response),
+                error: error => handleAjaxError(error, reject) // <-- Interceptor inyectado
+            });
+        });
+    };
+
+    // API Pública Revelada
+    return {
+        post: post,
+        postForm: postForm
+    };
+
+})(jQuery);
+--- FIN DEL ARCHIVO: api.js ---
+
+--- INICIO DEL ARCHIVO: assets/js/core/state.js ---
+/**
+ * SuiteState - Manejador de Estado Inmutable (Store)
+ * 
+ * Centraliza los datos financieros y el carrito de compras.
+ * Previene la manipulación directa desde el objeto global window.
+ */
+const SuiteState = (function() {
+    'use strict';
+
+    // ==========================================
+    // VARIABLES PRIVADAS (El "Estado")
+    // ==========================================
+    let cart = [];
+    let totalUSD = 0.00;
+    let totalBS = 0.00;
+    let tasaBCV = 1.00; // Se actualizará al inicializar la app
+
+    // ==========================================
+    // MÉTODOS PRIVADOS
+    // ==========================================
+    
+    /**
+     * Recalcula los totales matemáticos cada vez que el carrito cambia.
+     * Mantiene la lógica financiera blindada.
+     */
+    const calculateTotals = function() {
+        totalUSD = cart.reduce((sum, item) => {
+            let qty = parseInt(item.qty) || 0;
+            let price = parseFloat(item.price) || 0;
+            return sum + (qty * price);
+        }, 0);
+
+        totalBS = totalUSD * tasaBCV;
+    };
+
+    // ==========================================
+    // API PÚBLICA (Métodos Revelados)
+    // ==========================================
+    return {
+        /**
+         * Retorna una COPIA INMUTABLE del carrito.
+         * Si alguien muta este array externamente, no afectará al original.
+         * @returns {Array}
+         */
+        getCart: function() {
+            return [...cart]; 
+        },
+
+        /**
+         * Añade un producto al carrito y recalcula.
+         * Si el SKU ya existe, suma la cantidad en lugar de duplicar la fila.
+         * @param {Object} item 
+         */
+        addItem: function(item) {
+            // Normalizar datos: Prohibir cantidades negativas o cero
+            item.qty = Math.max(1, parseInt(item.qty) || 1);
+            item.price = Math.max(0, parseFloat(item.price) || 0.00);
+
+            const existingIndex = cart.findIndex(i => i.sku === item.sku);
+            if (existingIndex > -1) {
+                cart[existingIndex].qty += item.qty;
+            } else {
+                cart.push(item);
+            }
+            calculateTotals();
+        },
+
+        /**
+         * Actualiza un campo específico de una fila (ej. cantidad o precio editado).
+         * @param {number} index - Índice en el array
+         * @param {string} field - 'qty' o 'price'
+         * @param {number|string} value - Nuevo valor
+         */
+        updateItem: function(index, field, value) {
+            if (cart[index]) {
+                if (field === 'qty') {
+                    cart[index][field] = Math.max(1, parseInt(value) || 1);
+                } else {
+                    cart[index][field] = Math.max(0, parseFloat(value) || 0);
+                }
+                calculateTotals();
+            }
+        },
+
+        /**
+         * Elimina un producto del carrito.
+         * @param {number} index 
+         */
+        removeItem: function(index) {
+            if (cart[index]) {
+                cart.splice(index, 1);
+                calculateTotals();
+            }
+        },
+
+        /**
+         * Vacía el carrito por completo (útil al guardar con éxito).
+         */
+        clearCart: function() {
+            cart = [];
+            calculateTotals();
+        },
+
+        /**
+         * Actualiza la tasa BCV del día.
+         * @param {number} tasa 
+         */
+        setTasa: function(tasa) {
+            tasaBCV = parseFloat(tasa) || 1;
+            calculateTotals();
+        },
+
+        /**
+         * Devuelve un snapshot de los totales financieros formateados.
+         * @returns {Object}
+         */
+        getTotals: function() {
+            return {
+                usd: totalUSD.toFixed(2),
+                bs: totalBS.toFixed(2),
+                tasa: tasaBCV.toFixed(2)
+            };
+        }
+    };
+})();
+
+--- FIN DEL ARCHIVO: state.js ---
+
+--- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-controller.php ---
+<?php
+/**
+ * Clase Abstracta: Controlador AJAX Base
+ *
+ * Centraliza la seguridad, el registro de hooks y las respuestas estandarizadas
+ * para todas las peticiones AJAX del sistema.
+ *
+ * @package SuiteEmpleados\Controllers\Ajax
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+abstract class Suite_AJAX_Controller {
+
+    /**
+     * El nombre de la acción AJAX (Ej. 'suite_search_client_ajax')
+     * @var string
+     */
+    protected $action_name;
+
+    /**
+     * El permiso mínimo requerido para ejecutar esta acción.
+     * @var string
+     */
+    protected $required_capability = 'read'; // Por defecto, cualquier usuario logueado en la intranet
+
+    /**
+     * Constructor.
+     * Registra dinámicamente el hook wp_ajax basándose en $action_name.
+     */
+    public function __construct() {
+        if ( empty( $this->action_name ) ) {
+            // Evitar registro si la clase hija no definió el nombre de la acción
+            return;
+        }
+
+        // Registrar el endpoint (Solo para usuarios logueados)
+        add_action( 'wp_ajax_' . $this->action_name, [ $this, 'handle_request' ] );
+    }
+
+    /**
+     * Manejador principal de la petición.
+     * Ejecuta las barreras de seguridad antes de procesar la lógica.
+     */
+    public function handle_request() {
+        // 1. Barrera CSRF: Validación de Nonce Estricto (Retrocompatibilidad)
+        if ( ! check_ajax_referer( 'suite_quote_nonce', 'nonce', false ) ) {
+            $this->send_error( 'Fallo de seguridad CSRF o sesión caducada.', 403 );
+        }
+
+        // 2. Barrera de Permisos: Verificación del Rol del Usuario
+        if ( ! current_user_can( $this->required_capability ) ) {
+            $this->send_error( 'Privilegios insuficientes para realizar esta acción.', 401 );
+        }
+
+        // 3. Ejecutar la lógica de negocio específica de la clase hija
+        $this->process();
+    }
+
+    /**
+     * Método abstracto que las clases hijas DEBEN implementar.
+     * Aquí es donde irá la lógica real (ej. buscar cliente, guardar cotización).
+     */
+    abstract protected function process();
+
+    /**
+     * Helper para enviar una respuesta exitosa estandarizada.
+     *
+     * @param mixed $data Los datos a devolver (Array, Objeto, String).
+     */
+    protected function send_success( $data = [] ) {
+        wp_send_json_success( $data );
+    }
+
+    /**
+     * Helper para enviar una respuesta de error estandarizada.
+     *
+     * @param string $message Mensaje de error para el frontend.
+     * @param int    $code    Código HTTP simulado.
+     */
+    protected function send_error( $message, $code = 400 ) {
+        wp_send_json_error( [
+            'message' => $message,
+            'code'    => $code
+        ] );
+    }
+}
+--- FIN DEL ARCHIVO: class-suite-ajax-controller.php ---
+
+--- INICIO DEL ARCHIVO: includes/Core/class-activator.php ---
+<?php
+// SEGURIDAD: Evitar acceso directo
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+/**
+ * Función de Instalación de Base de Datos
+ * Crea las tablas críticas: Inventario, Clientes, Cotizaciones, Items, etc.
+ */
+if ( ! function_exists( 'suite_install_db' ) ) {
+    function suite_install_db() {
+        global $wpdb;
+        $charset_collate = $wpdb->get_charset_collate();
+
+        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+
+        // 1. Tabla Inventario (Cache)
+        $sql_inventario = "CREATE TABLE {$wpdb->prefix}suite_inventario_cache (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            sku VARCHAR(100) NOT NULL,
+            nombre_producto VARCHAR(255),
+            precio_venta DECIMAL(10,2) DEFAULT 0,
+            status_prediccion VARCHAR(50),
+            inventario_entrante VARCHAR(10),
+            disponibilidad_millennium FLOAT DEFAULT 0,
+            disponibilidad_galerias FLOAT DEFAULT 0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            UNIQUE KEY idx_sku (sku)
+        ) $charset_collate;";
+
+        // 2. Tabla Clientes (CRM)
+        $sql_clientes = "CREATE TABLE {$wpdb->prefix}suite_clientes (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+			vendedor_id bigint(20) DEFAULT 0,
+            nombre_razon VARCHAR(255) NOT NULL,
+            rif_ci VARCHAR(50) NOT NULL,
+            direccion TEXT,
+            ciudad VARCHAR(100),
+            estado VARCHAR(100),
+            telefono VARCHAR(50),
+            email VARCHAR(100),
+            contacto_persona VARCHAR(150),
+            notas TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            UNIQUE KEY idx_rif (rif_ci)
+        ) $charset_collate;";
+
+        // 3. Tabla Cotizaciones
+        $sql_cotizaciones = "CREATE TABLE {$wpdb->prefix}suite_cotizaciones (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            codigo_cotizacion VARCHAR(20) NOT NULL,
+            cliente_nombre VARCHAR(255),
+            cliente_rif VARCHAR(50),
+            cliente_id bigint(20) NOT NULL DEFAULT 0,
+            direccion_entrega TEXT,
+            fecha_emision DATETIME DEFAULT CURRENT_TIMESTAMP,
+            validez_dias INT DEFAULT 10,
+            moneda VARCHAR(5) DEFAULT 'USD',
+            vendedor_id bigint(20),
+            total_bs DECIMAL(15,2),
+            total_usd DECIMAL(15,2),
+            tasa_bcv DECIMAL(10,2),
+            estado VARCHAR(20) DEFAULT 'emitida',
+            canal_venta VARCHAR(100),
+            metodo_pago VARCHAR(100),
+            metodo_entrega VARCHAR(100),
+            url_captura_pago TEXT,
+            recibo_loyverse VARCHAR(100),
+			factura_fiscal_url VARCHAR(255),
+            pod_url TEXT,
+            
+            /* --- INICIO FASE 1: NUEVOS CAMPOS KANBAN V2 --- */
+            forma_pago VARCHAR(50),
+            fecha_pago DATETIME,
+            requiere_factura TINYINT(1) DEFAULT 0,
+            agente_retencion TINYINT(1) DEFAULT 0,
+            comprobante_pago_url TEXT,
+            tipo_envio VARCHAR(50),
+            agencia_envio VARCHAR(100),
+            direccion_envio TEXT,
+            prioridad TINYINT(1) DEFAULT 0,
+            alerta_loyverse TEXT,
+            /* --- FIN FASE 1 --- */
+            
+            PRIMARY KEY  (id)
+        ) $charset_collate;";
+
+        // 4. Tabla Libro Mayor de Comisiones (Ledger)
+        $sql_comisiones = "CREATE TABLE {$wpdb->prefix}suite_comisiones_ledger (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            quote_id bigint(20) NOT NULL,
+            vendedor_id bigint(20) NOT NULL,
+            monto_base_usd DECIMAL(15,2) DEFAULT 0,
+            comision_ganada_usd DECIMAL(15,2) DEFAULT 0,
+            estado_pago VARCHAR(20) DEFAULT 'pendiente',
+            /* --- FASE 5: AUDITORÍA LOYVERSE --- */
+            recibo_loyverse VARCHAR(100) DEFAULT NULL,
+            estado_auditoria VARCHAR(20) DEFAULT 'pendiente',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            KEY idx_vendedor (vendedor_id)
+        ) $charset_collate;";
+
+        // 5. Tabla Gamificación y Premios
+        $sql_premios = "CREATE TABLE {$wpdb->prefix}suite_premios_mensuales (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            vendedor_id bigint(20) NOT NULL,
+            mes INT NOT NULL,
+            anio INT NOT NULL,
+            premio_nombre VARCHAR(100) NOT NULL,
+            monto_premio DECIMAL(10,2) DEFAULT 0,
+            asignado_manualmente TINYINT(1) DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            KEY idx_mes_anio (mes, anio)
+        ) $charset_collate;";
+
+        // 6. Tabla Items (Detalle)
+        $sql_items = "CREATE TABLE {$wpdb->prefix}suite_cotizaciones_items (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            cotizacion_id bigint(20) NOT NULL,
+            sku VARCHAR(100),
+            producto_nombre VARCHAR(255),
+            cantidad INT,
+            precio_unitario_usd DECIMAL(15,2),
+            tiempo_entrega VARCHAR(100),
+            subtotal_usd DECIMAL(15,2),
+            PRIMARY KEY  (id),
+            KEY idx_cotizacion (cotizacion_id)
+        ) $charset_collate;";
+
+        // 7. Tabla de Auditoría (Logs)
+        $sql_logs = "CREATE TABLE {$wpdb->prefix}suite_logs (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            usuario_id bigint(20) NOT NULL,
+            accion VARCHAR(50) NOT NULL,
+            detalle TEXT,
+            ip VARCHAR(45),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            KEY idx_usuario (usuario_id)
+        ) $charset_collate;";
+
+        // 8. Tabla Data Lake / Inventario Histórico (Módulo 5 - IA)
+        $sql_historico = "CREATE TABLE {$wpdb->prefix}suite_inventario_historico (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            fecha_snapshot DATE NOT NULL,
+            sku VARCHAR(100) NOT NULL,
+            stock_disponible INT DEFAULT 0,
+            precio DECIMAL(10,2) DEFAULT 0,
+            categoria VARCHAR(100) DEFAULT 'General',
+            PRIMARY KEY  (id),
+            KEY idx_fecha (fecha_snapshot),
+            KEY idx_sku (sku)
+        ) $charset_collate;";
+
+        // --- EJECUCIÓN ÚNICA DE DB-DELTA ---
+        dbDelta( $sql_inventario );
+        dbDelta( $sql_clientes );
+        dbDelta( $sql_cotizaciones );
+        dbDelta( $sql_items );
+        dbDelta( $sql_comisiones );
+        dbDelta( $sql_premios );
+        dbDelta( $sql_logs );
+        dbDelta( $sql_historico ); // Data Lake agregado correctamente
+
+        // Ajuste de Auto-Increment para Cotizaciones (Inicio en 15000)
+        $count = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}suite_cotizaciones" );
+        if ( $count == 0 ) {
+            $wpdb->query( "ALTER TABLE {$wpdb->prefix}suite_cotizaciones AUTO_INCREMENT = 15000" );
+        }
+		
+		// --- PARCHE EN CALIENTE: Añadir vendedor_id si el plugin ya estaba instalado ---
+        $column_check = $wpdb->get_results( "SHOW COLUMNS FROM {$wpdb->prefix}suite_clientes LIKE 'vendedor_id'" );
+        if ( empty( $column_check ) ) {
+            $wpdb->query( "ALTER TABLE {$wpdb->prefix}suite_clientes ADD vendedor_id bigint(20) DEFAULT 0 AFTER id" );
+        }
+		
+		// --- PARCHE EN CALIENTE FASE 5: Añadir columnas al Ledger ---
+        $tabla_ledger_check = $wpdb->prefix . 'suite_comisiones_ledger';
+        
+        $col_loyverse = $wpdb->get_results( "SHOW COLUMNS FROM {$tabla_ledger_check} LIKE 'recibo_loyverse'" );
+        if ( empty( $col_loyverse ) ) {
+            $wpdb->query( "ALTER TABLE {$tabla_ledger_check} ADD recibo_loyverse VARCHAR(100) DEFAULT NULL" );
+        }
+
+        $col_auditoria = $wpdb->get_results( "SHOW COLUMNS FROM {$tabla_ledger_check} LIKE 'estado_auditoria'" );
+        if ( empty( $col_auditoria ) ) {
+            $wpdb->query( "ALTER TABLE {$tabla_ledger_check} ADD estado_auditoria VARCHAR(20) DEFAULT 'pendiente'" );
+        }
+
+        // --- CREACIÓN DE ROLES (Ejecutar una vez) ---
+        add_role('suite_vendedor', 'Vendedor Suite', array('read' => true, 'suite_access' => true));
+        add_role('suite_logistica', 'Logística Suite', array('read' => true, 'suite_access' => true));
+        add_role('suite_marketing', 'Marketing y Análisis', array('read' => true, 'suite_access' => true));
+
+        $admin = get_role('administrator');
+        if ( $admin ) {
+            $admin->add_cap('suite_access'); // Asegurar que admin tenga acceso
+        }
+    }
+}
+--- FIN DEL ARCHIVO: class-activator.php ---
+
+--- INICIO DEL ARCHIVO: includes/Models/class-suite-model-base.php ---
+<?php
+/**
+ * Clase Abstracta: Modelo Base de Base de Datos
+ *
+ * Centraliza la interacción con $wpdb, proporcionando métodos CRUD
+ * blindados contra inyecciones SQL y estandarizados para todos los módulos.
+ *
+ * @package SuiteEmpleados\Models
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+abstract class Suite_Model_Base {
+
+    /**
+     * Instancia global de WordPress DB
+     * @var wpdb
+     */
+    protected $wpdb;
+
+    /**
+     * Nombre completo de la tabla (incluyendo el prefijo wp_)
+     * @var string
+     */
+    protected $table_name;
+
+    /**
+     * Llave primaria de la tabla (por defecto 'id')
+     * @var string
+     */
+    protected $primary_key = 'id';
+
+    /**
+     * Constructor. Inicializa la conexión a DB y define el nombre de la tabla.
+     */
+    public function __construct() {
+        global $wpdb;
+        $this->wpdb = $wpdb;
+        
+        // $this->set_table_name() debe ser definido obligatoriamente por la clase hija
+        $this->table_name = $this->wpdb->prefix . $this->set_table_name();
+    }
+
+    /**
+     * Define el nombre de la tabla sin el prefijo de WordPress.
+     * Ej: return 'suite_clientes';
+     *
+     * @return string
+     */
+    abstract protected function set_table_name();
+
+    /**
+     * Obtiene un registro específico por su ID.
+     *
+     * @param int $id El ID del registro.
+     * @return object|null Objeto con los datos o null si no existe.
+     */
+    public function get( $id ) {
+        $sql = $this->wpdb->prepare( 
+            "SELECT * FROM {$this->table_name} WHERE {$this->primary_key} = %d", 
+            intval( $id ) 
+        );
+        return $this->wpdb->get_row( $sql );
+    }
+
+    /**
+     * Obtiene una lista de registros con límite y offset (paginación básica).
+     *
+     * @param int $limit Límite de resultados.
+     * @param int $offset Punto de inicio.
+     * @return array Array de objetos.
+     */
+    public function get_all( $limit = 100, $offset = 0 ) {
+        $sql = $this->wpdb->prepare( 
+            "SELECT * FROM {$this->table_name} ORDER BY {$this->primary_key} DESC LIMIT %d OFFSET %d", 
+            intval( $limit ), 
+            intval( $offset ) 
+        );
+        return $this->wpdb->get_results( $sql );
+    }
+
+    /**
+     * Inserta un nuevo registro de forma segura.
+     *
+     * @param array $data Array asociativo [ 'columna' => 'valor' ].
+     * @return int|false El ID insertado o false en caso de error.
+     */
+    public function insert( $data ) {
+        $inserted = $this->wpdb->insert( $this->table_name, $data );
+        if ( $inserted ) {
+            return $this->wpdb->insert_id;
+        }
+        return false;
+    }
+
+    /**
+     * Actualiza un registro existente de forma segura.
+     *
+     * @param int   $id   El ID del registro a actualizar.
+     * @param array $data Array asociativo [ 'columna' => 'valor' ].
+     * @return bool True si se actualizó, false en caso de error.
+     */
+    public function update( $id, $data ) {
+        $updated = $this->wpdb->update( 
+            $this->table_name, 
+            $data, 
+            [ $this->primary_key => intval( $id ) ] 
+        );
+        
+        // $updated devuelve false en error, o el número de filas afectadas (puede ser 0 si los datos eran idénticos)
+        return $updated !== false;
+    }
+
+    /**
+     * Elimina un registro por su ID de forma segura.
+     *
+     * @param int $id El ID del registro a eliminar.
+     * @return bool True en éxito, false en error.
+     */
+    public function delete( $id ) {
+        $deleted = $this->wpdb->delete( 
+            $this->table_name, 
+            [ $this->primary_key => intval( $id ) ] 
+        );
+        return $deleted !== false;
+    }
+
+}
+--- FIN DEL ARCHIVO: class-suite-model-base.php ---
+
+=================================================================
+📂 ARCHIVOS ESPECÍFICOS DEL MÓDULO
+=================================================================
+
+--- INICIO DEL ARCHIVO: assets/js/modules/historial.js ---
+/**
+ * SuiteHistorial - Módulo de Historial de Cotizaciones
+ * Permite buscar, imprimir, enviar por WA y CLONAR pedidos hacia el Cotizador.
+ */
+const SuiteHistorial = (function($) {
+    'use strict';
+    let table = null;
+
+    const initTable = function() {
+        if ($('#historyTable').length && !$.fn.DataTable.isDataTable('#historyTable')) {
+
+			
+			table = $('#historyTable').DataTable({
+                responsive: true,
+                language: { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json" },
+                order: [[0, 'desc']],
+                columnDefs: [
+                    {
+                        targets: 0,
+                        render: function(data, type, row) {
+                            // Si DataTables está ordenando internamente, usa el número matemático
+                            if (type === 'sort' || type === 'type') {
+                                return data.sort; 
+                            }
+                            // Si DataTables está pintando la pantalla, muestra el texto bonito
+                            return data.display; 
+                        }
+                    }
+                ]
+            });
+        }
+    };
+
+    const loadHistory = function() {
+        if (!table) return;
+        
+        SuiteAPI.post('suite_get_history_ajax').then(res => {
+            if (res.success && res.data) {
+                table.clear();
+                
+                res.data.forEach(r => {
+                    let badgeClass = (r.estado === 'pagado' || r.estado === 'despachado') ? 'pill-critico' : 'pill-neutral';
+                    
+                    // Botón WhatsApp
+                    let waBtn = '';
+                    if (r.wa_phone) {
+                        let msg = encodeURIComponent(`Hola ${r.cliente_nombre}, le enviamos su cotización ${r.codigo_cotizacion}: ${suite_vars.ajax_url}?action=suite_print_quote&id=${r.id}`);
+                        waBtn = `<a href="https://api.whatsapp.com/send?phone=${r.wa_phone}&text=${msg}" target="_blank" class="btn-modern-action small" style="color:#10b981; border-color:#a7f3d0;" title="WhatsApp">📱 WA</a>`;
+                    }
+
+                    // Botón Imprimir PDF
+                    let printBtn = `<a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${r.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small" style="color:#475569;" title="Imprimir PDF">🖨️</a>`;
+
+                    // Botón Clonar (La acción estrella)
+                    let cloneBtn = `<button class="btn-modern-action small btn-clone-quote" data-id="${r.id}" style="color:#0073aa; border-color:#bae6fd;" title="Clonar al Cotizador">🔄 Clonar</button>`;
+
+                    table.row.add([
+                        { display: r.fecha_fmt, sort: r.fecha_cruda }, 
+                        `<strong>#${r.codigo_cotizacion}</strong>`,
+                        r.cliente_nombre,
+                        `$${r.total_fmt}`,
+                        `<span class="status-pill ${badgeClass}">${r.estado.toUpperCase()}</span>`,
+                        `<div style="display:flex; gap:5px;">${printBtn} ${waBtn} ${cloneBtn}</div>`
+                    ]);
+					
+					
+					
+                });
+                
+                table.draw();
+            }
+        });
+    };
+
+    const bindEvents = function() {
+        // Evento Delegado: CLONAR COTIZACIÓN
+        $('#historyTable').on('click', '.btn-clone-quote', function(e) {
+            e.preventDefault();
+            const quoteId = $(this).data('id');
+            const btn = $(this);
+            
+            if (!confirm('¿Desea clonar esta cotización? Los datos actuales del cotizador se sobrescribirán.')) return;
+            
+            btn.prop('disabled', true).text('⏳...');
+
+            SuiteAPI.post('suite_get_quote_details_ajax', { id: quoteId }).then(res => {
+                if (res.success) {
+                    const data = res.data;
+                    
+                    // 1. Inyectar Cliente en el formulario del Cotizador
+                    if (data.cliente) {
+                        const c = data.cliente;
+                        const prefix = c.rif_ci.charAt(0).toUpperCase();
+                        const number = c.rif_ci.substring(1);
+                        
+                        $('#cli-rif-prefix').val(["V","E","J","G","P","C"].includes(prefix) ? prefix : 'V');
+                        $('#cli-rif-number').val(number);
+                        $('#cli-nombre').val(c.nombre_razon);
+                        $('#cli-tel').val(c.telefono);
+                        $('#cli-email').val(c.email);
+                        $('#cli-dir').val(c.direccion);
+                        $('#cli-ciudad').val(c.ciudad);
+                        $('#cli-estado').val(c.estado);
+                        $('#cli-contacto').val(c.contacto_persona);
+                        
+                        // NOTA: No bloqueamos el form (lockClientForm) para permitirle modificarlo si gusta
+                    }
+                    
+                    // 2. Mapear y setear el Carrito (Se usa la API pública de SuiteQuoter)
+                    if (data.items) {
+                        const newCart = data.items.map(item => ({
+                            sku: item.sku,
+                            name: item.producto_nombre,
+                            price: parseFloat(item.precio_unitario_usd),
+                            qty: parseInt(item.cantidad),
+                            time: item.tiempo_entrega || 'Inmediata'
+                        }));
+                        SuiteQuoter.setCart(newCart);
+                    }
+                    
+                    // 3. Redirección visual automática a la Pestaña del Cotizador
+                    const cotizadorBtn = $('.tab-btn:contains("Cotizador")');
+                    if (cotizadorBtn && typeof window.openSuiteTab === 'function') {
+                        window.openSuiteTab('TabPos', cotizadorBtn);
+                    }
+
+                } else {
+                    alert('❌ Error al clonar: ' + (res.data.message || res.data));
+                }
+            }).catch(() => {
+                alert('❌ Ocurrió un error de red al intentar clonar.');
+            }).finally(() => {
+                btn.prop('disabled', false).html('🔄 Clonar');
+            });
+        });
+    };
+
+    return {
+        init: function() {
+            initTable();
+            bindEvents();
+            loadHistory();
+        },
+        refresh: loadHistory
+    };
+})(jQuery);
+--- FIN DEL ARCHIVO: historial.js ---
+
+--- INICIO DEL ARCHIVO: assets/js/modules/quoter.js ---
+/**
+ * SuiteQuoter - Módulo UI del Cotizador y Punto de Venta (POS)
+ * Reconstrucción V11: Mobile-First, RIF Atómico y Carrito Independiente.
+ */
+const SuiteQuoter = (function($) {
+    'use strict';
+
+    let searchTimeout = null;
+    let clientTimeout = null;
+    let localCart = []; // Desacoplado de SuiteState para permitir SKUs duplicados
+    let tasaBCV = 1.00;
+
+    // ==========================================
+    // MÉTODOS PRIVADOS Y DE RENDERIZADO
+    // ==========================================
+
+    const calculateTotals = function() {
+        let totalUSD = 0;
+        localCart.forEach(item => {
+            totalUSD += (parseFloat(item.price) * parseInt(item.qty));
+        });
+        
+        $('#pos-total-usd').text('$' + totalUSD.toFixed(2));
+        $('#pos-total-bs').text('Ref. Bs: ' + (totalUSD * tasaBCV).toFixed(2));
+    };
+
+    const renderCart = function() {
+        const tbody = $('#pos-cart-body');
+        let html = '';
+
+        if (localCart.length === 0) {
+            html = '<div style="text-align: center; color: #94a3b8; padding: 40px 0;">El carrito está vacío. Busque un producto para comenzar.</div>';
+        } else {
+            localCart.forEach((item, index) => {
+                let subtotal = (item.qty * item.price).toFixed(2);
+                
+                // Estructura de Tarjeta (Card) Responsive
+                html += `
+                <div class="pos-cart-item" style="display:flex; flex-wrap:wrap; gap:10px; background:#fff; border:1px solid #cbd5e1; padding:15px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="flex: 1 1 100%; margin-bottom: 5px;">
+                        <strong style="color:#0073aa; font-family:monospace; font-size:14px;">${item.sku}</strong> 
+                        <span style="font-size:14px; color:#1e293b;">${item.name}</span>
+                    </div>
+                    <div style="flex: 1 1 90px;">
+                        <label style="font-size:11px; color:#64748b; display:block; margin-bottom:4px;">Precio ($)</label>
+                        <input type="number" step="0.01" class="widefat cart-input-price" data-index="${index}" value="${item.price}" style="margin:0;">
+                    </div>
+                    <div style="flex: 1 1 70px;">
+                        <label style="font-size:11px; color:#64748b; display:block; margin-bottom:4px;">Cant.</label>
+                        <input type="number" min="1" class="widefat cart-input-qty" data-index="${index}" value="${item.qty}" style="margin:0;">
+                    </div>
+                    <div style="flex: 1 1 120px;">
+                        <label style="font-size:11px; color:#64748b; display:block; margin-bottom:4px;">Tiempo Entrega</label>
+                        <input type="text" class="widefat cart-input-time" data-index="${index}" value="${item.time}" style="margin:0;">
+                    </div>
+                    <div style="flex: 1 1 80px; text-align:right;">
+                        <label style="font-size:11px; color:#64748b; display:block; margin-bottom:4px;">Subtotal</label>
+                        <div style="font-size:15px; font-weight:bold; color:#059669; margin-top:8px;">$${subtotal}</div>
+                    </div>
+                    <div style="flex: 0 0 40px; display:flex; align-items:flex-end; justify-content:center;">
+                        <button type="button" class="btn-modern-action btn-remove-item" data-index="${index}" style="color:#dc2626; border-color:#fca5a5; padding:8px 10px;">🗑️</button>
+                    </div>
+                </div>
+                `;
+            });
+        }
+        
+        tbody.html(html);
+        calculateTotals();
+    };
+
+    /**
+     * Helper para bloquear/desbloquear formulario del cliente
+     */
+    const lockClientForm = function(lock) {
+        if (lock) {
+            $('#cli-form-wrapper input:not(#cli-search-predictive)').prop('readonly', true).css('background-color', '#f1f5f9');
+            $('#cli-rif-prefix').css('pointer-events', 'none').css('background-color', '#f1f5f9');
+            $('#btn-clear-client').fadeIn();
+        } else {
+            $('#cli-form-wrapper input:not(#cli-search-predictive)').prop('readonly', false).css('background-color', '#fff');
+            $('#cli-rif-prefix').css('pointer-events', 'auto').css('background-color', '#fff');
+            $('#btn-clear-client').fadeOut();
+        }
+    };
+
+    // ==========================================
+    // EVENT LISTENERS
+    // ==========================================
+	/**
+     * Automatización API Dolar BCV
+     */
+    const fetchDolarAPI = async function() {
+        try {
+            const response = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
+            const data = await response.json();
+            
+            if (data && data.promedio) {
+                // 1. Actualizar la variable global del carrito
+                tasaBCV = parseFloat(data.promedio);
+                
+                // 2. Actualizar el input visible para el vendedor
+                $('#pos-tasa-bcv').val(tasaBCV.toFixed(4));
+                
+                // 3. Formatear la fecha (DD/MM/YYYY HH:MM)
+                const fecha = new Date(data.fechaActualizacion);
+                const fechaFormat = fecha.toLocaleDateString('es-VE') + ' ' + fecha.toLocaleTimeString('es-VE', {hour: '2-digit', minute:'2-digit'});
+                
+                // 4. Mostrar confirmación visual al vendedor
+                $('#bcv-update-date').text('✅ BCV: ' + fechaFormat).css('color', '#059669');
+                
+                // 5. Recalcular los totales en Bs del carrito
+                calculateTotals();
+            }
+        } catch (error) {
+            console.error('Error conectando a DolarAPI:', error);
+            $('#bcv-update-date').text('❌ Error API. Use tasa manual.').css('color', '#dc2626');
+        }
+    };
+	
+	
+	
+    const bindEvents = function() {
+        
+		// 1. CARACTERÍSTICA: RIF ATÓMICO Y ESTRICTO
+        $('#cli-rif-number').on('input', function() {
+            // Bloquea cualquier carácter que no sea número
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+
+        // 1.5 DETECCIÓN AUTOMÁTICA POR RIF (Auto-carga al perder el foco)
+        $('#cli-rif-number').on('blur', function() {
+            const numeroRif = $(this).val().trim();
+
+            // Validar longitud lógica (mayor a 5 caracteres)
+            if (numeroRif.length <= 5) return;
+
+            // Concatenar prefijo y número para formar el RIF completo en mayúsculas
+            const prefijo = $('#cli-rif-prefix').val();
+            const rifCompleto = (prefijo + numeroRif).toUpperCase();
+
+            // Mostrar un pequeño indicador visual de búsqueda
+            const inputField = $(this);
+            inputField.css('opacity', '0.6');
+
+            // Consultar a la base de datos (API)
+            SuiteAPI.post('suite_search_client_ajax', { term: rifCompleto }).then(res => {
+                if (res.success && res.data && res.data.length > 0) {
+
+                    // Buscar coincidencia EXACTA en los resultados devueltos
+                    const cliente = res.data.find(c => c.rif_ci.toUpperCase() === rifCompleto);
+
+                    if (cliente) {
+                        // Autocompletar campos del formulario
+                        $('#cli-nombre').val(cliente.nombre_razon);
+                        $('#cli-tel').val(cliente.telefono);
+                        $('#cli-email').val(cliente.email);
+                        $('#cli-dir').val(cliente.direccion);
+                        $('#cli-ciudad').val(cliente.ciudad);
+                        $('#cli-estado').val(cliente.estado);
+                        $('#cli-contacto').val(cliente.contacto_persona);
+
+                        // Bloquear formulario para prevenir mutaciones indeseadas
+                        lockClientForm(true);
+
+                        // Limpiar el buscador predictivo por seguridad
+                        $('#cli-search-predictive').val('');
+                        $('#cli-search-results').hide().empty();
+
+                        // Mostrar mensaje de éxito temporal (Feedback sutil)
+                        $('#rif-auto-feedback').remove(); // Limpiar si ya existe
+                        $('<div id="rif-auto-feedback" style="color: #059669; font-size: 12px; margin-top: 5px; font-weight: bold;">✅ Cliente detectado en la base de datos y cargado automáticamente.</div>')
+                            .insertAfter(inputField.parent())
+                            .delay(4000)
+                            .fadeOut(400, function() { $(this).remove(); });
+                    }
+                }
+            }).catch(err => {
+                // Fallo silencioso: Si hay error de red, dejamos que el vendedor siga llenando manual
+                console.warn('Auto-detección de RIF omitida por error de red.', err);
+            }).finally(() => {
+                inputField.css('opacity', '1');
+            });
+        });
+
+        // 2. BUSCADOR PREDICTIVO DE CLIENTES
+        $('#cli-search-predictive').on('keyup', function() {
+            clearTimeout(clientTimeout);
+            let term = $(this).val().trim();
+            let resBox = $('#cli-search-results');
+
+            if (term.length < 3) { resBox.hide().empty(); return; }
+
+            clientTimeout = setTimeout(() => {
+                resBox.show().html('<div style="padding:10px; color:#64748b;">Buscando cliente...</div>');
+                SuiteAPI.post('suite_search_client_ajax', { term: term }).then(res => {
+                    if (res.success && res.data.length > 0) {
+                        let html = '';
+                        res.data.forEach(c => {
+                            // Guardamos la data cruda en base64 para evitar rupturas de comillas
+                            const safeData = btoa(unescape(encodeURIComponent(JSON.stringify(c))));
+                            html += `<div class="pos-item-result cli-result-item" data-client="${safeData}" style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;">
+                                        <div class="prod-info"><strong>${c.rif_ci}</strong> ${c.nombre_razon}</div>
+                                     </div>`;
+                        });
+                        resBox.html(html);
+                    } else {
+                        resBox.html('<div style="padding:10px; color:#64748b;">No se encontraron coincidencias.</div>');
+                    }
+                });
+            }, 400);
+        });
+
+        // 3. SELECCIONAR CLIENTE (Auto-completar y Bloquear)
+        $(document).on('click', '.cli-result-item', function() {
+            const rawData = $(this).data('client');
+            const c = JSON.parse(decodeURIComponent(escape(atob(rawData))));
+            
+            // Separar RIF Atómico
+            const prefix = c.rif_ci.charAt(0).toUpperCase();
+            const number = c.rif_ci.substring(1);
+            
+            // Validar que el prefijo exista en el select, si no, fallback a 'V'
+            if (["V","E","J","G","P","C"].includes(prefix)) {
+                $('#cli-rif-prefix').val(prefix);
+            } else {
+                $('#cli-rif-prefix').val('V');
+            }
+            
+            $('#cli-rif-number').val(number);
+            $('#cli-nombre').val(c.nombre_razon);
+            $('#cli-tel').val(c.telefono);
+            $('#cli-email').val(c.email);
+            $('#cli-dir').val(c.direccion);
+            $('#cli-ciudad').val(c.ciudad);
+            $('#cli-estado').val(c.estado);
+            $('#cli-contacto').val(c.contacto_persona);
+
+            // Bloquear formulario y limpiar buscador
+            lockClientForm(true);
+            $('#cli-search-predictive').val('');
+            $('#cli-search-results').hide().empty();
+        });
+
+        // 4. LIMPIAR CLIENTE (Desbloquear)
+        $('#btn-clear-client').on('click', function() {
+            $('#cli-form-wrapper input:not(#cli-search-predictive)').val('');
+            $('#cli-rif-prefix').val('J');
+            lockClientForm(false);
+        });
+
+        // 5. BUSCADOR PREDICTIVO DE PRODUCTOS (Con Placeholders de CSV)
+        $('#pos-product-search').on('keyup', function() {
+            clearTimeout(searchTimeout);
+            let term = $(this).val().trim();
+            let resultsBox = $('#pos-search-results');
+
+            if (term.length < 3) { resultsBox.hide().empty(); return; }
+
+            searchTimeout = setTimeout(() => {
+                resultsBox.show().html('<div style="padding:10px; color:#64748b;">Buscando catálogo...</div>');
+                
+                SuiteAPI.post('suite_search_pos', { term: term }).then(res => {
+                    if (res.success && res.data.length > 0) {
+                        let listHTML = '';
+                        res.data.forEach(prod => {
+                            // Placeholders requeridos (Se nutren del Data Lake / CSV a futuro)
+                            let dispGaleria = prod.stock_gale !== undefined ? prod.stock_gale : 'N/D';
+                            let stockTotal = prod.stock_total !== undefined ? prod.stock_total : dispGaleria; 
+                            
+                            listHTML += `
+                            <div class="pos-item-result search-result-item" 
+                                 data-sku="${prod.sku}" data-name="${prod.nombre}" data-price="${prod.precio}" style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+                                <div class="prod-info">
+                                    <strong>${prod.sku}</strong> ${prod.nombre} 
+                                    <div style="font-size:11px; color:#64748b; margin-top:4px;">
+                                        📦 Disp. Galerías: <strong>${dispGaleria}</strong> | Total: <strong>${stockTotal}</strong>
+                                    </div>
+                                </div>
+                                <div class="prod-price" style="font-weight:bold; color:#059669;">$${prod.precio}</div>
+                            </div>`;
+                        });
+                        resultsBox.html(listHTML);
+                    } else {
+                        resultsBox.html('<div style="padding: 10px;">No se encontraron productos.</div>');
+                    }
+                }).catch(() => {
+                    resultsBox.html('<div style="padding: 10px; color: #dc2626;">❌ Error de conexión al buscar. Intente nuevamente.</div>');
+                });
+            }, 400);
+        });
+
+        // 6. AGREGAR AL CARRITO (Permite duplicados directos)
+        $(document).on('click', '.search-result-item', function() {
+            let el = $(this);
+            localCart.push({
+                sku: el.data('sku'),
+                name: el.data('name'),
+                price: parseFloat(el.data('price')),
+                qty: 1,
+                time: 'Inmediata'
+            });
+
+            $('#pos-product-search').val('');
+            $('#pos-search-results').hide().empty();
+            renderCart();
+        });
+
+        // 7. AGREGAR ÍTEM MANUAL
+        $('#btn-add-manual-item').on('click', function(e) {
+            e.preventDefault();
+            let desc = prompt("Ingrese la descripción del producto manual:");
+            if (!desc) return;
+            let price = prompt("Ingrese el Precio Unitario ($):");
+            if (!price || isNaN(parseFloat(price))) return alert("Precio inválido.");
+
+            localCart.push({
+                sku: 'MANUAL',
+                name: desc.trim(),
+                price: parseFloat(price),
+                qty: 1,
+                time: 'Inmediata'
+            });
+            renderCart();
+        });
+
+        // 8. DELEGACIÓN DE EVENTOS DEL CARRITO (Edición en vivo)
+        $('#pos-cart-body').on('change input', '.cart-input-qty', function() {
+            let idx = $(this).data('index');
+            localCart[idx].qty = Math.max(1, parseInt($(this).val()) || 1);
+            renderCart();
+        });
+
+        $('#pos-cart-body').on('change', '.cart-input-price', function() {
+            let idx = $(this).data('index');
+            localCart[idx].price = Math.max(0, parseFloat($(this).val()) || 0);
+            renderCart();
+        });
+
+        $('#pos-cart-body').on('change input', '.cart-input-time', function() {
+            let idx = $(this).data('index');
+            localCart[idx].time = $(this).val().trim();
+        });
+
+        $('#pos-cart-body').on('click', '.btn-remove-item', function() {
+            let idx = $(this).data('index');
+            localCart.splice(idx, 1);
+            renderCart();
+        });
+
+        // 9. EVENTO DE GUARDADO (Punto Crítico Financiero)
+        $('#btn-save-quote').on('click', function(e) {
+            e.preventDefault();
+
+            if (localCart.length === 0) return alert('⚠️ No puede guardar una cotización vacía.');
+
+            const numRif = $('#cli-rif-number').val().trim();
+            if (!numRif) return alert('⚠️ El número de RIF/CI es obligatorio.');
+
+            // Ensamblaje del RIF Atómico
+            const finalRif = $('#cli-rif-prefix').val() + numRif;
+            const finalName = $('#cli-nombre').val().trim();
+
+            if (!finalName) return alert('⚠️ La Razón Social es obligatoria.');
+
+            const btn = $(this);
+            btn.prop('disabled', true).text('Procesando...');
+
+            const payload = {
+                rif: finalRif,
+                nombre: finalName,
+                direccion: $('#cli-dir').val().trim(),
+                telefono: $('#cli-tel').val().trim(),
+                email: $('#cli-email').val().trim(),
+                ciudad: $('#cli-ciudad').val().trim(),
+                estado: $('#cli-estado').val().trim(),
+                contacto: $('#cli-contacto').val().trim(),
+                notas: '', // Si se desea habilitar, agregar input
+                items: localCart,
+                moneda: $('#pos-moneda').val(),
+                tasa: tasaBCV,
+                validez: $('#pos-validez').val() || 5
+            };
+
+            SuiteAPI.post('suite_save_quote_crm', payload).then(res => {
+                if (res.success) {
+                    alert('✅ Cotización generada con éxito. Código: ' + res.data.id);
+                    // Abrir PDF usando el ID interno + Nonce CSRF estricto
+                    window.open(suite_vars.ajax_url + '?action=suite_print_quote&id=' + res.data.internal_id + '&nonce=' + suite_vars.nonce, '_blank');
+                    
+                    // Resetear Interfaz
+                    localCart = [];
+                    renderCart();
+                    $('#btn-clear-client').click(); // Limpia y desbloquea el formulario
+                } else {
+                    alert('❌ Error: ' + (res.data.message || res.data));
+                }
+            }).catch(() => {
+                alert('❌ Error crítico de conexión al generar la cotización.');
+            }).finally(() => {
+                btn.prop('disabled', false).text('💾 Guardar Cotización');
+            });
+        });
+    };
+
+	// ==========================================
+    // API PÚBLICA
+    // ==========================================
+    return {
+        init: function() {
+            let initialTasa = parseFloat($('#pos-tasa-bcv').val());
+            if (initialTasa && !isNaN(initialTasa)) {
+                tasaBCV = initialTasa;
+            }
+            
+            // Listener: Recalcular totales si el vendedor cambia la tasa BCV manualmente
+            $('#pos-tasa-bcv').on('input change', function() {
+                let nuevaTasa = parseFloat($(this).val());
+                if (nuevaTasa > 0) {
+                    tasaBCV = nuevaTasa;
+                    calculateTotals();
+                }
+            });
+
+            bindEvents();
+            renderCart();
+            
+            // ¡Disparar el robot del BCV al abrir la pantalla!
+            fetchDolarAPI();
+        },
+        // Expuesto por si se requiere clonar o vaciar desde afuera
+        setCart: function(newCart) { 
+            localCart = newCart; 
+            renderCart(); 
+        }
+    };
+
+})(jQuery);
+--- FIN DEL ARCHIVO: quoter.js ---
+
+--- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-quotes.php ---
+<?php
+/**
+ * Controlador AJAX: Cotizador y Venta (Módulo 2: Seguridad Aplicada)
+ *
+ * Contiene los manejadores para guardar cotizaciones, consultar el historial 
+ * y cambiar estados (con candado de inmutabilidad y protección IDOR).
+ *
+ * @package SuiteEmpleados\Controllers\Ajax
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+/**
+ * 1. Endpoint para Guardar Cotizaciones y Actualizar Clientes
+ */
+class Suite_Ajax_Quote_Save extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_save_quote_crm'; 
+    protected $required_capability = 'read';
+
+    protected function process() {
+        // 1. Recibir datos del frontend
+        $client_data = [
+			'vendedor_id'      => get_current_user_id(),
+            'rif_ci'           => isset( $_POST['rif'] ) ? $_POST['rif'] : '',
+            'nombre_razon'     => sanitize_text_field( $_POST['nombre'] ),
+            'direccion'        => sanitize_textarea_field( $_POST['direccion'] ),
+            'telefono'         => sanitize_text_field( $_POST['telefono'] ),
+            'email'            => sanitize_email( $_POST['email'] ),
+            'ciudad'           => sanitize_text_field( $_POST['ciudad'] ),
+            'estado'           => sanitize_text_field( $_POST['estado'] ),
+            'contacto_persona' => sanitize_text_field( $_POST['contacto'] ),
+            'notas'            => sanitize_textarea_field( $_POST['notas'] )
+        ];
+
+        // 2. MODO ACTUALIZACIÓN DE PERFIL
+        $is_update_only = isset( $_POST['is_update_only'] ) && $_POST['is_update_only'] == 'true';
+        if ( $is_update_only ) {
+            $client_id = isset( $_POST['id'] ) ? intval( $_POST['id'] ) : 0;
+            if ( $client_id > 0 ) {
+                $client_model = new Suite_Model_Client();
+                $client_model->update( $client_id, $client_data );
+                $this->send_success( [ 'message' => 'Perfil actualizado correctamente.' ] );
+            }
+            $this->send_error( 'ID de cliente inválido.' );
+            return;
+        }
+
+        // 3. MODO CREAR COTIZACIÓN
+        $items = isset( $_POST['items'] ) && is_array( $_POST['items'] ) ? $_POST['items'] : [];
+        if ( empty( $items ) ) {
+            $this->send_error( 'El carrito no puede estar vacío.' );
+        }
+
+        // MÓDULO 2: SEGURIDAD - CONTROL DE PRECIOS MÍNIMOS (MIDDLEWARE OPTIMIZADO N+1)
+        global $wpdb;
+        $tabla_inv = $wpdb->prefix . 'suite_inventario_cache';
+        $is_admin = current_user_can( 'manage_options' );
+
+        // Si es admin, nos saltamos la validación en BD para ahorrar recursos
+        if ( ! $is_admin && ! empty( $items ) ) {
+            $skus_a_verificar = [];
+            foreach ( $items as $item ) {
+                $sku = sanitize_text_field( $item['sku'] );
+                if ( ! in_array( strtoupper( $sku ), ['MANUAL', 'GENERICO'] ) ) {
+                    $skus_a_verificar[] = $sku;
+                }
+            }
+
+            if ( ! empty( $skus_a_verificar ) ) {
+                // 1. Pre-cargar precios permitidos con un solo query (IN)
+                $placeholders = implode( ',', array_fill( 0, count( $skus_a_verificar ), '%s' ) );
+                $sql_precios = $wpdb->prepare( "SELECT sku, precio_venta AS precio FROM {$tabla_inv} WHERE sku IN ($placeholders)", ...$skus_a_verificar );
+                // Usamos OBJECT_K para que el array resultante tenga los SKUs como llaves
+                $resultados_precios = $wpdb->get_results( $sql_precios, OBJECT_K );
+
+                // 2. Validar precios en memoria
+                foreach ( $items as $item ) {
+                    $sku = strtoupper( sanitize_text_field( $item['sku'] ) );
+
+                    if ( isset( $resultados_precios[$sku] ) ) {
+                        $minimum_price = floatval( $resultados_precios[$sku]->precio );
+                        $selling_price = floatval( $item['price'] );
+
+                        if ( $selling_price < $minimum_price ) {
+                            $precio_fmt = number_format( $minimum_price, 2 );
+                            $this->send_error( "El precio del producto '{$item['name']}' ({$sku}) está por debajo del mínimo permitido (\${$precio_fmt}). Requiere autorización de un supervisor.", 403 );
+                        }
+                    }
+                }
+            }
+        }
+
+        $meta = [
+            'vendedor_id' => get_current_user_id(),
+            'tasa'        => floatval( $_POST['tasa'] ),
+            'validez'     => intval( $_POST['validez'] ),
+            'moneda'      => sanitize_text_field( $_POST['moneda'] )
+        ];
+
+        // 4. Instanciar Modelo y Guardar
+        $quote_model = new Suite_Model_Quote();
+        $result = $quote_model->create_quote( $client_data, $items, $meta );
+
+        if ( is_wp_error( $result ) ) {
+            $this->send_error( $result->get_error_message(), 500 );
+        }
+
+        $this->send_success( $result );
+    }
+}
+
+/**
+ * 2. Endpoint para Listar el Historial de Cotizaciones
+ */
+class Suite_Ajax_Quote_History extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_get_history_ajax';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        $user_id = get_current_user_id();
+        $user = wp_get_current_user();
+        
+        $is_admin = current_user_can( 'manage_options' );
+        $is_logistica = in_array( 'suite_logistica', (array) $user->roles );
+        $tiene_acceso_global = ( $is_admin || $is_logistica );
+
+        $quote_model = new Suite_Model_Quote();
+        $history = $quote_model->get_vendor_history( $user_id, 500, $tiene_acceso_global );
+
+        foreach ( $history as $r ) {
+            $r->fecha_fmt = date( 'd/m/Y', strtotime( $r->fecha_emision ) );
+			$r->fecha_cruda = strtotime( $r->fecha_emision );
+            $r->total_fmt = number_format( floatval( $r->total_usd ), 2 );
+            $r->cliente_nombre = empty( $r->cliente_nombre ) ? 'N/A' : esc_html( $r->cliente_nombre );
+
+            $raw_tel = isset( $r->cliente_telefono ) ? $r->cliente_telefono : '';
+            $wa_phone = preg_replace( '/[^0-9]/', '', $raw_tel );
+            
+            if ( strlen( $wa_phone ) === 11 && strpos( $wa_phone, '0' ) === 0 ) {
+                $wa_phone = '58' . substr( $wa_phone, 1 );
+            } elseif ( strlen( $wa_phone ) === 10 ) {
+                $wa_phone = '58' . $wa_phone;
+            }
+            $r->wa_phone = $wa_phone;
+
+            if ( empty( $r->estado ) ) {
+                $r->estado = 'emitida';
+            }
+            $r->can_change_status = $tiene_acceso_global;
+        }
+
+        $this->send_success( $history );
+    }
+}
+
+/**
+ * 3. Endpoint para Cambiar el Estado de una Cotización (Manual / Kanban)
+ * Modificado para Módulo 4: Recibe comprobantes y dispara comisiones.
+ */
+class Suite_Ajax_Quote_Status extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_change_status_ajax'; 
+    protected $required_capability = 'read';
+
+    protected function process() {
+        $quote_id   = isset( $_POST['id'] ) ? intval( $_POST['id'] ) : 0;
+        $new_status = isset( $_POST['estado'] ) ? strtolower( sanitize_text_field( $_POST['estado'] ) ) : '';
+
+        if ( ! $quote_id || empty( $new_status ) ) {
+            $this->send_error( 'Datos insuficientes para cambiar el estado.' );
+        }
+
+        $quote_model = new Suite_Model_Quote();
+        $current_order = $quote_model->get( $quote_id );
+
+        if ( ! $current_order ) {
+            $this->send_error( 'La cotización no existe.', 404 );
+        }
+
+        $is_admin = current_user_can( 'manage_options' );
+
+        // 1. SEGURIDAD: PREVENCIÓN DE IDOR
+        $user = wp_get_current_user();
+        $is_admin = current_user_can( 'manage_options' );
+        $is_logistica = in_array( 'suite_logistica', (array) $user->roles );
+        $is_owner = ( intval( $current_order->vendedor_id ) === get_current_user_id() );
+
+        // 1. SEGURIDAD: PREVENCIÓN DE IDOR (Con Bypass para Logística)
+        if ( ! $is_admin && ! $is_owner ) {
+            // Permitir SOLO si es Logística y está intentando mover a 'despachado'
+            if ( ! ( $is_logistica && $new_status === 'despachado' ) ) {
+                if ( function_exists('suite_record_log') ) {
+                    suite_record_log( 'violacion_idor', "Usuario " . get_current_user_id() . " intentó modificar el pedido #{$quote_id}." );
+                }
+                $this->send_error( 'Acceso Denegado: No tiene permisos para modificar un pedido que no le pertenece.', 403 );
+            }
+        }
+
+        $current_status = strtolower( $current_order->estado );
+        $protected_statuses = [ 'pagado', 'despachado' ];
+
+        // 2. CANDADO DE INMUTABILIDAD
+        if ( in_array( $current_status, $protected_statuses ) && ! $is_admin ) {
+            $this->send_error( 'Candado de Inmutabilidad 🔒: Este pedido ya ha sido procesado y no puede ser modificado.', 403 );
+        }
+		
+        // --- INICIO INYECCIÓN: EVENTO DE LOGÍSTICA INVERSA ---
+        if ( $current_status === 'despachado' && $new_status === 'proceso' ) {
+            // Re-verificación estricta (Zero-Trust)
+            if ( ! current_user_can( 'manage_options' ) ) {
+                $this->send_error( 'Acceso Denegado. Solo el Administrador puede aplicar Logística Inversa.', 403 );
+            }
+            // Registro obligatorio en el historial
+            if ( function_exists('suite_record_log') ) {
+                suite_record_log( 'logistica_inversa', "Logística Inversa: El Administrador (ID: " . get_current_user_id() . ") revirtió el pedido #{$quote_id} de 'despachado' a 'proceso'." );
+            }
+
+            // --- NUEVO: REVERSO CONTABLE EN EL LEDGER ---
+            $commission_model = new Suite_Model_Commission();
+            $commission_model->reverse_commission( $quote_id );
+
+            // Nota de Arquitectura: Si el módulo descuenta inventario físico al llegar a 'despachado',
+            // este es el punto exacto para invocar una función que restaure dicho stock.
+        }
+        // --- FIN INYECCIÓN ---
+
+		// CORRECCIÓN 1: Se agregó 'por_enviar' al array de estados válidos
+        $estados_validos = ['emitida', 'proceso', 'pagado', 'por_enviar', 'anulado', 'despachado'];
+        if ( ! in_array( $new_status, $estados_validos ) ) {
+            $this->send_error( 'Estado no válido.', 400 );
+        }
+
+        // 3. MÓDULO 4: CAPTURAR DATOS DE CIERRE DE VENTA
+        if ( $new_status === 'pagado' ) {
+            $recibo = isset($_POST['recibo_loyverse']) ? sanitize_text_field($_POST['recibo_loyverse']) : '';
+            
+            // CORRECCIÓN 2: Validar Unicidad del Recibo en la Base de Datos
+            if ( ! empty( $recibo ) ) {
+                global $wpdb;
+                $tabla_cot = $wpdb->prefix . 'suite_cotizaciones';
+                
+                // Buscamos si el recibo ya existe en OTRO pedido distinto al que estamos procesando
+                $existe = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$tabla_cot} WHERE recibo_loyverse = %s AND id != %d", $recibo, $quote_id ) );
+                
+                if ( $existe ) {
+                    $this->send_error( 'El número de recibo o factura (' . esc_html($recibo) . ') ya está asignado al pedido #' . $existe . '. No se permiten duplicados.', 400 );
+                    return; // Detenemos la ejecución inmediatamente
+                }
+            }
+
+            $extra_data = [
+                'canal_venta'      => isset($_POST['canal_venta']) ? sanitize_text_field($_POST['canal_venta']) : '',
+                'metodo_pago'      => isset($_POST['metodo_pago']) ? sanitize_text_field($_POST['metodo_pago']) : '',
+                'metodo_entrega'   => isset($_POST['metodo_entrega']) ? sanitize_text_field($_POST['metodo_entrega']) : '',
+                'url_captura_pago' => isset($_POST['url_captura']) ? esc_url_raw($_POST['url_captura']) : '',
+                'recibo_loyverse'  => $recibo,
+            ];
+            $quote_model->update( $quote_id, $extra_data );
+        }
+
+        // 4. CAMBIAR ESTADO
+        $result = $quote_model->update_order_status( $quote_id, $new_status );
+
+        if ( is_wp_error( $result ) ) {
+            $this->send_error( $result->get_error_message(), 500 );
+        }
+
+        if ( $result ) {
+			
+			// 5. -----------------------------------------------------------------
+            // INCISIÓN D (FASE 5.3) - MOTOR FINANCIERO Y LEDGER ZERO-TRUST
+            // -----------------------------------------------------------------
+            if ( $new_status === 'pagado' && $current_status !== 'pagado' ) {
+                global $wpdb;
+
+                // 1. Extracción segura del monto base desde la BD para precisión decimal
+                $cotizacion = $wpdb->get_row( $wpdb->prepare( 
+                    "SELECT total_usd, vendedor_id FROM {$wpdb->prefix}suite_cotizaciones WHERE id = %d", 
+                    $quote_id 
+                ) );
+
+                if ( $cotizacion ) {
+                    $monto_base_usd = floatval( $cotizacion->total_usd );
+                    $vendedor_id    = intval( $cotizacion->vendedor_id );
+
+                    // 2. Detección de Identidad B2B
+                    $is_b2b = get_user_meta( $vendedor_id, 'suite_is_b2b', true ) === '1';
+                    
+                    if ( $is_b2b ) {
+                        // =========================================================
+                        // RUTA A: FLUJO ALIADO COMERCIAL (B2B) - COMISIÓN MANUAL
+                        // =========================================================
+                        $porcentaje_b2b = isset( $_POST['porcentaje_b2b'] ) ? floatval( $_POST['porcentaje_b2b'] ) : 0;
+
+                        if ( $porcentaje_b2b <= 0 ) {
+                            $this->send_error( 'Las órdenes de Aliados B2B requieren un porcentaje de comisión válido mayor a 0.' );
+                        }
+
+                        // Cálculo exacto de la comisión inyectada desde el modal
+                        $comision_usd = ($monto_base_usd * $porcentaje_b2b) / 100;
+
+                        $wpdb->insert(
+                            $wpdb->prefix . 'suite_comisiones_ledger',
+                            [
+                                'quote_id'            => $quote_id,
+                                'vendedor_id'         => $vendedor_id,
+                                'monto_base_usd'      => $monto_base_usd,
+                                'comision_ganada_usd' => $comision_usd,
+                                'estado_pago'         => 'pendiente',
+                                'notas'               => "Comisión Aliado B2B ({$porcentaje_b2b}%)"
+                            ],
+                            [ '%d', '%d', '%f', '%f', '%s', '%s' ]
+                        );
+
+                    } else {
+                        // =========================================================
+                        // RUTA B: FLUJO ESTÁNDAR EMPLEADOS - COMISIÓN AUTOMÁTICA
+                        // =========================================================
+                        if ( class_exists( 'Suite_Model_Commission' ) ) {
+                            $commission_model = new Suite_Model_Commission();
+                            
+                            // Mantener soporte para Venta Compartida (Colaboradores)
+                            $colaboradores_raw = isset( $_POST['colaboradores'] ) ? $_POST['colaboradores'] : [];
+                            $colaboradores_clean = is_array( $colaboradores_raw ) ? array_map( 'intval', $colaboradores_raw ) : [];
+                        }
+                    }
+                }
+            }
+            // -----------------------------------------------------------------
+            // FIN DE LA INCISIÓN D
+            // -----------------------------------------------------------------
+
+            $this->send_success( [ 'message' => 'Estado actualizado a ' . strtoupper( $new_status ) ] );
+        } else {
+            $this->send_error( 'Error al actualizar la base de datos o el estado ya era el mismo.' );
+        }
+    }
+}
+
+
+/**
+ * Endpoint para Imprimir Cotización en PDF/HTML (Sustituye a mod-impresion.php)
+ */
+class Suite_Ajax_Print_Quote extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_print_quote';
+    protected $required_capability = 'read';
+
+    public function handle_request() {
+        if ( ! isset( $_GET['nonce'] ) || ! wp_verify_nonce( $_GET['nonce'], 'suite_quote_nonce' ) ) {
+            wp_die( 'Enlace caducado o inválido por seguridad (CSRF).', 'Acceso Denegado', [ 'response' => 403 ] );
+        }
+        $this->process();
+    }
+
+    protected function process() {
+        if ( ! current_user_can( 'read' ) ) {
+            wp_die( 'Privilegios insuficientes.', 'Acceso Denegado', [ 'response' => 403 ] );
+        }
+
+        global $wpdb;
+        $id = isset( $_GET['id'] ) ? intval( $_GET['id'] ) : 0;
+
+        // 1. OBTENER DATOS PRINCIPALES
+        $cot = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_cotizaciones WHERE id = %d", $id ) );
+        if ( ! $cot ) wp_die( 'Cotización no encontrada.', 'Error', [ 'response' => 404 ] );
+
+        $items = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_cotizaciones_items WHERE cotizacion_id = %d", $id ) );
+
+        // 2. OBTENER DATOS EXTENDIDOS DEL CLIENTE
+        $cliente_extra = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_clientes WHERE id = %d", $cot->cliente_id ) );
+
+        // 3. DATOS VENDEDOR
+        $vendedor = get_userdata( $cot->vendedor_id );
+        $vendedor_nombre = $vendedor ? $vendedor->display_name : 'Equipo de Ventas';
+        $tel_db = get_user_meta($cot->vendedor_id, 'suite_telefono', true);
+        $vendedor_telefono = !empty($tel_db) ? $tel_db : "+58 424-844-2132";
+
+        // 4. LÓGICA DE MONEDA (USD vs BS)
+        $es_bolivares = ( $cot->moneda === 'BS' );
+        $simbolo = $es_bolivares ? 'Bs.' : '$';
+        $tasa_calc = $es_bolivares ? floatval( $cot->tasa_bcv ) : 1;
+
+        // 5. CÁLCULOS TOTALES
+        $subtotal_base = floatval( $cot->total_usd ) * $tasa_calc;
+        $descuento = 0; 
+        $base_imponible = $subtotal_base - $descuento;
+        $iva_pct = 0.16;
+        $monto_iva = $base_imponible * $iva_pct;
+        $total_final = $base_imponible + $monto_iva;
+
+        // Formateo
+        $subtotal_fmt = number_format( $subtotal_base, 2 );
+        $iva_fmt = number_format( $monto_iva, 2 );
+        $total_fmt = number_format( $total_final, 2 );
+
+        // LÓGICA DE LIMPIEZA DE DATOS
+        $validar_dato = function($val) {
+            return (!empty($val) && $val !== 'N/A' && $val !== 'N/D');
+        };
+
+        $show_dir = $validar_dato($cot->direccion_entrega) ? $cot->direccion_entrega : false;
+        
+        $ciudad_raw = isset($cliente_extra->ciudad) ? $cliente_extra->ciudad : '';
+        $estado_raw = isset($cliente_extra->estado) ? $cliente_extra->estado : '';
+        $show_ubicacion = trim("$ciudad_raw $estado_raw");
+        if(!$validar_dato($show_ubicacion)) $show_ubicacion = false;
+
+        $show_atencion = (isset($cliente_extra->contacto_persona) && $validar_dato($cliente_extra->contacto_persona)) ? $cliente_extra->contacto_persona : false;
+        $tel_raw = (isset($cliente_extra->telefono) && $validar_dato($cliente_extra->telefono)) ? "Telf: " . $cliente_extra->telefono : '';
+        $email_raw = (isset($cliente_extra->email) && $validar_dato($cliente_extra->email)) ? "Email: " . $cliente_extra->email : '';
+        $show_contacto = trim("$tel_raw $email_raw");
+        
+        if(empty($tel_raw) && empty($email_raw)) $show_contacto = false;
+
+		// --- INICIO HTML ---
+        ?>
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <title>Cotización #<?php echo esc_attr( $cot->codigo_cotizacion ); ?></title>
+            <style>
+                /* REGLAS MAESTRAS DE IMPRESIÓN Y COLORES */
+                * {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                    color-adjust: exact !important;
+                }
+                @media print {
+                    @page { margin: 1cm; size: letter portrait; }
+                    body { margin: 0; padding: 0; }
+                }
+                
+                /* TIPOGRAFÍA ÚNICA Y GLOBAL */
+                body { 
+                    font-family: Arial, Helvetica, sans-serif; 
+                    padding: 30px; 
+                    color: #555555; 
+                    font-size: 12px; 
+                    margin: 0;
+                }
+                
+                /* CLASES DE COLORES ESPECÍFICAS */
+                .text-gray { color: #555555 !important; }
+                .text-black-bold { color: #000000 !important; font-weight: bold !important; }
+                .text-red-bold { color: #d0121b !important; font-weight: bold !important; }
+                .bg-red-unit { background-color: #d0121b !important; color: #ffffff !important; }
+                
+                /* SEPARADORES */
+                .separator-red { border: none; border-top: 2px solid #d0121b; margin: 15px 0; }
+                .separator-light { border: none; border-top: 1px solid #e5e7eb; margin: 8px 0 12px 0; }
+                .separator-elegant { border: none; border-top: 1px solid #d1d5db; margin: 18px 0; }
+                
+                /* =========================================
+                   ENCABEZADO: LOGO (IZQ) / COTIZACIÓN (DER) 
+                   ========================================= */
+                .header-table { width: 100%; border-collapse: collapse; margin-bottom: 5px; }
+                .header-table td { vertical-align: top; }
+                
+                /* IZQUIERDA: LOGO Y EMPRESA */
+                .header-left { width: 55%; padding-right: 20px; text-align: left; }
+                .empresa-info-container img { height: 60px; margin-bottom: 8px; }
+                .empresa-info { font-size: 11px; line-height: 1.4; }
+                
+                /* DERECHA: COTIZACIÓN */
+                .header-right { width: 45%; text-align: right; }
+                .cotizacion-title { 
+                    margin: 0 0 5px 0; 
+                    font-size: 18px; /* Elegante y proporcionado */
+                    letter-spacing: 2px; 
+                    font-weight: bold;
+                    color: #000;
+					text-align: left;
+                }
+                .separator-header-right { border-bottom: 1px solid #d1d5db; margin: 5px 0 10px auto; width: 100%; }
+                
+                .cotizacion-datos { border-collapse: collapse; font-size: 12px; text-align: left; width: 100%; }
+                .cotizacion-datos td { padding: 3px 0; }
+                .cotizacion-datos td:first-child { width: 80px; } 
+                
+                /* =========================================
+                   DATOS DEL CLIENTE
+                   ========================================= */
+                .client-box { 
+                    border: 1px solid #d1d5db; 
+                    padding: 15px; 
+                    border-radius: 8px; /* Esquinas curvas */
+                    margin-bottom: 25px; /* Espaciado antes de la tabla */
+                }
+                .client-title { font-size: 13px; margin: 0; }
+                .client-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+                .client-table td { padding: 5px 0; vertical-align: top; border: none; }
+                
+                /* =========================================
+                   TABLA DE PRODUCTOS
+                   ========================================= */
+                .products-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 5px; }
+                /* Alineación forzada a la izquierda */
+                .products-table th, .products-table td { padding: 8px; text-align: left !important; }
+                .products-table th { font-weight: bold; border: 1px solid #d0121b; } 
+                .products-table td { border-bottom: 1px solid #f3f4f6; } 
+                
+                /* =========================================
+                   TOTALES Y FOOTER
+                   ========================================= */
+                .totales-table { width: 280px; float: right; border-collapse: collapse; font-size: 12px; }
+                .totales-table td { padding: 6px 10px; text-align: left; border: none; }
+                .totales-table td:last-child { text-align: right; }
+                
+                /* Fila del Gran Total */
+                .grand-total td { 
+                    font-size: 16px !important; 
+                    font-weight: bold !important; 
+                    color: #d0121b !important; 
+                    border-top: 1.5px solid #d0121b !important; /* Separador rojo del IVA al Total */
+                    padding-top: 10px;
+                    margin-top: 5px;
+                }
+                
+                .footer { text-align: center; font-style: italic; font-size: 12px; clear: both; width: 100%; padding-top: 5px; }
+            </style>
+        </head>
+        <body onload="window.print()">
+            
+            <table class="header-table">
+                <tr>
+                    <td class="header-left">
+                        <div class="empresa-info-container">
+                            <img src="https://mitiendaunit.com/wp-content/uploads/2025/09/LOGO-UNI-T-RENOVADO_Mesa-de-trabajo-1-2.png" alt="UNI-T">
+                            <div class="empresa-info text-gray">
+                                <strong class="text-black-bold">UNI-T VENEZUELA, C.A.</strong><br>
+                                C.C. Galerias Avila, nivel Feria, Local F67<br>
+                                Caracas, 1010, Venezuela.<br>
+                                R.I.F.: J-50174299-5<br>
+                                Web: www.mitiendaunit.com
+                            </div>
+                        </div>
+                    </td>
+
+                    <td class="header-right">
+                        <h2 class="cotizacion-title">COTIZACIÓN</h2>
+                        <div class="separator-header-right"></div>
+                        <table class="cotizacion-datos">
+                            <tr>
+                                <td class="text-black-bold">N°:</td>
+                                <td class="text-red-bold">#<?php echo esc_html( $cot->codigo_cotizacion ); ?></td>
+                            </tr>
+                            <tr>
+                                <td class="text-black-bold">Fecha:</td>
+                                <td class="text-gray"><?php echo date( 'd/m/Y', strtotime( $cot->fecha_emision ) ); ?></td>
+                            </tr>
+                            <tr>
+                                <td class="text-black-bold">Validez:</td>
+                                <td class="text-gray"><?php echo esc_html( $cot->validez_dias ); ?> Días</td>
+                            </tr>
+                            <tr>
+                                <td class="text-black-bold">Vendedor:</td>
+                                <td class="text-gray"><?php echo esc_html( $vendedor_nombre ); ?></td>
+                            </tr>
+                            <tr>
+                                <td class="text-black-bold">Teléfono:</td>
+                                <td class="text-gray"><?php echo esc_html( $vendedor_telefono ); ?></td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+
+            <hr class="separator-red">
+
+            <div class="client-box">
+                <div class="client-title text-red-bold">DATOS DEL CLIENTE</div>
+                <hr class="separator-light">
+                <table class="client-table">
+                    <tr>
+                        <td style="width: 50%;">
+                            <strong class="text-black-bold">RAZÓN SOCIAL:</strong> 
+                            <span class="text-black-bold"><?php echo esc_html( mb_strtoupper( $cot->cliente_nombre, 'UTF-8' ) ); ?></span>
+                        </td>
+                        <td style="width: 50%;">
+                            <strong class="text-black-bold">RIF/CI:</strong> 
+                            <span class="text-gray"><?php echo esc_html( mb_strtoupper( $cot->cliente_rif, 'UTF-8' ) ); ?></span>
+                        </td>
+                    </tr>
+                    <?php if ( $show_dir || $show_ubicacion ): ?>
+                    <tr>
+                        <?php if ( $show_dir ): ?>
+                            <td <?php echo !$show_ubicacion ? 'colspan="2"' : ''; ?>>
+                                <strong class="text-black-bold">DIRECCIÓN:</strong> 
+                                <span class="text-gray"><?php echo esc_html( mb_strtoupper( $show_dir, 'UTF-8' ) ); ?></span>
+                            </td>
+                        <?php endif; ?>
+                        <?php if ( $show_ubicacion ): ?>
+                            <td <?php echo !$show_dir ? 'colspan="2"' : ''; ?>>
+                                <strong class="text-black-bold">CIUDAD/ESTADO:</strong> 
+                                <span class="text-gray"><?php echo esc_html( mb_strtoupper( $show_ubicacion, 'UTF-8' ) ); ?></span>
+                            </td>
+                        <?php endif; ?>
+                    </tr>
+                    <?php endif; ?>
+                    <?php if ( $show_contacto ): ?>
+                    <tr>
+                        <td colspan="2">
+                            <strong class="text-black-bold">CONTACTO:</strong> 
+                            <span class="text-gray"><?php echo esc_html( mb_strtoupper( $show_contacto, 'UTF-8' ) ); ?></span>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+                </table>
+            </div>
+
+            <table class="products-table">
+                <thead>
+                    <tr>
+                        <th class="bg-red-unit" style="width: 33%;">DESCRIPCIÓN</th>
+                        <th class="bg-red-unit" style="width: 20%;">PRECIO POR UNIDAD</th>
+                        <th class="bg-red-unit" style="width: 10%;">CANTIDAD</th>
+                        <th class="bg-red-unit" style="width: 20%;">TIEMPO DE ENTREGA</th>
+                        <th class="bg-red-unit" style="width: 17%;">MONTO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $items as $item ): 
+                        $precio_unit = floatval($item->precio_unitario_usd) * $tasa_calc;
+                        $subtotal_item = floatval($item->subtotal_usd) * $tasa_calc;
+                    ?>
+                    <tr>
+                        <td>
+                            <strong class="text-black-bold"><?php echo esc_html( $item->sku ); ?></strong><br>
+                            <span class="text-gray"><?php echo esc_html( mb_strtoupper( $item->producto_nombre, 'UTF-8' ) ); ?></span>
+                        </td>
+                        <td class="text-gray"><?php echo $simbolo . ' ' . number_format( $precio_unit, 2 ); ?></td>
+                        <td class="text-gray"><?php echo intval( $item->cantidad ); ?></td>
+                        <td class="text-gray"><?php echo !empty($item->tiempo_entrega) ? esc_html( mb_strtoupper( $item->tiempo_entrega, 'UTF-8' ) ) : 'INMEDIATA'; ?></td>
+                        <td class="text-gray"><?php echo $simbolo . ' ' . number_format( $subtotal_item, 2 ); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <hr class="separator-elegant">
+
+            <table class="totales-table">
+                <tr>
+                    <td class="text-gray">Subtotal:</td>
+                    <td class="text-black-bold" style="width: 130px;"><?php echo $simbolo . ' ' . $subtotal_fmt; ?></td>
+                </tr>
+                <?php if ( $descuento > 0 ): ?>
+                <tr>
+                    <td class="text-gray">Descuento:</td>
+                    <td class="text-gray">- <?php echo $simbolo . ' ' . number_format( $descuento, 2 ); ?></td>
+                </tr>
+                <?php endif; ?>
+                <tr>
+                    <td class="text-gray">I.V.A. (16%):</td>
+                    <td class="text-black-bold"><?php echo $simbolo . ' ' . $iva_fmt; ?></td>
+                </tr>
+                <tr class="grand-total">
+                    <td>TOTAL:</td>
+                    <td><?php echo $simbolo . ' ' . $total_fmt; ?></td>
+                </tr>
+            </table>
+
+            <div style="clear: both;"></div>
+
+            <hr class="separator-elegant">
+
+            <div class="footer text-gray">
+                Gracias por su preferencia. Esta cotización está sujeta a disponibilidad de inventario.
+            </div>
+        </body>
+        </html>
+        <?php
+        exit;
+    }
+}
+
+
+
+/**
+ * 4. Endpoint para Obtener Detalles de Cotización (Acción: Clonar)
+ */
+class Suite_Ajax_Quote_Details extends Suite_AJAX_Controller {
+    protected $action_name = 'suite_get_quote_details_ajax';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        global $wpdb;
+        $quote_id = isset( $_POST['id'] ) ? intval( $_POST['id'] ) : 0;
+
+        if ( ! $quote_id ) {
+            $this->send_error( 'ID de cotización inválido.' );
+        }
+
+        $user = wp_get_current_user();
+        $is_admin = current_user_can( 'manage_options' ) || in_array( 'suite_gerente', (array) $user->roles );
+        $user_id = get_current_user_id();
+
+        $cotizacion = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_cotizaciones WHERE id = %d", $quote_id ) );
+
+        if ( ! $cotizacion ) {
+            $this->send_error( 'Cotización no encontrada.' );
+        }
+
+        // Validación RLS: Zero-Trust para clonación
+        if ( ! $is_admin && intval( $cotizacion->vendedor_id ) !== $user_id ) {
+            $this->send_error( 'Acceso denegado. No puede clonar una cotización que no le pertenece.', 403 );
+        }
+
+        $items = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_cotizaciones_items WHERE cotizacion_id = %d", $quote_id ) );
+        $cliente = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}suite_clientes WHERE id = %d", $cotizacion->cliente_id ) );
+
+        $this->send_success( [
+            'cotizacion' => $cotizacion,
+            'items'      => $items,
+            'cliente'    => $cliente
+        ] );
+    }
+}
+
+/**
+ * 5. Endpoint para el Súper-Modal: Cierre Financiero y Logístico Multipart
+ * FASE 3: KANBAN V2 (MERCADOENVÍOS)
+ */
+class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
+
+    protected $action_name = 'suite_process_super_pago';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        $quote_id = isset($_POST['quote_id']) ? intval($_POST['quote_id']) : 0;
+        if ( ! $quote_id ) {
+            $this->send_error( 'ID de cotización ausente.' );
+        }
+
+        $quote_model = new Suite_Model_Quote();
+        $current_order = $quote_model->get( $quote_id );
+
+        if ( ! $current_order ) {
+            $this->send_error( 'La cotización no existe.', 404 );
+        }
+
+        // 1. SEGURIDAD ZERO-TRUST: PREVENCIÓN IDOR
+        $user_id = get_current_user_id();
+        $is_admin = current_user_can( 'manage_options' );
+        if ( ! $is_admin && intval( $current_order->vendedor_id ) !== $user_id ) {
+            $this->send_error( 'Acceso Denegado: No puede modificar un pedido que no le pertenece.', 403 );
+        }
+
+        // 2. SANITIZACIÓN ESTRICTA (Prevención XSS/SQLi)
+        $forma_pago       = sanitize_text_field( $_POST['forma_pago'] ?? '' );
+        $fecha_pago       = sanitize_text_field( $_POST['fecha_pago'] ?? current_time('mysql') );
+        $requiere_factura = isset($_POST['requiere_factura']) ? intval($_POST['requiere_factura']) : 0;
+        $agente_retencion = isset($_POST['agente_retencion']) ? intval($_POST['agente_retencion']) : 0;
+
+        $tipo_envio        = sanitize_text_field( $_POST['tipo_envio'] ?? '' );
+        $agencia_envio     = sanitize_text_field( $_POST['agencia_envio'] ?? '' );
+        $nombre_receptor   = sanitize_text_field( $_POST['nombre_receptor'] ?? '' );
+        $rif_receptor      = sanitize_text_field( $_POST['rif_receptor'] ?? '' );
+        $telefono_receptor = sanitize_text_field( $_POST['telefono_receptor'] ?? '' );
+        $direccion_fisica  = sanitize_textarea_field( $_POST['direccion_envio'] ?? '' );
+        $prioridad         = isset($_POST['prioridad']) ? intval($_POST['prioridad']) : 0;
+
+        // 3. CONCATENACIÓN INTELIGENTE DE LOGÍSTICA
+        $direccion_final = '';
+        if ( $tipo_envio === 'Nacional' ) {
+            $direccion_final = "Receptor: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor \nAgencia: $agencia_envio \nDir: $direccion_fisica";
+        } elseif ( $tipo_envio === 'Motorizado' ) {
+            $direccion_final = "Receptor: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor \nDir: $direccion_fisica";
+        } elseif ( $tipo_envio === 'Retiro' ) {
+            $direccion_final = "Retira en Tienda: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor";
+        }
+
+        // 4. BÓVEDA SEGURA: MANEJO DE ARCHIVO MULTIPART
+        $comprobante_url = '';
+        if ( ! empty( $_FILES['comprobante']['name'] ) ) {
+            if ( ! function_exists( 'wp_handle_upload' ) ) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+            }
+
+            // Dictadura de MIME Types: Solo Imágenes y PDFs
+            $upload_overrides = [
+                'test_form' => false,
+                'mimes'     => [
+                    'jpg'  => 'image/jpeg',
+                    'jpeg' => 'image/jpeg',
+                    'png'  => 'image/png',
+                    'pdf'  => 'application/pdf'
+                ]
+            ];
+
+            $movefile = wp_handle_upload( $_FILES['comprobante'], $upload_overrides );
+
+            if ( $movefile && ! isset( $movefile['error'] ) ) {
+                $comprobante_url = $movefile['url']; // URL pública/segura generada
+            } else {
+                $this->send_error( 'Fallo de seguridad al subir comprobante. Solo se permiten JPG, PNG o PDF. Detalles: ' . $movefile['error'] );
+            }
+        }
+
+        // 5. ACTUALIZACIÓN DE METADATOS (Inyectamos los campos de la Fase 1)
+        $extra_data = [
+            'forma_pago'           => $forma_pago,
+            'metodo_pago'          => $forma_pago, // Retrocompatibilidad v1
+            'fecha_pago'           => $fecha_pago,
+            'requiere_factura'     => $requiere_factura,
+            'agente_retencion'     => $agente_retencion,
+            'tipo_envio'           => $tipo_envio,
+            'metodo_entrega'       => $tipo_envio, // Retrocompatibilidad v1
+            'agencia_envio'        => $agencia_envio,
+            'direccion_envio'      => $direccion_final,
+            'prioridad'            => $prioridad
+        ];
+        
+        if ( ! empty( $comprobante_url ) ) {
+            $extra_data['comprobante_pago_url'] = $comprobante_url;
+            $extra_data['url_captura_pago']     = $comprobante_url; // Retrocompatibilidad v1
+        }
+
+		
+		
+		
+		
+		
+		
+        $quote_model->update( $quote_id, $extra_data );
+        $result = $quote_model->update_order_status( $quote_id, 'pagado' );
+        
+        if ( is_wp_error( $result ) ) {
+            $this->send_error( $result->get_error_message(), 500 );
+        }
+
+        // --- INICIO FASE 4: DISPARO DE TELEGRAM ---
+        try {
+            // Buscamos el código de cotización para el mensaje
+            $quote_data = $quote_model->get( $quote_id );
+            
+            if ( $quote_data && ! empty( $comprobante_url ) ) {
+                $monto_final = isset($_POST['monto_pagado']) ? floatval($_POST['monto_pagado']) : $quote_data->total_usd;
+                
+                $telegram = new Suite_Telegram_Bot();
+                $telegram->send_payment_alert(
+                    $quote_id,
+                    $quote_data->codigo_cotizacion,
+                    $quote_data->vendedor_id,
+                    $monto_final,
+                    $forma_pago,
+                    $comprobante_url
+                );
+            }
+        } catch (Exception $e) {
+            // No bloqueamos el éxito del ERP si Telegram falla
+            error_log("Error en Notificación Telegram: " . $e->getMessage());
+        }
+        // --- FIN FASE 4 ---
+
+        $this->send_success( [ 'message' => 'Pago registrado. El equipo financiero ha sido notificado por Telegram.' ] );
+    }
+}
+/**
+ * Helper Class: Suite_Telegram_Bot
+ * FASE 4: Notificaciones en Tiempo Real para Validación de Pagos
+ */
+class Suite_Telegram_Bot {
+    
+    private $bot_token = '8190650297:AAEhx-eQygWnbid7mjcSQuN2KV4SigE6k38';
+    private $chat_id   = '-5199565623'; 
+
+    /**
+     * Envía la alerta de pago con el comprobante y botones interactivos.
+     */
+    public function send_payment_alert( $quote_id, $codigo_cotizacion, $vendedor_id, $monto, $forma_pago, $file_url ) {
+        if ( empty( $this->bot_token ) || empty( $this->chat_id ) ) return false;
+
+        $is_pdf     = ( substr( strtolower( $file_url ), -4 ) === '.pdf' );
+        $endpoint   = $is_pdf ? 'sendDocument' : 'sendPhoto';
+        $file_param = $is_pdf ? 'document' : 'photo';
+
+        $vendedor_info   = get_userdata( $vendedor_id );
+        $vendedor_nombre = $vendedor_info ? $vendedor_info->display_name : 'ID: ' . $vendedor_id;
+
+        // Formateo del mensaje con Emojis para Finanzas
+        $caption  = "🚨 <b>NUEVO PAGO REGISTRADO</b> 🚨\n\n";
+        $caption .= "🛍️ <b>Orden:</b> #{$codigo_cotizacion}\n";
+        $caption .= "👤 <b>Vendedor:</b> {$vendedor_nombre}\n";
+        $caption .= "💰 <b>Monto:</b> $" . number_format( (float) $monto, 2 ) . "\n";
+        $caption .= "💳 <b>Método:</b> {$forma_pago}\n\n";
+        $caption .= "⚠️ <i>Use los botones de abajo para validar sin entrar al ERP.</i>";
+
+        // Teclado Inline para la Fase 4.1 (Webhooks)
+        $keyboard = array(
+            'inline_keyboard' => array(
+                array(
+                    array( 'text' => '✅ Aprobar Pago', 'callback_data' => "approve_payment_{$quote_id}" ),
+                    array( 'text' => '❌ Rechazar', 'callback_data' => "reject_payment_{$quote_id}" )
+                )
+            )
+        );
+
+        $body = array(
+            'chat_id'      => $this->chat_id,
+            $file_param    => $file_url,
+            'caption'      => $caption,
+            'parse_mode'   => 'HTML',
+            'reply_markup' => wp_json_encode( $keyboard )
+        );
+
+        $url = "https://api.telegram.org/bot{$this->bot_token}/{$endpoint}";
+
+        // Petición asíncrona para no bloquear el ERP
+        return wp_remote_post( $url, array(
+            'body'    => $body,
+            'timeout' => 10,
+            'blocking' => true // Queremos saber si salió, pero con un timeout razonable
+        ) );
+    }
+}
+--- FIN DEL ARCHIVO: class-suite-ajax-quotes.php ---
+
+--- INICIO DEL ARCHIVO: views/app/tab-cotizador.php ---
+<?php
+/**
+ * Vista: Pestaña del Cotizador (Punto de Venta) - V11 Mobile-First
+ * @package SuiteEmpleados\Views\App
+ */
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+$tasa_bcv_actual = get_option( 'suite_tasa_bcv', 1.00 ); 
+?>
+<div id="TabPos" class="suite-tab-content" style="display: none;">
+    <div style="display: flex; flex-wrap: wrap; gap: 25px;">
+        
+        <!-- COLUMNA IZQUIERDA: PRODUCTOS Y CARRITO -->
+        <div style="flex: 2 1 400px; display: flex; flex-direction: column; gap: 20px;">
+            <div class="suite-header-modern" style="border-radius: 8px; padding: 15px 20px; background: #fff; border: 1px solid #e2e8f0;">
+                <h2 style="margin:0; font-size: 18px; color: #0f172a;">🛒 Búsqueda y Carrito</h2>
+            </div>
+            
+            <div style="display: flex; gap: 10px; position: relative;">
+                <input type="text" id="pos-product-search" class="widefat" placeholder="🔍 Buscar producto por SKU o Nombre..." style="margin: 0; flex: 1; height: 48px; border-radius: 8px;">
+                <button type="button" id="btn-add-manual-item" class="btn-modern-action" style="height: 48px;">➕ Ítem Manual</button>
+                <div id="pos-search-results" class="pos-dropdown" style="display:none; position: absolute; top: 55px; left: 0; width: 100%; z-index: 100; border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); max-height: 350px; overflow-y: auto;"></div>
+            </div>
+
+            <!-- Contenedor del Carrito Responsivo (Mobile-First Cards) -->
+            <div id="pos-cart-container" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; min-height: 300px;">
+                <div id="pos-cart-body" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Los items se inyectarán aquí vía JS -->
+                    <div style="text-align: center; color: #94a3b8; padding: 40px 0;">El carrito está vacío. Busque un producto para comenzar.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COLUMNA DERECHA: CLIENTE Y TOTALES -->
+        <div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 20px;">
+            
+            <!-- Bloque de Cliente -->
+            <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+                <h3 style="margin: 0 0 15px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    👤 Datos del Cliente
+                    <button type="button" id="btn-clear-client" class="btn-modern-action small" style="display: none; color: #dc2626; border-color: #fca5a5;">Limpiar</button>
+                </h3>
+
+                <div id="cli-form-wrapper">
+                    <!-- Buscador Predictivo de Clientes -->
+                    <div style="position: relative; margin-bottom: 15px;">
+                        <input type="text" id="cli-search-predictive" class="widefat" placeholder="🔍 Buscar cliente existente (Nombre o RIF)..." style="background: #f0fdf4; border-color: #a7f3d0; margin-bottom: 5px;">
+                        <div id="cli-search-results" class="pos-dropdown" style="display:none; position: absolute; top: 45px; left: 0; width: 100%; z-index: 100; border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); max-height: 250px; overflow-y: auto;"></div>
+                    </div>
+
+                    <!-- RIF Atómico -->
+                    <label style="font-size: 12px; font-weight: bold; color: #475569;">RIF / CI *</label>
+                    <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+                        <select id="cli-rif-prefix" class="widefat" style="width: 80px; margin-bottom: 0;">
+                            <option value="J">J</option>
+                            <option value="V">V</option>
+                            <option value="E">E</option>
+                            <option value="G">G</option>
+                            <option value="P">P</option>
+                            <option value="C">C</option>
+                        </select>
+                        <input type="text" id="cli-rif-number" class="widefat" placeholder="Ej: 12345678" style="flex: 1; margin-bottom: 0;">
+                    </div>
+
+                    <label style="font-size: 12px; font-weight: bold; color: #475569;">Nombre / Razón Social *</label>
+                    <input type="text" id="cli-nombre" class="widefat">
+
+                    <div style="display: flex; gap: 10px;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 12px; font-weight: bold; color: #475569;">Teléfono</label>
+                            <input type="text" id="cli-tel" class="widefat">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="font-size: 12px; font-weight: bold; color: #475569;">Email</label>
+                            <input type="email" id="cli-email" class="widefat">
+                        </div>
+                    </div>
+
+                    <label style="font-size: 12px; font-weight: bold; color: #475569;">Dirección</label>
+                    <input type="text" id="cli-dir" class="widefat">
+
+                    <div style="display: flex; gap: 10px;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 12px; font-weight: bold; color: #475569;">Ciudad</label>
+                            <input type="text" id="cli-ciudad" class="widefat">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="font-size: 12px; font-weight: bold; color: #475569;">Estado</label>
+                            <input type="text" id="cli-estado" class="widefat">
+                        </div>
+                    </div>
+                    
+                    <label style="font-size: 12px; font-weight: bold; color: #475569;">Atención a (Contacto)</label>
+                    <input type="text" id="cli-contacto" class="widefat">
+                </div>
+            </div>
+
+            <!-- Bloque de Configuración y Totales -->
+            <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+                <h3 style="margin: 0 0 15px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">⚙️ Configuración y Totales</h3>
+                
+				<div style="display: flex; gap: 15px; margin-bottom: 30px;">
+                    
+                    <div style="flex: 1;">
+                        <label style="font-size: 12px; font-weight: bold; color: #475569;">Moneda PDF</label>
+                        <select id="pos-moneda" class="widefat" style="margin-bottom:0; cursor: pointer;">
+                            <option value="USD">Dólares ($)</option>
+                            <option value="BS">Bolívares (Bs.)</option>
+                        </select>
+                    </div>
+
+                    <div style="flex: 1;">
+                        <label style="font-size: 12px; font-weight: bold; color: #475569;">Validez</label>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <input type="number" id="pos-validez" class="widefat" value="5" min="1" style="margin-bottom:0;">
+                            <span style="font-size: 11px; color: #64748b;">Días</span>
+                        </div>
+                    </div>
+
+                    <div style="flex: 1;">
+                        <label style="font-size: 12px; font-weight: bold; color: #475569;">Tasa BCV</label>
+                        <div style="position: relative;">
+                            <input type="number" step="0.0001" id="pos-tasa-bcv" class="widefat" value="<?php echo esc_attr( $tasa_bcv_actual ); ?>" style="margin-bottom:0;">
+                            <small id="bcv-update-date" style="font-size: 10.5px; color: #64748b; position: absolute; bottom: -18px; left: 0; white-space: nowrap; font-weight: bold;">
+                                Buscando API...
+                            </small>
+                        </div>
+                    </div>
+                    
+                </div>
+
+                <div style="background: #f8fafc; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 13px; color: #64748b; font-weight: bold;">TOTAL COTIZACIÓN</div>
+                    <div id="pos-total-usd" style="font-size: 32px; font-weight: 800; color: #059669; line-height: 1.2;">$0.00</div>
+                    <div id="pos-total-bs" style="font-size: 14px; color: #475569; font-weight: bold;">Ref. Bs: 0.00</div>
+                </div>
+
+                <button type="button" id="btn-save-quote" class="btn-save-big">💾 Guardar Cotización</button>
+            </div>
+        </div>
+    </div>
+</div>
+--- FIN DEL ARCHIVO: tab-cotizador.php ---
+
+--- INICIO DEL ARCHIVO: views/app/tab-historial.php ---
+<?php
+/**
+ * Vista: Historial de Cotizaciones
+ */
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+?>
+
+<div id="TabHistorial" class="suite-tab-content" style="display: none;">
+    <div class="suite-header-modern">
+        <h2 style="margin:0; font-size: 22px; color: #0f172a;">📜 Historial de Cotizaciones</h2>
+        <p style="color:#64748b; font-size:14px; margin-top:5px;">Revise, imprima o clone sus cotizaciones y pedidos anteriores.</p>
+    </div>
+    
+    <div style="padding: 25px;">
+        <div class="suite-table-responsive">
+            <table class="suite-modern-table" id="historyTable" style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Código</th>
+                        <th>Cliente</th>
+                        <th>Total ($)</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- El JS se encarga del renderizado dinámico -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+--- FIN DEL ARCHIVO: tab-historial.php ---
+
+--- INICIO DEL ARCHIVO: views/pdf/layout-cotizacion.php ---
+<?php
+/**
+ * Archivo: views/pdf/layout-cotizacion.php
+ * Proposito: ...
+ */
+
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+
+--- FIN DEL ARCHIVO: layout-cotizacion.php ---
+
