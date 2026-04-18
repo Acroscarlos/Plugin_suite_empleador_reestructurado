@@ -1018,13 +1018,25 @@ const SuiteLogistics = (function($) {
             fd.append('recibo_loyverse', $('#disp-loyverse').val());
 
             // Agregamos Archivos solo si fueron seleccionados
+            // --- BARRERA DE PESO: Límite de 3.5MB para Telegram ---
+            const maxSizeBytes = 3.5 * 1024 * 1024; 
+
+            // Agregamos Archivos solo si fueron seleccionados y pesan menos de 3.5MB
             const facturaInput = $('#disp-factura-file')[0].files;
             if (facturaInput && facturaInput.length > 0) {
+                if (facturaInput[0].size > maxSizeBytes) {
+                    btnSubmit.prop('disabled', false).html(originalText); // Desbloqueamos el botón
+                    return alert('❌ Error: La Factura Fiscal excede el límite de 3.5MB para Telegram. Por favor, comprima la imagen o el PDF e intente de nuevo.');
+                }
                 fd.append('factura_file', facturaInput[0]);
             }
 
             const podInput = $('#disp-pod-file')[0].files;
             if (podInput && podInput.length > 0) {
+                if (podInput[0].size > maxSizeBytes) {
+                    btnSubmit.prop('disabled', false).html(originalText); // Desbloqueamos el botón
+                    return alert('❌ Error: La Guía de Encomienda (POD) excede el límite de 3.5MB para Telegram. Por favor, comprímala e intente de nuevo.');
+                }
                 fd.append('pod_file', podInput[0]);
             }
 
@@ -1153,24 +1165,43 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
 
         $factura_url = '';
         $pod_url = '';
+        
+        // Límite estricto de 3.5MB para evitar Timeouts con la API de Telegram
+        $max_size_bytes = 3.5 * 1024 * 1024; 
 
         // Procesar Factura (Opcional)
         if ( ! empty( $_FILES['factura_file']['name'] ) ) {
+            // 🛡️ BARRERA 1: Peso de Factura y Errores de Servidor
+            if ( $_FILES['factura_file']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['factura_file']['size'] > $max_size_bytes ) {
+                $this->send_error( 'La Factura Fiscal excede el límite de peso estricto (3.5MB).', 400 );
+                return; // <--- 🛑 FRENO DE EMERGENCIA VITAL
+            }
+            
             $move_factura = wp_handle_upload( $_FILES['factura_file'], $upload_overrides );
+            
             if ( $move_factura && ! isset( $move_factura['error'] ) ) {
                 $factura_url = $move_factura['url'];
             } else {
                 $this->send_error( 'Error al subir la Factura Fiscal: ' . $move_factura['error'], 500 );
+                return;
             }
         }
 
         // Procesar POD (Opcional)
         if ( ! empty( $_FILES['pod_file']['name'] ) ) {
+            // 🛡️ BARRERA 2: Peso del POD y Errores de Servidor
+            if ( $_FILES['pod_file']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['pod_file']['size'] > $max_size_bytes ) {
+                $this->send_error( 'La Guía de Encomienda (POD) excede el límite de peso estricto (3.5MB).', 400 );
+                return; // <--- 🛑 FRENO DE EMERGENCIA VITAL
+            }
+
             $move_pod = wp_handle_upload( $_FILES['pod_file'], $upload_overrides );
+            
             if ( $move_pod && ! isset( $move_pod['error'] ) ) {
                 $pod_url = $move_pod['url'];
             } else {
                 $this->send_error( 'Error al subir la Guía de Encomienda: ' . $move_pod['error'], 500 );
+                return;
             }
         }
 

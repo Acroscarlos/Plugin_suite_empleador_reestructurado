@@ -128,11 +128,21 @@ class Suite_Ajax_Quote_History extends Suite_AJAX_Controller {
         $is_logistica = in_array( 'suite_logistica', (array) $user->roles );
         $tiene_acceso_global = ( $is_admin || $is_logistica );
 
+		
         $quote_model = new Suite_Model_Quote();
         $history = $quote_model->get_vendor_history( $user_id, 500, $tiene_acceso_global );
+        
+        $pending_retentions = [];
+        $normal_history = [];
 
         foreach ( $history as $r ) {
+            // Lógica de Retención Pendiente
+            $r->is_pending_retention = ($r->estado === 'despachado' && $r->agente_retencion == '1' && empty($r->retencion_url));
+
             $r->fecha_fmt = date( 'd/m/Y', strtotime( $r->fecha_emision ) );
+			
+			
+			
 			$r->fecha_cruda = strtotime( $r->fecha_emision );
             $r->total_fmt = number_format( floatval( $r->total_usd ), 2 );
             $r->cliente_nombre = empty( $r->cliente_nombre ) ? 'N/A' : esc_html( $r->cliente_nombre );
@@ -151,9 +161,18 @@ class Suite_Ajax_Quote_History extends Suite_AJAX_Controller {
                 $r->estado = 'emitida';
             }
             $r->can_change_status = $tiene_acceso_global;
+        // Separar en dos arreglos para aplicar "Gravedad" al inicio
+            if ( $r->is_pending_retention ) {
+                $pending_retentions[] = $r;
+            } else {
+                $normal_history[] = $r;
+            }
         }
 
-        $this->send_success( $history );
+        // Combinar: Los de alerta amarilla arriba, el resto abajo
+        $sorted_history = array_merge($pending_retentions, $normal_history);
+
+        $this->send_success( $sorted_history );
     }
 }
 
@@ -766,6 +785,11 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
         $direccion_fisica  = sanitize_textarea_field( $_POST['direccion_envio'] ?? '' );
         $prioridad         = isset($_POST['prioridad']) ? intval($_POST['prioridad']) : 0;
 
+		
+		
+		
+        $sucursal_retiro = sanitize_text_field( $_POST['sucursal_retiro'] ?? '' ); // CAPTURAMOS LA SUCURSAL
+
         // 3. CONCATENACIÓN INTELIGENTE DE LOGÍSTICA
         $direccion_final = '';
         if ( $tipo_envio === 'Nacional' ) {
@@ -773,7 +797,7 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
         } elseif ( $tipo_envio === 'Motorizado' ) {
             $direccion_final = "Receptor: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor \nDir: $direccion_fisica";
         } elseif ( $tipo_envio === 'Retiro' ) {
-            $direccion_final = "Retira en Tienda: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor";
+            $direccion_final = "Retira en Tienda: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor \nSucursal Asignada: $sucursal_retiro";
         }
 
         // 4. BÓVEDA SEGURA: MANEJO DE ARCHIVO MULTIPART
@@ -781,6 +805,13 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
         if ( ! empty( $_FILES['comprobante']['name'] ) ) {
             if ( ! function_exists( 'wp_handle_upload' ) ) {
                 require_once ABSPATH . 'wp-admin/includes/file.php';
+            }
+            
+            // --- 🛡️ BARRERA ZERO-TRUST: Límite estricto de 3.5MB para Telegram ---
+            $max_size_bytes = 3.5 * 1024 * 1024;
+            if ( $_FILES['comprobante']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['comprobante']['size'] > $max_size_bytes ) {
+                $this->send_error( 'El comprobante excede el límite de peso estricto (3.5MB). Por favor, comprima el archivo e intente de nuevo.', 400 );
+                return; // 🛑 FRENO DE EMERGENCIA VITAL
             }
 
             // Dictadura de MIME Types: Solo Imágenes y PDFs
@@ -796,6 +827,13 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
 
             $movefile = wp_handle_upload( $_FILES['comprobante'], $upload_overrides );
 
+			
+			
+			
+			
+			
+			
+			
             if ( $movefile && ! isset( $movefile['error'] ) ) {
                 $comprobante_url = $movefile['url']; // URL pública/segura generada
             } else {
@@ -870,7 +908,7 @@ class Suite_Telegram_Bot {
     
     private $bot_token = '8190650297:AAEhx-eQygWnbid7mjcSQuN2KV4SigE6k38';
     private $chat_id   = '-5199565623'; 
-
+	private $fiscal_chat_id = '-5244447469';
     /**
      * Envía la alerta de pago con el comprobante y botones interactivos.
      */
@@ -918,5 +956,150 @@ class Suite_Telegram_Bot {
             'timeout' => 10,
             'blocking' => true // Queremos saber si salió, pero con un timeout razonable
         ) );
+    }
+	
+	/**
+     * Envía una alerta al Canal FISCAL con Facturas o Retenciones.
+     */
+    public function send_fiscal_document( $quote_id, $codigo_cotizacion, $vendedor_id, $tipo_documento, $file_url ) {
+        if ( empty( $this->bot_token ) || empty( $this->fiscal_chat_id ) ) return false;
+
+        $is_pdf     = ( substr( strtolower( $file_url ), -4 ) === '.pdf' );
+        $endpoint   = $is_pdf ? 'sendDocument' : 'sendPhoto';
+        $file_param = $is_pdf ? 'document' : 'photo';
+
+        $vendedor_info   = get_userdata( $vendedor_id );
+        $vendedor_nombre = $vendedor_info ? $vendedor_info->display_name : 'ID: ' . $vendedor_id;
+        $emoji = $tipo_documento === 'Retención Fiscal' ? '🧾' : '📸';
+
+        $caption  = "{$emoji} <b>NUEVO DOCUMENTO FISCAL</b> {$emoji}\n\n";
+        $caption .= "📌 <b>Tipo:</b> {$tipo_documento}\n";
+        $caption .= "🛍️ <b>Orden:</b> #{$codigo_cotizacion}\n";
+        $caption .= "👤 <b>Vendedor:</b> {$vendedor_nombre}\n\n";
+        $caption .= "<i>Archivo listo para revisión contable.</i>";
+
+        $body = array(
+            'chat_id'    => $this->fiscal_chat_id, // <-- APUNTA AL GRUPO FISCAL
+            $file_param  => $file_url,
+            'caption'    => $caption,
+            'parse_mode' => 'HTML'
+        );
+
+        return wp_remote_post( "https://api.telegram.org/bot{$this->bot_token}/{$endpoint}", array(
+            'body' => $body, 'timeout' => 5, 'blocking' => false 
+        ) );
+    }
+}
+
+/**
+ * Endpoint Admin: Revertir orden de 'Por Enviar' a 'Pagado' (Error Logístico)
+ */
+class Suite_Ajax_Reverse_To_Paid extends Suite_AJAX_Controller {
+    
+    protected $action_name = 'suite_reverse_to_paid';
+    protected $required_capability = 'manage_options'; // Estrictamente Administrador
+
+    protected function process() {
+        global $wpdb;
+        $tabla_cot = $wpdb->prefix . 'suite_cotizaciones';
+
+        $order_id = isset( $_POST['order_id'] ) ? intval( $_POST['order_id'] ) : 0;
+        if ( ! $order_id ) {
+            $this->send_error( 'ID de cotización ausente.' );
+        }
+
+        $estado_actual = $wpdb->get_var( $wpdb->prepare( "SELECT estado FROM {$tabla_cot} WHERE id = %d", $order_id ) );
+
+        if ( $estado_actual !== 'por_enviar' ) {
+            $this->send_error( 'Esta orden no se puede revertir porque no está en la columna Por Enviar.' );
+        }
+
+        // Ejecutamos el reverso a "pagado"
+        $updated = $wpdb->update(
+            $tabla_cot,
+            [ 'estado' => 'pagado' ], 
+            [ 'id' => $order_id ],
+            [ '%s' ],
+            [ '%d' ]
+        );
+
+        if ( $updated !== false ) {
+            if ( function_exists('suite_record_log') ) {
+                suite_record_log( 'reverso_logistico_pagado', "Orden #{$order_id} revertida de 'por_enviar' a 'pagado'." );
+            }
+            $this->send_success( 'Orden revertida a Pagado exitosamente.' );
+        } else {
+            $this->send_error( 'Error al actualizar la base de datos.' );
+        }
+    }
+}
+
+
+
+/**
+ * 6. Endpoint para subir Comprobantes de Retención
+ */
+class Suite_Ajax_Upload_Retention extends Suite_AJAX_Controller {
+    protected $action_name = 'suite_upload_retention';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        global $wpdb;
+        $quote_id = isset($_POST['quote_id']) ? intval($_POST['quote_id']) : 0;
+
+        if ( ! $quote_id || empty( $_FILES['retencion_file']['name'] ) ) {
+            $this->send_error( 'Datos o archivo ausentes.' );
+        }
+
+        // --- 🛡️ NUEVO: BARRERA ZERO-TRUST (5MB MAX) EN SERVIDOR ---
+        $max_size_bytes = 5 * 1024 * 1024; // 5MB
+        if ( $_FILES['retencion_file']['size'] > $max_size_bytes || $_FILES['retencion_file']['error'] === UPLOAD_ERR_INI_SIZE ) {
+            $this->send_error( 'Violación de seguridad: El archivo excede el límite de 5MB. Operación cancelada.', 400 );
+            return;
+        }
+        // ----------------------------------------------------------
+
+        require_once( ABSPATH . 'wp-admin/includes/file.php' );
+        $uploadedfile = $_FILES['retencion_file'];
+		
+		
+		
+		
+		
+        $upload_overrides = array( 'test_form' => false ); 
+
+        $movefile = wp_handle_upload( $uploadedfile, $upload_overrides );
+
+        if ( $movefile && ! isset( $movefile['error'] ) ) {
+            $file_url = $movefile['url'];
+            
+            $updated = $wpdb->update(
+                $wpdb->prefix . 'suite_cotizaciones',
+                [ 'retencion_url' => $file_url ],
+                [ 'id' => $quote_id ]
+            );
+
+			
+			
+			
+            if ( $updated !== false ) {
+                // --- 🚀 DISPARO A TELEGRAM (CANAL FISCAL) ---
+                $quote_data = $wpdb->get_row($wpdb->prepare("SELECT codigo_cotizacion, vendedor_id FROM {$wpdb->prefix}suite_cotizaciones WHERE id = %d", $quote_id));
+                if ( $quote_data && class_exists('Suite_Telegram_Bot') ) {
+                    $telegram = new Suite_Telegram_Bot();
+                    $telegram->send_fiscal_document( $quote_id, $quote_data->codigo_cotizacion, $quote_data->vendedor_id, 'Retención Fiscal', $file_url );
+                }
+                // --------------------------------------------
+                
+                $this->send_success( [ 'message' => 'Retención subida y notificada a Contabilidad.', 'url' => $file_url ] );
+            } else {
+				
+				
+				
+                $this->send_error( 'Fallo al guardar en BD.' );
+            }
+        } else {
+            $this->send_error( $movefile['error'] );
+        }
     }
 }

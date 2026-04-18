@@ -1079,9 +1079,20 @@ const SuiteCommissions = (function($) {
                 }},
 
                 // 8: Fecha Operación
-                { data: 'created_at', render: data => {
-                    let d = new Date(data);
-                    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+                { data: 'created_at', render: function(data, type, row) {
+                    
+                    // 🧠 MAGIA ORTOGONAL: Si DataTables va a ordenar, le pasamos el número puro de MySQL
+                    if (type === 'sort' || type === 'type') {
+                        return row.timestamp_orden; 
+                    }
+                    
+                    // Si va a mostrar visualmente, formatea el texto de forma segura sin usar 'new Date()'
+                    if (!data) return '';
+                    let dateParts = data.split(' ')[0].split('-'); // Extrae [YYYY, MM, DD]
+                    if (dateParts.length === 3) {
+                        return `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+                    }
+                    return data;
                 }}
             ],
             
@@ -1164,16 +1175,24 @@ const SuiteCommissions = (function($) {
         $('#btn-cierre-mes').on('click', async function(e) {
             e.preventDefault();
 
-            // 1. Población dinámica del select de vendedores (Usando variable localizada de WP)
+			
+			
+			
+            // 1. Población dinámica del select de vendedores (SOLO COMISIONISTAS)
             let optionsHtml = '<option value="" disabled selected>Seleccione al vendedor...</option>';
-            if (typeof suite_vars !== 'undefined' && suite_vars.sellers) {
-                suite_vars.sellers.forEach(seller => {
+            // Cambiamos suite_vars.sellers por suite_vars.commission_sellers
+            if (typeof suite_vars !== 'undefined' && suite_vars.commission_sellers && suite_vars.commission_sellers.length > 0) {
+                suite_vars.commission_sellers.forEach(seller => {
                     optionsHtml += `<option value="${seller.id}">${seller.name}</option>`;
                 });
             } else {
-                optionsHtml += '<option value="">(Debe inyectar suite_vars.sellers desde WP)</option>';
+                optionsHtml += '<option value="" disabled>No hay comisionistas habilitados en el sistema</option>';
             }
 
+			
+			
+			
+			
             // 2. Interfaz Híbrida mediante SweetAlert2
             const { value: dalePlayWinnerId, isConfirmed } = await Swal.fire({
                 title: '⚙️ Cierre Contable de Mes',
@@ -1332,16 +1351,24 @@ const SuiteCommissions = (function($) {
             });
         });
 
+		
+		
+		
         // C. Botón "Registrar Abono / Anticipo"
         $('#btn-register-abono').on('click', async function(e) {
             e.preventDefault();
             
             let optionsHtml = '<option value="" disabled selected>Seleccione al vendedor o aliado...</option>';
-            if (typeof suite_vars !== 'undefined' && suite_vars.sellers) {
-                suite_vars.sellers.forEach(seller => {
+            // Cambiamos suite_vars.sellers por suite_vars.commission_sellers
+            if (typeof suite_vars !== 'undefined' && suite_vars.commission_sellers) {
+                suite_vars.commission_sellers.forEach(seller => {
                     optionsHtml += `<option value="${seller.id}">${seller.name}</option>`;
                 });
             }
+			
+			
+			
+			
 
             const { value: formValues } = await Swal.fire({
                 title: '💸 Registrar Abono',
@@ -1513,21 +1540,32 @@ class Suite_Ajax_Freeze_Commissions extends Suite_AJAX_Controller {
         
         // A) Ganador "🐟 Pez Gordo" (Suma más alta de monto base)
         // Ignoramos deducciones (< 0) y bonos sin venta (= 0)
+       
+		
+		
         $pez_gordo = $wpdb->get_row( $wpdb->prepare(
             "SELECT vendedor_id, SUM(monto_base_usd) as total_vendido 
              FROM {$tabla_ledger} 
-             WHERE estado_pago = 'pendiente' AND created_at <= %s AND monto_base_usd > 0
+             WHERE estado_pago IN ('pendiente', 'pagado') 
+             AND MONTH(created_at) = MONTH(%s) AND YEAR(created_at) = YEAR(%s) 
+             AND created_at <= %s AND monto_base_usd > 0
              GROUP BY vendedor_id ORDER BY total_vendido DESC LIMIT 1",
-            $fecha_corte
+            $fecha_corte, $fecha_corte, $fecha_corte
         ) );
+		
+		
+		
+		
 
         // B) Ganador "🏃 Deja pa' los demás" (Mayor cantidad de órdenes)
         $deja_pa = $wpdb->get_row( $wpdb->prepare(
             "SELECT vendedor_id, COUNT(id) as total_ordenes 
              FROM {$tabla_ledger} 
-             WHERE estado_pago = 'pendiente' AND created_at <= %s AND monto_base_usd > 0
+             WHERE estado_pago IN ('pendiente', 'pagado') 
+             AND MONTH(created_at) = MONTH(%s) AND YEAR(created_at) = YEAR(%s) 
+             AND created_at <= %s AND monto_base_usd > 0
              GROUP BY vendedor_id ORDER BY total_ordenes DESC LIMIT 1",
-            $fecha_corte
+            $fecha_corte, $fecha_corte, $fecha_corte
         ) );
 
         $premios = [
@@ -1627,6 +1665,7 @@ class Suite_Ajax_Commission_Audit extends Suite_AJAX_Controller {
         // Sentencia SQL Base (Sanitizada: Retiramos 'l.notas' para evitar fallos de esquema)
         $sql = "SELECT l.id, l.quote_id, l.monto_base_usd, l.comision_ganada_usd, 
                        l.estado_pago, l.recibo_loyverse, l.estado_auditoria, l.created_at, 
+                       UNIX_TIMESTAMP(l.created_at) AS timestamp_orden,
                        u.display_name AS vendedor_nombre 
                 FROM {$tabla_ledger} l
                 LEFT JOIN {$tabla_users} u ON l.vendedor_id = u.ID";
@@ -1991,14 +2030,19 @@ class Suite_Model_Commission extends Suite_Model_Base {
 
         // 1. Ganador "Pez Gordo" ($20): Mayor volumen acumulado (Ledger + Filtro Elegibilidad)
         $pez_gordo = $this->wpdb->get_row( $this->wpdb->prepare( "
+		
+		
             SELECT l.vendedor_id, u.display_name, SUM(l.monto_base_usd) as total_vendido
             FROM {$tabla_ledger} l
             INNER JOIN {$tabla_user} u ON l.vendedor_id = u.ID
             INNER JOIN {$tabla_usermeta} um ON l.vendedor_id = um.user_id
-            WHERE l.estado_pago = 'pendiente' 
+            WHERE l.estado_pago IN ('pendiente', 'pagado') 
               AND MONTH(l.created_at) = %d 
               AND YEAR(l.created_at) = %d 
               AND l.monto_base_usd > 0
+			  
+			  
+			  
               AND um.meta_key = 'suite_participa_comisiones' AND um.meta_value = '1'
             GROUP BY l.vendedor_id
             ORDER BY total_vendido DESC
@@ -2011,7 +2055,7 @@ class Suite_Model_Commission extends Suite_Model_Base {
             FROM {$tabla_ledger} l
             INNER JOIN {$tabla_user} u ON l.vendedor_id = u.ID
             INNER JOIN {$tabla_usermeta} um ON l.vendedor_id = um.user_id
-            WHERE l.estado_pago = 'pendiente' 
+            WHERE l.estado_pago IN ('pendiente', 'pagado')
               AND MONTH(l.created_at) = %d 
               AND YEAR(l.created_at) = %d 
               AND l.monto_base_usd > 0

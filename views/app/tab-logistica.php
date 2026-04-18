@@ -23,7 +23,27 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
                     <th style="padding: 15px; color: #475569; font-size: 13px; text-align: center;">⚙️ Acciones</th>
                 </tr>
             </thead>
+			
+			
+			
             <tbody>
+                <?php 
+                // 🧠 MOTOR DE ORDENAMIENTO ESTRICTO (Urgentes primero, luego FIFO)
+                if ( ! empty( $pedidos_logistica ) ) {
+                    usort( $pedidos_logistica, function( $a, $b ) {
+                        $prio_a = isset( $a->prioridad ) ? intval( $a->prioridad ) : 0;
+                        $prio_b = isset( $b->prioridad ) ? intval( $b->prioridad ) : 0;
+
+                        // 1. Regla de Urgencia (Prioridad 1 va primero)
+                        if ( $prio_a !== $prio_b ) {
+                            return $prio_b - $prio_a;
+                        }
+                        // 2. Regla FIFO (ID menor/más viejo va primero)
+                        return intval( $a->id ) - intval( $b->id );
+                    });
+                }
+                ?>
+
                 <?php if ( ! empty( $pedidos_logistica ) ) : ?>
                     <?php foreach ( $pedidos_logistica as $pedido ) : ?>
                         <?php 

@@ -952,11 +952,42 @@ const SuiteKanban = (function($) {
             mobilePayBtn = `<button type="button" class="btn-modern-action trigger-mobile-pay" data-id="${order.id}" data-col="${order.estado}" style="padding: 4px; font-size:11px; background:#10b981; color:white; border:none; cursor:pointer;">💰 Pagar</button>`;
         }
 		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
         let reverseBtn = '';
         // La logística inversa también bloqueada visualmente para el B2B
-        if (!suite_vars.is_b2b && order.estado === 'despachado' && suite_vars.is_admin) {
-            reverseBtn = `<button class="btn-modern-action small trigger-reverse-logistics" data-id="${order.id}" style="color:#dc2626; border-color:#fca5a5; width:100%; margin-top:8px;">🔙 Logística Inversa (Admin)</button>`;
-        }
+        if (!suite_vars.is_b2b && suite_vars.is_admin) {
+            if (order.estado === 'despachado') {
+                reverseBtn = `<button class="btn-modern-action small trigger-reverse-logistics" data-id="${order.id}" style="color:#dc2626; border-color:#fca5a5; width:100%; margin-top:8px;">🔙 Logística Inversa (Admin)</button>`;
+            } 
+            // NUEVO: Reversa de 'Por Enviar' a 'Pagado'
+            else if (order.estado === 'por_enviar') {
+                reverseBtn = `<button class="btn-modern-action small trigger-reverse-to-paid" data-id="${order.id}" style="color:#d97706; border-color:#fcd34d; background:#fffbeb; width:100%; margin-top:8px;">🔙 Devolver a Pagado (Admin)</button>`;
+            }
+        }
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
         // --- FIN FASE 5.2 ---
 
         // --- INICIO CORRECCIÓN: Botón de Guía Logística (POD) ---
@@ -1357,6 +1388,9 @@ const SuiteKanban = (function($) {
             });
         });
 		
+		
+		
+		
 		// 5. EVENTO SUBMIT DEL NUEVO SÚPER-MODAL (FASE 3)
         $('#form-super-pago').on('submit', function(e) {
             e.preventDefault();
@@ -1366,14 +1400,40 @@ const SuiteKanban = (function($) {
                 return;
             }
 
+            // --- 🛡️ UX DE ÉLITE: ALERTA TEMPRANA DE PESO ---
+            // Usamos un nombre de variable único (archivoValidacion) para no chocar con el código de abajo
+            const archivoValidacion = $('#sp-comprobante')[0].files[0];
+            const maxSizeBytes = 3.5 * 1024 * 1024; // 3.5 MB
+            
+            if (archivoValidacion && archivoValidacion.size > maxSizeBytes) {
+                alert('❌ Error: El comprobante pesa demasiado. El límite estricto es de 3.5MB para garantizar el envío a Finanzas.\n\nPor favor, comprima la imagen o el PDF e intente de nuevo.');
+                return; // 🛑 Detenemos la ejecución inmediatamente
+            }
+            // ------------------------------------------------
+
             // Prevención de doble envío
             const btnSubmit = $(this).find('button[type="submit"]');
             const originalText = btnSubmit.html();
             btnSubmit.prop('disabled', true).text('⏳ Subiendo y Cifrando...');
 
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
             // 1. Instancia de FormData
             let formData = new FormData();
-
+			
+			
+			
+			
+			
             // 2. Enrutamiento y Seguridad
             formData.append('action', 'suite_process_super_pago');
             formData.append('nonce', suite_vars.nonce);
@@ -2366,6 +2426,13 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
             if ( ! function_exists( 'wp_handle_upload' ) ) {
                 require_once ABSPATH . 'wp-admin/includes/file.php';
             }
+            
+            // --- 🛡️ BARRERA ZERO-TRUST: Límite estricto de 3.5MB para Telegram ---
+            $max_size_bytes = 3.5 * 1024 * 1024;
+            if ( $_FILES['comprobante']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['comprobante']['size'] > $max_size_bytes ) {
+                $this->send_error( 'El comprobante excede el límite de peso estricto (3.5MB). Por favor, comprima el archivo e intente de nuevo.', 400 );
+                return; // 🛑 FRENO DE EMERGENCIA VITAL
+            }
 
             // Dictadura de MIME Types: Solo Imágenes y PDFs
             $upload_overrides = [
@@ -2380,6 +2447,13 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
 
             $movefile = wp_handle_upload( $_FILES['comprobante'], $upload_overrides );
 
+			
+			
+			
+			
+			
+			
+			
             if ( $movefile && ! isset( $movefile['error'] ) ) {
                 $comprobante_url = $movefile['url']; // URL pública/segura generada
             } else {
@@ -2573,22 +2647,44 @@ class Suite_Telegram_Webhook extends WP_REST_Controller {
         }
         $quote_model = new Suite_Model_Quote();
 
+		
+	
+		
+		
+		
         $action_msg = '';
 
         // 3. LÓGICA DE NEGOCIO (CONEXIÓN CON EL ERP)
         if ( strpos( $callback_data, 'approve_payment_' ) === 0 ) {
 
             $quote_id = intval( str_replace( 'approve_payment_', '', $callback_data ) );
-            $quote_model->update_order_status( $quote_id, 'por_enviar' );
-            $action_msg = '✅ Pago Aprobado. La orden ha sido enviada a Logística.';
+            
+            // --- BARRERA ZERO-TRUST: Verificar estado actual antes de actuar ---
+            $current_order = $quote_model->get( $quote_id );
+            
+            if ( ! $current_order || $current_order->estado !== 'pagado' ) {
+                $action_msg = '⚠️ Acción denegada: La orden ya no está en estado "Pagado". Posiblemente fue procesada vía Web.';
+            } else {
+                $quote_model->update_order_status( $quote_id, 'por_enviar' );
+                $action_msg = '✅ Pago Aprobado. La orden ha sido enviada a Logística.';
+            }
 
         } elseif ( strpos( $callback_data, 'reject_payment_' ) === 0 ) {
 
             $quote_id = intval( str_replace( 'reject_payment_', '', $callback_data ) );
-            $quote_model->update_order_status( $quote_id, 'emitida' );
-            $action_msg = '❌ Pago Rechazado. La orden fue devuelta a Pendiente.';
+            
+            // --- BARRERA ZERO-TRUST ---
+            $current_order = $quote_model->get( $quote_id );
+            
+            if ( ! $current_order || $current_order->estado !== 'pagado' ) {
+                $action_msg = '⚠️ Acción denegada: La orden ya no está en estado "Pagado".';
+            } else {
+                $quote_model->update_order_status( $quote_id, 'emitida' );
+                $action_msg = '❌ Pago Rechazado. La orden fue devuelta a Pendiente.';
+            }
 
         } else {
+			
             return new WP_REST_Response( 'OK', 200 );
         }
 

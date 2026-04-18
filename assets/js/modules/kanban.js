@@ -28,11 +28,42 @@ const SuiteKanban = (function($) {
             mobilePayBtn = `<button type="button" class="btn-modern-action trigger-mobile-pay" data-id="${order.id}" data-col="${order.estado}" style="padding: 4px; font-size:11px; background:#10b981; color:white; border:none; cursor:pointer;">💰 Pagar</button>`;
         }
 		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
         let reverseBtn = '';
         // La logística inversa también bloqueada visualmente para el B2B
-        if (!suite_vars.is_b2b && order.estado === 'despachado' && suite_vars.is_admin) {
-            reverseBtn = `<button class="btn-modern-action small trigger-reverse-logistics" data-id="${order.id}" style="color:#dc2626; border-color:#fca5a5; width:100%; margin-top:8px;">🔙 Logística Inversa (Admin)</button>`;
-        }
+        if (!suite_vars.is_b2b && suite_vars.is_admin) {
+            if (order.estado === 'despachado') {
+                reverseBtn = `<button class="btn-modern-action small trigger-reverse-logistics" data-id="${order.id}" style="color:#dc2626; border-color:#fca5a5; width:100%; margin-top:8px;">🔙 Logística Inversa (Admin)</button>`;
+            } 
+            // NUEVO: Reversa de 'Por Enviar' a 'Pagado'
+            else if (order.estado === 'por_enviar') {
+                reverseBtn = `<button class="btn-modern-action small trigger-reverse-to-paid" data-id="${order.id}" style="color:#d97706; border-color:#fcd34d; background:#fffbeb; width:100%; margin-top:8px;">🔙 Devolver a Pagado (Admin)</button>`;
+            }
+        }
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
         // --- FIN FASE 5.2 ---
 
         // --- INICIO CORRECCIÓN: Botón de Guía Logística (POD) ---
@@ -248,18 +279,19 @@ const SuiteKanban = (function($) {
     // ==========================================
 	const bindModalEvents = function() {
 		
-		// --- INICIO FASE 2: LISTENERS SÚPER-MODAL ---
-        // Multiplexor de campos logísticos dinámicos
+		// Multiplexor de campos logísticos dinámicos
         $('#sp-tipo-envio').on('change', function() {
             const tipo = $(this).val();
             const container = $('#sp-datos-envio-container');
             const boxAgencia = $('#box-agencia');
             const boxDireccion = $('#box-direccion');
+            const boxSucursal = $('#box-sucursal'); // NUEVO
             
             // Elementos DOM
             const baseInputs = $('#sp-nombre-receptor, #sp-rif-receptor, #sp-telefono-receptor');
             const inputAgencia = $('#sp-agencia-envio');
             const inputDireccion = $('#sp-direccion-envio');
+            const inputSucursal = $('#sp-sucursal'); // NUEVO
 
             if (tipo) {
                 container.slideDown();
@@ -270,14 +302,25 @@ const SuiteKanban = (function($) {
                     inputAgencia.prop('required', false).val('');
                     boxDireccion.hide();
                     inputDireccion.prop('required', false).val('');
+                    // NUEVO: Mostrar Sucursal
+                    boxSucursal.slideDown();
+                    inputSucursal.prop('required', true);
                 } 
                 else if (tipo === 'Motorizado') {
+                    // NUEVO: Ocultar Sucursal
+                    boxSucursal.hide();
+                    inputSucursal.prop('required', false).val('');
+                    
                     boxAgencia.hide();
                     inputAgencia.prop('required', false).val('');
                     boxDireccion.slideDown();
                     inputDireccion.prop('required', true);
                 } 
                 else if (tipo === 'Nacional') {
+                    // NUEVO: Ocultar Sucursal
+                    boxSucursal.hide();
+                    inputSucursal.prop('required', false).val('');
+                    
                     boxAgencia.slideDown();
                     inputAgencia.prop('required', true);
                     boxDireccion.slideDown();
@@ -288,8 +331,21 @@ const SuiteKanban = (function($) {
                 baseInputs.prop('required', false);
                 inputAgencia.prop('required', false);
                 inputDireccion.prop('required', false);
+                inputSucursal.prop('required', false).val(''); // NUEVO
             }
         });
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
 
         // Cancelar y cerrar Súper-Modal
         $('#close-super-pago, #btn-cancel-sp').on('click', function() {
@@ -399,6 +455,33 @@ const SuiteKanban = (function($) {
             $('#modal-super-pago').fadeIn();
         });
 		
+        // NUEVO TRIGGER EXCLUSIVO ADMIN: DEVOLVER A PAGADO
+        $('.kanban-board').on('click', '.trigger-reverse-to-paid', function(e) {
+            e.preventDefault();
+            const orderId = $(this).data('id');
+            
+            Swal.fire({
+                title: '¿Revertir orden a "Pagado"?',
+                html: `¿Hubo un error logístico?<br><span style="color:#d97706; font-size:13px;">La orden regresará a la columna Pagado.</span>`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d97706',
+                cancelButtonText: 'Cancelar',
+                confirmButtonText: 'Sí, Revertir'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    SuiteAPI.post('suite_reverse_to_paid', { order_id: orderId }).then(res => {
+                        if (res.success) {
+                            Swal.fire('¡Revertido!', 'La orden regresó a Pagado.', 'success');
+                            if (typeof SuiteKanban !== 'undefined') SuiteKanban.loadBoard(); 
+                        } else {
+                            Swal.fire('Error', res.data.message || res.data, 'error');
+                        }
+                    }).catch(() => Swal.fire('Error', 'Fallo de conexión.', 'error'));
+                }
+            });
+        });
+
         // 4. TRIGGER EXCLUSIVO ADMIN: LOGÍSTICA INVERSA
         $('#kb-col-despachado, .kanban-board').on('click', '.trigger-reverse-logistics', function(e) {
             e.preventDefault();
@@ -433,6 +516,9 @@ const SuiteKanban = (function($) {
             });
         });
 		
+		
+		
+		
 		// 5. EVENTO SUBMIT DEL NUEVO SÚPER-MODAL (FASE 3)
         $('#form-super-pago').on('submit', function(e) {
             e.preventDefault();
@@ -442,14 +528,40 @@ const SuiteKanban = (function($) {
                 return;
             }
 
+            // --- 🛡️ UX DE ÉLITE: ALERTA TEMPRANA DE PESO ---
+            // Usamos un nombre de variable único (archivoValidacion) para no chocar con el código de abajo
+            const archivoValidacion = $('#sp-comprobante')[0].files[0];
+            const maxSizeBytes = 3.5 * 1024 * 1024; // 3.5 MB
+            
+            if (archivoValidacion && archivoValidacion.size > maxSizeBytes) {
+                alert('❌ Error: El comprobante pesa demasiado. El límite estricto es de 3.5MB para garantizar el envío a Finanzas.\n\nPor favor, comprima la imagen o el PDF e intente de nuevo.');
+                return; // 🛑 Detenemos la ejecución inmediatamente
+            }
+            // ------------------------------------------------
+
             // Prevención de doble envío
             const btnSubmit = $(this).find('button[type="submit"]');
             const originalText = btnSubmit.html();
             btnSubmit.prop('disabled', true).text('⏳ Subiendo y Cifrando...');
 
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
             // 1. Instancia de FormData
             let formData = new FormData();
-
+			
+			
+			
+			
+			
             // 2. Enrutamiento y Seguridad
             formData.append('action', 'suite_process_super_pago');
             formData.append('nonce', suite_vars.nonce);
@@ -468,8 +580,13 @@ const SuiteKanban = (function($) {
                 formData.append('comprobante', fileInput);
             }
 
+			
+			
+			
+			
             // 4. Sección B: Logística
             formData.append('tipo_envio', $('#sp-tipo-envio').val());
+            formData.append('sucursal_retiro', $('#sp-sucursal').val()); // NUEVA INYECCIÓN
             formData.append('agencia_envio', $('#sp-agencia-envio').val());
             formData.append('nombre_receptor', $('#sp-nombre-receptor').val());
             formData.append('rif_receptor', $('#sp-rif-receptor').val());

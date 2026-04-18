@@ -51,17 +51,34 @@ const SuiteHistorial = (function($) {
                     // Botón Imprimir PDF
                     let printBtn = `<a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${r.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small" style="color:#475569;" title="Imprimir PDF">🖨️</a>`;
 
-                    // Botón Clonar (La acción estrella)
+					
+					
+					
+					
+                    // Botón Clonar
                     let cloneBtn = `<button class="btn-modern-action small btn-clone-quote" data-id="${r.id}" style="color:#0073aa; border-color:#bae6fd;" title="Clonar al Cotizador">🔄 Clonar</button>`;
 
-                    table.row.add([
+                    // NUEVO: Botón Retención y Color de Alerta
+                    let retencionBtn = '';
+                    let rowBgColor = '';
+                    if (r.is_pending_retention) {
+                        retencionBtn = `<button class="btn-modern-action small btn-upload-retencion" data-id="${r.id}" style="background:#fef08a; color:#854d0e; border-color:#fde047; font-weight:bold;" title="Subir Retención Fiscal">📥 Adjuntar Retención</button>`;
+                        rowBgColor = '#fef9c3'; // Amarillo tenue
+                    }
+
+                    let rowNode = table.row.add([
                         { display: r.fecha_fmt, sort: r.fecha_cruda }, 
                         `<strong>#${r.codigo_cotizacion}</strong>`,
                         r.cliente_nombre,
                         `$${r.total_fmt}`,
                         `<span class="status-pill ${badgeClass}">${r.estado.toUpperCase()}</span>`,
-                        `<div style="display:flex; gap:5px;">${printBtn} ${waBtn} ${cloneBtn}</div>`
-                    ]);
+                        `<div style="display:flex; gap:5px;">${printBtn} ${waBtn} ${cloneBtn} ${retencionBtn}</div>`
+                    ]).node();
+
+                    // Aplicar el color de fondo a la fila si está pendiente
+                    if (rowBgColor) {
+                        $(rowNode).css('background-color', rowBgColor);
+                    }
 					
 					
 					
@@ -132,6 +149,59 @@ const SuiteHistorial = (function($) {
             }).finally(() => {
                 btn.prop('disabled', false).html('🔄 Clonar');
             });
+        });
+		
+		
+		// Disparador Súper-Modal de Retención Fiscal
+        $('#historyTable').on('click', '.btn-upload-retencion', async function(e) {
+            e.preventDefault();
+            const quoteId = $(this).data('id');
+
+            const { value: file } = await Swal.fire({
+                title: 'Adjuntar Retención',
+                text: 'Suba la planilla de retención del cliente para liberar este pedido de las alertas.',
+                input: 'file',
+                inputAttributes: { 'accept': 'application/pdf, image/*' },
+                showCancelButton: true,
+                confirmButtonText: 'Subir Archivo',
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (file) {
+                // --- 🛡️ NUEVO: BARRERA DE PESO (5MB MAX) ---
+                const maxSizeBytes = 5 * 1024 * 1024; // 5 Megabytes en bytes
+                if (file.size > maxSizeBytes) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Archivo muy pesado',
+                        text: 'El comprobante de retención no debe superar los 5MB para no saturar el servidor. Por favor, comprima el PDF o reduzca la calidad de la imagen e intente de nuevo.',
+                        confirmButtonColor: '#d97706'
+                    });
+                    return; // 🛑 Detenemos la subida inmediatamente
+                }
+                // -------------------------------------------
+
+                Swal.fire({ title: 'Subiendo documento...', allowOutsideClick: false });
+                Swal.showLoading();
+
+                let formData = new FormData();
+                formData.append('action', 'suite_upload_retention');
+				
+				
+				
+                formData.append('nonce', suite_vars.nonce);
+                formData.append('quote_id', quoteId);
+                formData.append('retencion_file', file);
+
+                SuiteAPI.postForm('suite_upload_retention', formData).then(res => {
+                    if (res.success) {
+                        Swal.fire('¡Éxito!', 'Retención adjuntada. El expediente ha sido actualizado.', 'success');
+                        loadHistory(); // Recarga la tabla de inmediato
+                    } else {
+                        Swal.fire('Error', res.data.message || 'Error del servidor.', 'error');
+                    }
+                }).catch(() => Swal.fire('Error', 'Falla de conexión al subir el archivo.', 'error'));
+            }
         });
     };
 

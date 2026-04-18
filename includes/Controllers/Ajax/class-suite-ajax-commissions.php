@@ -91,21 +91,32 @@ class Suite_Ajax_Freeze_Commissions extends Suite_AJAX_Controller {
         
         // A) Ganador "🐟 Pez Gordo" (Suma más alta de monto base)
         // Ignoramos deducciones (< 0) y bonos sin venta (= 0)
+       
+		
+		
         $pez_gordo = $wpdb->get_row( $wpdb->prepare(
             "SELECT vendedor_id, SUM(monto_base_usd) as total_vendido 
              FROM {$tabla_ledger} 
-             WHERE estado_pago = 'pendiente' AND created_at <= %s AND monto_base_usd > 0
+             WHERE estado_pago IN ('pendiente', 'pagado') 
+             AND MONTH(created_at) = MONTH(%s) AND YEAR(created_at) = YEAR(%s) 
+             AND created_at <= %s AND monto_base_usd > 0
              GROUP BY vendedor_id ORDER BY total_vendido DESC LIMIT 1",
-            $fecha_corte
+            $fecha_corte, $fecha_corte, $fecha_corte
         ) );
+		
+		
+		
+		
 
         // B) Ganador "🏃 Deja pa' los demás" (Mayor cantidad de órdenes)
         $deja_pa = $wpdb->get_row( $wpdb->prepare(
             "SELECT vendedor_id, COUNT(id) as total_ordenes 
              FROM {$tabla_ledger} 
-             WHERE estado_pago = 'pendiente' AND created_at <= %s AND monto_base_usd > 0
+             WHERE estado_pago IN ('pendiente', 'pagado') 
+             AND MONTH(created_at) = MONTH(%s) AND YEAR(created_at) = YEAR(%s) 
+             AND created_at <= %s AND monto_base_usd > 0
              GROUP BY vendedor_id ORDER BY total_ordenes DESC LIMIT 1",
-            $fecha_corte
+            $fecha_corte, $fecha_corte, $fecha_corte
         ) );
 
         $premios = [
@@ -205,6 +216,7 @@ class Suite_Ajax_Commission_Audit extends Suite_AJAX_Controller {
         // Sentencia SQL Base (Sanitizada: Retiramos 'l.notas' para evitar fallos de esquema)
         $sql = "SELECT l.id, l.quote_id, l.monto_base_usd, l.comision_ganada_usd, 
                        l.estado_pago, l.recibo_loyverse, l.estado_auditoria, l.created_at, 
+                       UNIX_TIMESTAMP(l.created_at) AS timestamp_orden,
                        u.display_name AS vendedor_nombre 
                 FROM {$tabla_ledger} l
                 LEFT JOIN {$tabla_users} u ON l.vendedor_id = u.ID";

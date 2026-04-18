@@ -2296,6 +2296,13 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
             if ( ! function_exists( 'wp_handle_upload' ) ) {
                 require_once ABSPATH . 'wp-admin/includes/file.php';
             }
+            
+            // --- 🛡️ BARRERA ZERO-TRUST: Límite estricto de 3.5MB para Telegram ---
+            $max_size_bytes = 3.5 * 1024 * 1024;
+            if ( $_FILES['comprobante']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['comprobante']['size'] > $max_size_bytes ) {
+                $this->send_error( 'El comprobante excede el límite de peso estricto (3.5MB). Por favor, comprima el archivo e intente de nuevo.', 400 );
+                return; // 🛑 FRENO DE EMERGENCIA VITAL
+            }
 
             // Dictadura de MIME Types: Solo Imágenes y PDFs
             $upload_overrides = [
@@ -2310,6 +2317,13 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
 
             $movefile = wp_handle_upload( $_FILES['comprobante'], $upload_overrides );
 
+			
+			
+			
+			
+			
+			
+			
             if ( $movefile && ! isset( $movefile['error'] ) ) {
                 $comprobante_url = $movefile['url']; // URL pública/segura generada
             } else {

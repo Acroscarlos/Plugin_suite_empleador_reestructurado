@@ -282,6 +282,13 @@ if ( ! defined( 'ABSPATH' ) ) {
                 <h3 style="border-bottom: 2px solid #f1f5f9; padding-bottom: 5px; color:#1e293b; margin-top:0; font-size:15px;">Sección A: El Pago</h3>
 
                 <div class="form-group-row">
+					
+					
+					
+					
+					
+					
+					
                     <div style="flex:1;">
                         <label style="font-size:12px; font-weight:bold; color:#475569;">Forma de Pago *</label>
                         <select id="sp-forma-pago" class="widefat" required>
@@ -291,8 +298,14 @@ if ( ! defined( 'ABSPATH' ) ) {
                             <option value="Zelle">Zelle</option>
                             <option value="Efectivo">Efectivo (Divisas)</option>
                             <option value="Binance">Binance (USDT)</option>
+                            <option value="Punto de Venta">Punto de Venta</option>
                         </select>
                     </div>
+					
+					
+					
+					
+					
                     <div style="flex:1;">
                         <label style="font-size:12px; font-weight:bold; color:#475569;">Fecha de Pago *</label>
                         <input type="date" id="sp-fecha-pago" class="widefat" required>
@@ -329,10 +342,27 @@ if ( ! defined( 'ABSPATH' ) ) {
                     </select>
                 </div>
 
+				
+				
+				
                 <div id="sp-datos-envio-container" style="display:none; background:#f8fafc; padding:15px; border-radius:8px; border: 1px solid #cbd5e1;">
                     
+                    <div style="margin-bottom: 15px; display:none;" id="box-sucursal">
+                        <label style="font-size:12px; font-weight:bold; color:#0c4a6e;">🏢 ¿En qué sucursal retirará? *</label>
+                        <select id="sp-sucursal" class="widefat" style="border-color:#bae6fd;">
+                            <option value="">Seleccione la sucursal de retiro...</option>
+                            <option value="Tienda C.C. Millennium Mall">Tienda C.C. Millennium Mall</option>
+                            <option value="Tienda C.C. Galerías Ávila">Tienda C.C. Galerías Ávila</option>
+                        </select>
+                    </div>
+
                     <div class="form-group-row">
                         <div style="flex:1; display:none;" id="box-agencia">
+							
+							
+							
+							
+							
                             <label style="font-size:12px; font-weight:bold; color:#475569;">Agencia *</label>
                             <select id="sp-agencia-envio" class="widefat">
                                 <option value="">Seleccione...</option>

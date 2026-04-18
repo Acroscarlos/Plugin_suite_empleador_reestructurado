@@ -55,11 +55,16 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
         // --- MAGIA FASE 5: Relleno de ceros a la izquierda (Exactamente 8 dígitos) ---
         $recibo_loyverse = str_pad( $recibo_loyverse, 8, '0', STR_PAD_LEFT );
 
+		
+		
         // 3. CANDADO DE INMUTABILIDAD
         global $wpdb;
         $tabla_cot = $wpdb->prefix . 'suite_cotizaciones';
-        $quote_data = $wpdb->get_row( $wpdb->prepare( "SELECT estado, vendedor_id, total_usd FROM {$tabla_cot} WHERE id = %d", $quote_id ) );
+        $quote_data = $wpdb->get_row( $wpdb->prepare( "SELECT estado, vendedor_id, total_usd, codigo_cotizacion FROM {$tabla_cot} WHERE id = %d", $quote_id ) );
 
+		
+		
+		
         if ( ! $quote_data ) {
             $this->send_error( 'El pedido no existe.', 404 );
         }
@@ -76,24 +81,43 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
 
         $factura_url = '';
         $pod_url = '';
+        
+        // Límite estricto de 3.5MB para evitar Timeouts con la API de Telegram
+        $max_size_bytes = 3.5 * 1024 * 1024; 
 
         // Procesar Factura (Opcional)
         if ( ! empty( $_FILES['factura_file']['name'] ) ) {
+            // 🛡️ BARRERA 1: Peso de Factura y Errores de Servidor
+            if ( $_FILES['factura_file']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['factura_file']['size'] > $max_size_bytes ) {
+                $this->send_error( 'La Factura Fiscal excede el límite de peso estricto (3.5MB).', 400 );
+                return; // <--- 🛑 FRENO DE EMERGENCIA VITAL
+            }
+            
             $move_factura = wp_handle_upload( $_FILES['factura_file'], $upload_overrides );
+            
             if ( $move_factura && ! isset( $move_factura['error'] ) ) {
                 $factura_url = $move_factura['url'];
             } else {
                 $this->send_error( 'Error al subir la Factura Fiscal: ' . $move_factura['error'], 500 );
+                return;
             }
         }
 
         // Procesar POD (Opcional)
         if ( ! empty( $_FILES['pod_file']['name'] ) ) {
+            // 🛡️ BARRERA 2: Peso del POD y Errores de Servidor
+            if ( $_FILES['pod_file']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['pod_file']['size'] > $max_size_bytes ) {
+                $this->send_error( 'La Guía de Encomienda (POD) excede el límite de peso estricto (3.5MB).', 400 );
+                return; // <--- 🛑 FRENO DE EMERGENCIA VITAL
+            }
+
             $move_pod = wp_handle_upload( $_FILES['pod_file'], $upload_overrides );
+            
             if ( $move_pod && ! isset( $move_pod['error'] ) ) {
                 $pod_url = $move_pod['url'];
             } else {
                 $this->send_error( 'Error al subir la Guía de Encomienda: ' . $move_pod['error'], 500 );
+                return;
             }
         }
 
@@ -143,13 +167,39 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
             [ '%d' ]
         );
 
+		
+		
+		
+		
+		
         if ( $updated === false ) {
             $this->send_error( 'Ocurrió un error al actualizar la base de datos.', 500 );
         }
 
+        // --- 🚀 DISPARO A TELEGRAM (FACTURA FISCAL) ---
+        // Si el despachador subió una Factura, le avisamos a Contabilidad
+        if ( ! empty( $factura_url ) ) {
+            if ( ! class_exists('Suite_Telegram_Bot') ) {
+                require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-quotes.php';
+            }
+            if ( class_exists('Suite_Telegram_Bot') ) {
+                $telegram = new Suite_Telegram_Bot();
+                $telegram->send_fiscal_document( $quote_id, $quote_data->codigo_cotizacion, $quote_data->vendedor_id, 'Factura Fiscal Logística', $factura_url );
+            }
+        }
+        // ----------------------------------------------
+
         $this->send_success( [
             'message' => "✅ Despacho procesado (Loyverse: $recibo_loyverse). Comisiones en espera de auditoría."
         ] );
+		
+		
+		
+		
+		
+		
+		
+		
     }
 }
 

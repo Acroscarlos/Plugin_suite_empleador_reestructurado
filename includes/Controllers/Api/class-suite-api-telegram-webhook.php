@@ -64,22 +64,44 @@ class Suite_Telegram_Webhook extends WP_REST_Controller {
         }
         $quote_model = new Suite_Model_Quote();
 
+		
+	
+		
+		
+		
         $action_msg = '';
 
         // 3. LÓGICA DE NEGOCIO (CONEXIÓN CON EL ERP)
         if ( strpos( $callback_data, 'approve_payment_' ) === 0 ) {
 
             $quote_id = intval( str_replace( 'approve_payment_', '', $callback_data ) );
-            $quote_model->update_order_status( $quote_id, 'por_enviar' );
-            $action_msg = '✅ Pago Aprobado. La orden ha sido enviada a Logística.';
+            
+            // --- BARRERA ZERO-TRUST: Verificar estado actual antes de actuar ---
+            $current_order = $quote_model->get( $quote_id );
+            
+            if ( ! $current_order || $current_order->estado !== 'pagado' ) {
+                $action_msg = '⚠️ Acción denegada: La orden ya no está en estado "Pagado". Posiblemente fue procesada vía Web.';
+            } else {
+                $quote_model->update_order_status( $quote_id, 'por_enviar' );
+                $action_msg = '✅ Pago Aprobado. La orden ha sido enviada a Logística.';
+            }
 
         } elseif ( strpos( $callback_data, 'reject_payment_' ) === 0 ) {
 
             $quote_id = intval( str_replace( 'reject_payment_', '', $callback_data ) );
-            $quote_model->update_order_status( $quote_id, 'emitida' );
-            $action_msg = '❌ Pago Rechazado. La orden fue devuelta a Pendiente.';
+            
+            // --- BARRERA ZERO-TRUST ---
+            $current_order = $quote_model->get( $quote_id );
+            
+            if ( ! $current_order || $current_order->estado !== 'pagado' ) {
+                $action_msg = '⚠️ Acción denegada: La orden ya no está en estado "Pagado".';
+            } else {
+                $quote_model->update_order_status( $quote_id, 'emitida' );
+                $action_msg = '❌ Pago Rechazado. La orden fue devuelta a Pendiente.';
+            }
 
         } else {
+			
             return new WP_REST_Response( 'OK', 200 );
         }
 

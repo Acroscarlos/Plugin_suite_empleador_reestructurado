@@ -288,11 +288,23 @@ const SuiteCRM = (function($) {
 						let btnFactura = (r.factura_fiscal_url && r.factura_fiscal_url !== '') 
 							? `<a href="${r.factura_fiscal_url}" target="_blank" class="btn-modern-action small" style="background:#fee2e2; color:#dc2626; text-decoration:none; padding:4px 8px; margin-right:5px; border-radius:4px;" title="Ver Factura">📄</a>` 
 							: '';
-							
+					
+						
+						
 						let btnPod = (r.pod_url && r.pod_url !== '') 
 							? `<a href="${r.pod_url}" target="_blank" class="btn-modern-action small" style="background:#e0e7ff; color:#4f46e5; text-decoration:none; padding:4px 8px; margin-right:5px; border-radius:4px;" title="Ver Comprobante de Entrega">📦</a>` 
 							: '';
+							
+						// NUEVO: Botón de Retención
+						let btnRetencion = (r.retencion_url && r.retencion_url !== '') 
+							? `<a href="${r.retencion_url}" target="_blank" class="btn-modern-action small" style="background:#fce7f3; color:#be123c; text-decoration:none; padding:4px 8px; margin-right:5px; border-radius:4px;" title="Descargar Planilla de Retención">🧾</a>` 
+							: '';
 
+						// Mantenemos tu botón original de Imprimir
+
+						
+						
+						
 						// Mantenemos tu botón original de Imprimir
 						let btnPrint = `<a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${r.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small" style="background:#f8fafc; color:#475569; border: 1px solid #cbd5e1; padding:4px 8px; border-radius:4px; font-size:11px; text-decoration:none;" title="Imprimir PDF">🖨️ Imprimir</a>`;
 
@@ -311,6 +323,7 @@ const SuiteCRM = (function($) {
 									${btnFactura}
 									${btnPod}
 									${btnPrint}
+									${btnRetencion}
 								</td>
 							</tr>
 						`;

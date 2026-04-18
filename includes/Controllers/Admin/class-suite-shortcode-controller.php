@@ -80,9 +80,18 @@ class Suite_Shortcode_Controller {
             
             $is_b2b = get_user_meta( $user_actual->ID, 'suite_is_b2b', true ) == '1';
             
+			
+			
+			
             // --- INYECCIÓN PARA FASE 6.1: Obtener lista de vendedores para los modales ---
+            
+            // 1. LISTA GENERAL: Todos los roles operativos (Para CRM, Cotizador, Kanban)
             $vendedores = get_users( [
-                'role__in' => [ 'vendedor_jr', 'administrator', 'editor', 'author' ] 
+                'role__in' => [ 
+                    'vendedor_jr', 'administrator', 
+                    'logistica_josely', 'logistica_nicolas', 'logistica_yusmely', 
+                    'marketing', 'aliado_comercial' 
+                ] 
             ] );
             $sellers_data = [];
             foreach ( $vendedores as $v ) {
@@ -91,19 +100,46 @@ class Suite_Shortcode_Controller {
                     'name' => $v->display_name
                 ];
             }
+
+            // 2. NUEVA LISTA ESTRICTA (GAMIFICACIÓN Y ABONOS)
+            // Ya no filtramos por rol. Si tienen el interruptor activo en su perfil, entran al club VIP.
+            $comisionistas = get_users( [
+                'meta_query' => [
+                    [
+                        'key'     => 'suite_participa_comisiones',
+                        'value'   => '1',
+                        'compare' => '='
+                    ]
+                ]
+            ] );
+            $commission_sellers_data = [];
+            foreach ( $comisionistas as $c ) {
+                $commission_sellers_data[] = [
+                    'id'   => $c->ID,
+                    'name' => $c->display_name
+                ];
+            }
             // --------------------------------------------------------------------------
 
             wp_localize_script( 'suite-api-js', 'suite_vars', [
-                'ajax_url'     => admin_url( 'admin-ajax.php' ),
-                'nonce'        => wp_create_nonce( 'suite_quote_nonce' ),
-                'is_admin'     => current_user_can( 'manage_options' ),
-                'rest_url'     => esc_url_raw( rest_url() ),
-                'rest_nonce'   => wp_create_nonce( 'wp_rest' ),
-                'can_export'   => $can_export,
-                'is_marketing' => in_array( 'suite_marketing', $roles_actuales ),
-                'is_b2b'       => $is_b2b,
-                'sellers'      => $sellers_data
+                'ajax_url'           => admin_url( 'admin-ajax.php' ),
+                'nonce'              => wp_create_nonce( 'suite_quote_nonce' ),
+                'is_admin'           => current_user_can( 'manage_options' ),
+                'rest_url'           => esc_url_raw( rest_url() ),
+                'rest_nonce'         => wp_create_nonce( 'wp_rest' ),
+                'can_export'         => $can_export,
+                'is_marketing'       => in_array( 'suite_marketing', $roles_actuales ),
+                'is_b2b'             => $is_b2b,
+                'sellers'            => $sellers_data,
+                'commission_sellers' => $commission_sellers_data // <--- LA LLAVE MAESTRA INYECTADA
             ] );
+			
+			
+			
+			
+			
+			
+			
 						
         }
     }

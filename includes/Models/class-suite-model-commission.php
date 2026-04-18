@@ -37,14 +37,19 @@ class Suite_Model_Commission extends Suite_Model_Base {
 
         // 1. Ganador "Pez Gordo" ($20): Mayor volumen acumulado (Ledger + Filtro Elegibilidad)
         $pez_gordo = $this->wpdb->get_row( $this->wpdb->prepare( "
+		
+		
             SELECT l.vendedor_id, u.display_name, SUM(l.monto_base_usd) as total_vendido
             FROM {$tabla_ledger} l
             INNER JOIN {$tabla_user} u ON l.vendedor_id = u.ID
             INNER JOIN {$tabla_usermeta} um ON l.vendedor_id = um.user_id
-            WHERE l.estado_pago = 'pendiente' 
+            WHERE l.estado_pago IN ('pendiente', 'pagado') 
               AND MONTH(l.created_at) = %d 
               AND YEAR(l.created_at) = %d 
               AND l.monto_base_usd > 0
+			  
+			  
+			  
               AND um.meta_key = 'suite_participa_comisiones' AND um.meta_value = '1'
             GROUP BY l.vendedor_id
             ORDER BY total_vendido DESC
@@ -57,7 +62,7 @@ class Suite_Model_Commission extends Suite_Model_Base {
             FROM {$tabla_ledger} l
             INNER JOIN {$tabla_user} u ON l.vendedor_id = u.ID
             INNER JOIN {$tabla_usermeta} um ON l.vendedor_id = um.user_id
-            WHERE l.estado_pago = 'pendiente' 
+            WHERE l.estado_pago IN ('pendiente', 'pagado')
               AND MONTH(l.created_at) = %d 
               AND YEAR(l.created_at) = %d 
               AND l.monto_base_usd > 0
@@ -318,6 +323,59 @@ class Suite_Model_Commission extends Suite_Model_Base {
     }
 	
 	
-	
+	public function get_global_balances( $mes, $anio ) {
+        global $wpdb;
+        $tabla = $wpdb->prefix . 'suite_comisiones_ledger'; // Nombre correcto 
+
+        $start_date = sprintf( "%04d-%02d-01 00:00:00", $anio, $mes );
+        $end_date   = date( "Y-m-t 23:59:59", strtotime( $start_date ) );
+
+		
+		
+		
+        // CORRECCIÓN FORENSE: Solo extraemos el dinero que legítimamente está "pendiente" de pago o descuento.
+        // Ignoramos por completo los registros "pagados" y "anulados".
+        $transacciones = $wpdb->get_results( $wpdb->prepare( "
+            SELECT id, vendedor_id, quote_id, comision_ganada_usd, estado_auditoria, created_at
+            FROM {$tabla}
+            WHERE created_at BETWEEN %s AND %s
+            AND estado_pago = 'pendiente'
+            ORDER BY created_at ASC
+        ", $start_date, $end_date ) );
+		
+		
+		
+		
+
+        $balances = array();
+        foreach ( $transacciones as $tx ) {
+            $v_id = $tx->vendedor_id;
+            if ( ! isset( $balances[$v_id] ) ) {
+                $balances[$v_id] = [
+                    'vendedor_nombre' => get_userdata($v_id)->display_name,
+                    'neto' => 0,
+                    'advertencia_auditoria' => false,
+                    'detalles' => []
+                ];
+            }
+
+            $monto = floatval( $tx->comision_ganada_usd );
+            $balances[$v_id]['neto'] += $monto;
+
+            if ( in_array( $tx->estado_auditoria, ['incongruente', 'pendiente'] ) ) {
+                $balances[$v_id]['advertencia_auditoria'] = true;
+            }
+
+            $concepto = ($tx->quote_id > 0) ? "Comisión Orden #{$tx->quote_id}" : "Bono / Ajuste Manual";
+            
+            $balances[$v_id]['detalles'][] = [
+                'fecha' => date( 'd/m/Y', strtotime($tx->created_at) ),
+                'concepto' => $concepto,
+                'monto' => $monto,
+                'estado_auditoria' => $tx->estado_auditoria
+            ];
+        }
+        return array_values( $balances );
+    }
 	
 }

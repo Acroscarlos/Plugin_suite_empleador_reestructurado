@@ -47,28 +47,51 @@ const SuiteCommissions = (function($) {
         $('.pill-btn').on('click', function(e) {
             e.preventDefault();
             
-            // UI: Cambiar color del botón activo
+			
+			
+			
+			
+			
+            // UI: Cambiar color del botón activo y contraste de texto
             $('.pill-btn').removeClass('active').css({
                 'background': 'transparent',
+                'color': '#64748b', // Gris estándar
                 'border': '1px solid #cbd5e1'
             });
+            
             $(this).addClass('active').css({
                 'background': '#fff',
+                'color': '#0f172a', // Negro para lectura clara
                 'border': '1px solid #cbd5e1'
             });
+			
+			
+			
 
             const target = $(this).data('target');
             
+			
+			
+			
             // Lógica SPA: Ocultar todo y mostrar el contenedor solicitado
-            $('#comisiones-dashboard-view, #comisiones-audit-view, #comisiones-fame-view').hide();
+            $('#comisiones-dashboard-view, #comisiones-audit-view, #comisiones-fame-view, #comisiones-balance-view').hide(); // <-- Agregada la nueva vista aquí
             $('#' + target).fadeIn();
 
-            // Lazy load de DataTables y Salón de la Fama (Solo carga si no se había cargado antes)
+            // Lazy load de DataTables, Salón de la Fama y Bóveda Contable
             if (target === 'comisiones-audit-view' && !auditTable) {
                 loadAuditTable();
             } else if (target === 'comisiones-fame-view' && !fameLoaded) {
                 loadHallOfFame();
+            } else if (target === 'comisiones-balance-view') {
+                // Siempre cargamos data fresca al abrir la bóveda contable
+                let currentMonth = new Date().getMonth() + 1;
+                let currentYear = new Date().getFullYear();
+                loadFinancialBalance(currentMonth, currentYear);
             }
+			
+			
+			
+			
         });
     };
 
@@ -155,9 +178,20 @@ const SuiteCommissions = (function($) {
                 }},
 
                 // 8: Fecha Operación
-                { data: 'created_at', render: data => {
-                    let d = new Date(data);
-                    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+                { data: 'created_at', render: function(data, type, row) {
+                    
+                    // 🧠 MAGIA ORTOGONAL: Si DataTables va a ordenar, le pasamos el número puro de MySQL
+                    if (type === 'sort' || type === 'type') {
+                        return row.timestamp_orden; 
+                    }
+                    
+                    // Si va a mostrar visualmente, formatea el texto de forma segura sin usar 'new Date()'
+                    if (!data) return '';
+                    let dateParts = data.split(' ')[0].split('-'); // Extrae [YYYY, MM, DD]
+                    if (dateParts.length === 3) {
+                        return `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+                    }
+                    return data;
                 }}
             ],
             
@@ -201,10 +235,101 @@ const SuiteCommissions = (function($) {
             $('#fame-cards-container').html('<p style="color:#dc2626;">Error al cargar el Salón de la Fama.</p>');
         });
     };
-    // ==========================================
-    // FIN FASE 3.2: SPA & DATATABLES
-    // ==========================================
+    
+	const loadFinancialBalance = function(mes, anio) {
+        $('#balance-accordion-container').html('<div style="text-align:center; padding:40px;"><span style="font-size:24px;">⏳</span><br><p style="color:#64748b; margin-top:10px;">Procesando bóveda contable...</p></div>');
 
+        SuiteAPI.post('suite_get_financial_balance', { mes: mes, anio: anio }).then(res => {
+            if (res.success) {
+                const data = res.data;
+
+                // Animación suave de números
+                $('#kpi-total-nomina').text('$' + parseFloat(data.kpis.total_nomina).toFixed(2));
+                $('#kpi-total-recuperado').text('$' + parseFloat(data.kpis.total_recuperado).toFixed(2));
+                $('#kpi-participantes').text(data.kpis.participantes);
+
+                if(data.vendedores.length === 0) {
+                    $('#balance-accordion-container').html('<div style="background:#f8fafc; padding:20px; border-radius:8px; text-align:center; color:#64748b; border:1px dashed #cbd5e1;">No hay registros contables pendientes en este período.</div>');
+                    return;
+                }
+
+                let html = '';
+                data.vendedores.forEach(v => {
+                    // Lógica UX de Colores y Advertencias
+                    let isNegative = v.neto < 0;
+                    let colorClass = isNegative ? '#dc2626' : '#059669'; // Rojo si debe, Verde si cobra
+                    let bgHeader   = isNegative ? '#fef2f2' : '#ffffff';
+                    let netText = isNegative
+                        ? `-$${Math.abs(v.neto).toFixed(2)} <span style="font-size:10px; font-weight:bold; background:#fee2e2; color:#991b1b; padding:4px 8px; border-radius:6px; margin-left:8px; vertical-align:middle;">A FAVOR DE EMPRESA</span>`
+                        : `+$${parseFloat(v.neto).toFixed(2)}`;
+
+                    let warningIcon = v.advertencia_auditoria ? `<span title="⚠️ Alerta de Auditoría POS: Hay incongruencias" style="cursor:help; margin-left:8px; font-size:16px;">⚠️</span>` : '';
+
+                    // Diseño de Acordeón
+                    html += `
+                    <div style="border: 1px solid ${isNegative ? '#fecaca' : '#e2e8f0'}; border-radius: 10px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.02); transition: all 0.2s ease;">
+                        
+
+
+
+                        <div class="acc-header" style="background:${bgHeader}; padding:15px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition: background 0.2s;">
+
+
+
+
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <div style="width:32px; height:32px; border-radius:50%; background:#e2e8f0; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#475569;">
+                                    ${v.vendedor_nombre.charAt(0).toUpperCase()}
+                                </div>
+                                <strong style="color:#1e293b; font-size:15px;">${v.vendedor_nombre} ${warningIcon}</strong>
+                            </div>
+                            <strong style="color:${colorClass}; font-size:18px;">${netText}</strong>
+                        </div>
+
+                        <div class="acc-body" style="display:none; padding:0 20px 20px 20px; background:${bgHeader};">
+                            <div style="border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 5px;">
+                                <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left;">
+                                    <thead>
+                                        <tr style="color:#64748b;">
+                                            <th style="padding:6px 0; border-bottom:1px solid #e2e8f0;">Fecha</th>
+                                            <th style="padding:6px 0; border-bottom:1px solid #e2e8f0;">Concepto</th>
+                                            <th style="padding:6px 0; border-bottom:1px solid #e2e8f0;">Auditoría</th>
+                                            <th style="padding:6px 0; border-bottom:1px solid #e2e8f0; text-align:right;">Monto</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${v.detalles.map(d => {
+                                            let isEgreso = d.monto < 0;
+                                            let rowColor = isEgreso ? '#dc2626' : '#059669';
+                                            let signo = isEgreso ? '-' : '+';
+                                            let auditBg = d.estado_auditoria === 'verificado' ? '#dcfce7' : (d.estado_auditoria === 'incongruente' ? '#fee2e2' : '#f1f5f9');
+                                            let auditCl = d.estado_auditoria === 'verificado' ? '#166534' : (d.estado_auditoria === 'incongruente' ? '#991b1b' : '#64748b');
+
+                                            return `
+                                            <tr>
+                                                <td style="padding:8px 0; color:#475569; border-bottom:1px solid #f8fafc;">${d.fecha}</td>
+                                                <td style="padding:8px 0; color:#334155; font-weight:500; border-bottom:1px solid #f8fafc;">${d.concepto}</td>
+                                                <td style="padding:8px 0; border-bottom:1px solid #f8fafc;">
+                                                    <span style="background:${auditBg}; color:${auditCl}; padding:3px 8px; border-radius:12px; font-size:10px; font-weight:bold; text-transform:uppercase;">${d.estado_auditoria}</span>
+                                                </td>
+                                                <td style="padding:8px 0; text-align:right; font-weight:bold; color:${rowColor}; border-bottom:1px solid #f8fafc;">
+                                                    ${signo}$${Math.abs(d.monto).toFixed(2)}
+                                                </td>
+                                            </tr>`;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>`;
+                });
+
+                $('#balance-accordion-container').html(html);
+            }
+        }).catch(err => {
+            $('#balance-accordion-container').html('<p style="text-align:center; color:#dc2626; padding:20px;">❌ Error de conexión al cargar la bóveda contable.</p>');
+        });
+    };
 	
 	// ==========================================
     // EVENT LISTENERS
@@ -240,16 +365,24 @@ const SuiteCommissions = (function($) {
         $('#btn-cierre-mes').on('click', async function(e) {
             e.preventDefault();
 
-            // 1. Población dinámica del select de vendedores (Usando variable localizada de WP)
+			
+			
+			
+            // 1. Población dinámica del select de vendedores (SOLO COMISIONISTAS)
             let optionsHtml = '<option value="" disabled selected>Seleccione al vendedor...</option>';
-            if (typeof suite_vars !== 'undefined' && suite_vars.sellers) {
-                suite_vars.sellers.forEach(seller => {
+            // Cambiamos suite_vars.sellers por suite_vars.commission_sellers
+            if (typeof suite_vars !== 'undefined' && suite_vars.commission_sellers && suite_vars.commission_sellers.length > 0) {
+                suite_vars.commission_sellers.forEach(seller => {
                     optionsHtml += `<option value="${seller.id}">${seller.name}</option>`;
                 });
             } else {
-                optionsHtml += '<option value="">(Debe inyectar suite_vars.sellers desde WP)</option>';
+                optionsHtml += '<option value="" disabled>No hay comisionistas habilitados en el sistema</option>';
             }
 
+			
+			
+			
+			
             // 2. Interfaz Híbrida mediante SweetAlert2
             const { value: dalePlayWinnerId, isConfirmed } = await Swal.fire({
                 title: '⚙️ Cierre Contable de Mes',
@@ -408,16 +541,24 @@ const SuiteCommissions = (function($) {
             });
         });
 
+		
+		
+		
         // C. Botón "Registrar Abono / Anticipo"
         $('#btn-register-abono').on('click', async function(e) {
             e.preventDefault();
             
             let optionsHtml = '<option value="" disabled selected>Seleccione al vendedor o aliado...</option>';
-            if (typeof suite_vars !== 'undefined' && suite_vars.sellers) {
-                suite_vars.sellers.forEach(seller => {
+            // Cambiamos suite_vars.sellers por suite_vars.commission_sellers
+            if (typeof suite_vars !== 'undefined' && suite_vars.commission_sellers) {
+                suite_vars.commission_sellers.forEach(seller => {
                     optionsHtml += `<option value="${seller.id}">${seller.name}</option>`;
                 });
             }
+			
+			
+			
+			
 
             const { value: formValues } = await Swal.fire({
                 title: '💸 Registrar Abono',
@@ -454,6 +595,18 @@ const SuiteCommissions = (function($) {
         });
         // --- FIN REPARACIÓN ---
         
+		// Motor de Acordeón para el Balance de Pagos
+        $(document).on('click', '.acc-header', function() {
+            const body = $(this).next('.acc-body');
+            
+            // Animación de rotación o cambio de fondo si lo deseas
+            $(this).css('background', body.is(':visible') ? '#ffffff' : '#f1f5f9');
+            
+            body.slideToggle(250);
+        });
+		
+		
+		
     };
 	
 	

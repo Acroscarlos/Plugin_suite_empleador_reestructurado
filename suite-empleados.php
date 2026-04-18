@@ -51,6 +51,7 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-quotes.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-kanban.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-commissions.php';
+	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-financial-balance.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-logistics.php';
 	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-employees.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-roles.php';
@@ -61,7 +62,7 @@ function suite_empleados_init() {
 	// Controladores de la API REST
 	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-sync.php';
 	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-telegram-webhook.php'; // <--- FASE 4.1: WEBHOOK TELEGRAM
-
+	
 
     // Controlador del Administrador / Frontend (Shortcodes y Vistas)
     require_once SUITE_PATH . 'includes/Controllers/Admin/class-suite-shortcode-controller.php';
@@ -85,12 +86,15 @@ function suite_empleados_init() {
 	new Suite_Ajax_Quote_Details();
 	new Suite_Ajax_Get_Inventory();
 	new Suite_Ajax_Process_Super_Pago();
+	new Suite_Ajax_Upload_Retention();
 	
     // Módulo 1: Tablero Kanban (Pedidos)
     new Suite_Ajax_Kanban_Data();
     new Suite_Ajax_Kanban_Status();
 	new Suite_Ajax_Reverse_Logistics();
-
+	new Suite_Ajax_Reverse_To_Paid(); 
+	
+	
     // Módulo 3: Logística y Despacho
     new Suite_Ajax_Upload_POD();
     new Suite_Ajax_Print_Picking();
@@ -104,7 +108,7 @@ function suite_empleados_init() {
 	new Suite_Ajax_Pay_Selected();
 	new Suite_Ajax_Register_Abono();
 	new Suite_Ajax_Run_Manual_Audit();
-	
+	new Suite_Ajax_Financial_Balance();
     // Módulo 5: Cerebro de Demanda (REST API)
     new Suite_API_Stats();
 	new Suite_API_Sync();
@@ -163,3 +167,4 @@ function suite_plugin_deactivate() {
     }
 }
 register_deactivation_hook( __FILE__, 'suite_plugin_deactivate' );
+

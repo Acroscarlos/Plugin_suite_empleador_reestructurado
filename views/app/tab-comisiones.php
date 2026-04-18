@@ -37,7 +37,21 @@ $is_b2b = get_user_meta( $vendedor_id, 'suite_is_b2b', true ) == '1';
         <h2 style="margin:0; font-size: 22px; color: #0f172a;">🏆 Comisiones y Rendimiento</h2>
     </div>
 
-	<div class="suite-pills-nav" style="display:flex; gap:10px; margin: 20px 25px 0 25px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	<div class="suite-pills-nav" style="display:flex; gap:10px; margin: 20px 25px 0 25px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; flex-wrap: wrap;">
         
         <?php if ( ! $is_b2b ) : ?>
             <button class="tab-btn active pill-btn" data-target="comisiones-dashboard-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: #fff; cursor: pointer;">📊 Dashboard Actual</button>
@@ -48,7 +62,20 @@ $is_b2b = get_user_meta( $vendedor_id, 'suite_is_b2b', true ) == '1';
         <?php if ( ! $is_b2b ) : ?>
             <button class="tab-btn pill-btn" data-target="comisiones-fame-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: transparent; cursor: pointer;">🎖️ Salón de la Fama</button>
         <?php endif; ?>
-        </div>
+        
+        
+		
+		<?php if ( current_user_can('manage_options') ) : ?>
+            <button class="tab-btn pill-btn" data-target="comisiones-balance-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">⚖️ Balance de Pagos</button>
+        <?php endif; ?>
+		
+		
+        
+    </div>
+	
+	
+	
+	
 
 	<?php if ( ! $is_b2b ) : ?>
     <div id="comisiones-dashboard-view">
@@ -249,10 +276,44 @@ color: #7c3aed; margin-top: 2px;">Evaluado a fin de mes según Kanban de Proyect
     </div>
 
 <?php if ( ! $is_b2b ) : ?>
-    <div id="comisiones-fame-view" style="display:none; padding: 25px;">
+	
+	
+	
+	
+	
+	
+	
+    <div id="comisiones-fame-view" style="display:none; padding: 25px;">
         <h3 style="color: #0f172a; margin-bottom: 15px; font-size: 18px;">🎖️ Salón de la Fama Histórico</h3>
         <div id="fame-cards-container" style="display:flex; flex-wrap:wrap; gap:20px;">
         </div>
+    </div>
+    <?php endif; ?>
+
+    <?php if ( current_user_can('manage_options') ) : ?>
+    <div id="comisiones-balance-view" style="display:none; padding: 25px;">
+        
+        <div style="display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap;">
+            <div style="flex:1; min-width:200px; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border:1px solid #bbf7d0; padding:20px; border-radius:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <small style="color:#166534; font-weight:bold; text-transform:uppercase;">💰 Total Nómina a Pagar</small>
+                <strong id="kpi-total-nomina" style="display:block; font-size:28px; color:#15803d; margin-top:5px;">$0.00</strong>
+            </div>
+            <div style="flex:1; min-width:200px; background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%); border:1px solid #fecdd3; padding:20px; border-radius:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <small style="color:#9f1239; font-weight:bold; text-transform:uppercase;">♻️ Abonos Retenidos</small>
+                <strong id="kpi-total-recuperado" style="display:block; font-size:28px; color:#be123c; margin-top:5px;">$0.00</strong>
+            </div>
+            <div style="flex:1; min-width:200px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border:1px solid #e2e8f0; padding:20px; border-radius:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <small style="color:#334155; font-weight:bold; text-transform:uppercase;">👥 Participantes Activos</small>
+                <strong id="kpi-participantes" style="display:block; font-size:28px; color:#0f172a; margin-top:5px;">0</strong>
+            </div>
+        </div>
+
+        <h3 style="color: #0f172a; margin-bottom: 15px; font-size: 18px;">📑 Detalles por Vendedor</h3>
+        
+        <div id="balance-accordion-container">
+            <p style="text-align:center; color:#64748b;">Seleccione esta pestaña para cargar los datos.</p>
+        </div>
+
     </div>
     <?php endif; ?>
 

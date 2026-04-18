@@ -1038,7 +1038,7 @@ class Suite_Ajax_Get_Products extends Suite_AJAX_Controller {
 
 --- INICIO DEL ARCHIVO: output/Matriz_unificada_Woocommerce.csv ---
 sku,nombre,precio_venta,status_prediccion,inventario_entrante,disponibilidad_millennium,disponibilidad_galerias
-10167,UNI-T UT336E-KIT Manometro digital con pinzas de temperatura,0.0,NUEVO,No,0.0,0.0
+10167,UNI-T UT336E-KIT Manometro digital con pinzas de temperatura,458.0,NUEVO,No,0.0,0.0
 
 // [NOTA: CSV truncado para el LLM]
 

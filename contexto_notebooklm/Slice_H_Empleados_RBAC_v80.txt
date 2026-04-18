@@ -1415,9 +1415,18 @@ class Suite_Shortcode_Controller {
             
             $is_b2b = get_user_meta( $user_actual->ID, 'suite_is_b2b', true ) == '1';
             
+			
+			
+			
             // --- INYECCIÓN PARA FASE 6.1: Obtener lista de vendedores para los modales ---
+            
+            // 1. LISTA GENERAL: Todos los roles operativos (Para CRM, Cotizador, Kanban)
             $vendedores = get_users( [
-                'role__in' => [ 'vendedor_jr', 'administrator', 'editor', 'author' ] 
+                'role__in' => [ 
+                    'vendedor_jr', 'administrator', 
+                    'logistica_josely', 'logistica_nicolas', 'logistica_yusmely', 
+                    'marketing', 'aliado_comercial' 
+                ] 
             ] );
             $sellers_data = [];
             foreach ( $vendedores as $v ) {
@@ -1426,19 +1435,46 @@ class Suite_Shortcode_Controller {
                     'name' => $v->display_name
                 ];
             }
+
+            // 2. NUEVA LISTA ESTRICTA (GAMIFICACIÓN Y ABONOS)
+            // Ya no filtramos por rol. Si tienen el interruptor activo en su perfil, entran al club VIP.
+            $comisionistas = get_users( [
+                'meta_query' => [
+                    [
+                        'key'     => 'suite_participa_comisiones',
+                        'value'   => '1',
+                        'compare' => '='
+                    ]
+                ]
+            ] );
+            $commission_sellers_data = [];
+            foreach ( $comisionistas as $c ) {
+                $commission_sellers_data[] = [
+                    'id'   => $c->ID,
+                    'name' => $c->display_name
+                ];
+            }
             // --------------------------------------------------------------------------
 
             wp_localize_script( 'suite-api-js', 'suite_vars', [
-                'ajax_url'     => admin_url( 'admin-ajax.php' ),
-                'nonce'        => wp_create_nonce( 'suite_quote_nonce' ),
-                'is_admin'     => current_user_can( 'manage_options' ),
-                'rest_url'     => esc_url_raw( rest_url() ),
-                'rest_nonce'   => wp_create_nonce( 'wp_rest' ),
-                'can_export'   => $can_export,
-                'is_marketing' => in_array( 'suite_marketing', $roles_actuales ),
-                'is_b2b'       => $is_b2b,
-                'sellers'      => $sellers_data
+                'ajax_url'           => admin_url( 'admin-ajax.php' ),
+                'nonce'              => wp_create_nonce( 'suite_quote_nonce' ),
+                'is_admin'           => current_user_can( 'manage_options' ),
+                'rest_url'           => esc_url_raw( rest_url() ),
+                'rest_nonce'         => wp_create_nonce( 'wp_rest' ),
+                'can_export'         => $can_export,
+                'is_marketing'       => in_array( 'suite_marketing', $roles_actuales ),
+                'is_b2b'             => $is_b2b,
+                'sellers'            => $sellers_data,
+                'commission_sellers' => $commission_sellers_data // <--- LA LLAVE MAESTRA INYECTADA
             ] );
+			
+			
+			
+			
+			
+			
+			
 						
         }
     }
@@ -2000,21 +2036,32 @@ class Suite_Ajax_Freeze_Commissions extends Suite_AJAX_Controller {
         
         // A) Ganador "🐟 Pez Gordo" (Suma más alta de monto base)
         // Ignoramos deducciones (< 0) y bonos sin venta (= 0)
+       
+		
+		
         $pez_gordo = $wpdb->get_row( $wpdb->prepare(
             "SELECT vendedor_id, SUM(monto_base_usd) as total_vendido 
              FROM {$tabla_ledger} 
-             WHERE estado_pago = 'pendiente' AND created_at <= %s AND monto_base_usd > 0
+             WHERE estado_pago IN ('pendiente', 'pagado') 
+             AND MONTH(created_at) = MONTH(%s) AND YEAR(created_at) = YEAR(%s) 
+             AND created_at <= %s AND monto_base_usd > 0
              GROUP BY vendedor_id ORDER BY total_vendido DESC LIMIT 1",
-            $fecha_corte
+            $fecha_corte, $fecha_corte, $fecha_corte
         ) );
+		
+		
+		
+		
 
         // B) Ganador "🏃 Deja pa' los demás" (Mayor cantidad de órdenes)
         $deja_pa = $wpdb->get_row( $wpdb->prepare(
             "SELECT vendedor_id, COUNT(id) as total_ordenes 
              FROM {$tabla_ledger} 
-             WHERE estado_pago = 'pendiente' AND created_at <= %s AND monto_base_usd > 0
+             WHERE estado_pago IN ('pendiente', 'pagado') 
+             AND MONTH(created_at) = MONTH(%s) AND YEAR(created_at) = YEAR(%s) 
+             AND created_at <= %s AND monto_base_usd > 0
              GROUP BY vendedor_id ORDER BY total_ordenes DESC LIMIT 1",
-            $fecha_corte
+            $fecha_corte, $fecha_corte, $fecha_corte
         ) );
 
         $premios = [
@@ -2114,6 +2161,7 @@ class Suite_Ajax_Commission_Audit extends Suite_AJAX_Controller {
         // Sentencia SQL Base (Sanitizada: Retiramos 'l.notas' para evitar fallos de esquema)
         $sql = "SELECT l.id, l.quote_id, l.monto_base_usd, l.comision_ganada_usd, 
                        l.estado_pago, l.recibo_loyverse, l.estado_auditoria, l.created_at, 
+                       UNIX_TIMESTAMP(l.created_at) AS timestamp_orden,
                        u.display_name AS vendedor_nombre 
                 FROM {$tabla_ledger} l
                 LEFT JOIN {$tabla_users} u ON l.vendedor_id = u.ID";
@@ -2570,6 +2618,70 @@ class Suite_Ajax_Employee_Delete extends Suite_AJAX_Controller {
 }
 --- FIN DEL ARCHIVO: class-suite-ajax-employees.php ---
 
+--- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-financial-balance.php ---
+<?php
+/**
+ * Controlador AJAX: Balance Financiero y Nómina (Módulo Accounts Payable)
+ *
+ * @package SuiteEmpleados\Controllers\Ajax
+ */
+
+// Seguridad: Evitar acceso directo
+if ( ! defined( 'ABSPATH' ) ) { 
+    exit; 
+}
+
+class Suite_Ajax_Financial_Balance extends Suite_AJAX_Controller {
+    
+    protected $action_name = 'suite_get_financial_balance';
+    
+    // 🛡️ REGLA ZERO-TRUST: Solo los administradores pueden ver la nómina global
+    protected $required_capability = 'manage_options'; 
+
+    protected function process() {
+        
+        // 1. Recibir parámetros del frontend (Mes y Año), por defecto los actuales
+        $mes  = isset($_POST['mes']) ? intval($_POST['mes']) : date('m');
+        $anio = isset($_POST['anio']) ? intval($_POST['anio']) : date('Y');
+
+        // 2. Instanciar el modelo que contiene la matemática compleja
+        $model = new Suite_Model_Commission();
+
+        // 3. Obtener los bolsillos contables
+        $balances = $model->get_global_balances( $mes, $anio );
+
+        // 4. Regla 5: Cálculo de KPIs Globales de Tesorería
+        $total_nomina = 0;
+        $total_recuperado = 0;
+        $participantes_activos = count( $balances );
+
+        foreach ( $balances as $b ) {
+            // A. Sumar al Total de Nómina solo si el saldo final es positivo a favor del vendedor
+            if ( $b['neto'] > 0 ) {
+                $total_nomina += $b['neto'];
+            }
+            
+            // B. Sumar al Total Recuperado buscando los egresos/deducciones en los detalles
+            foreach ( $b['detalles'] as $d ) {
+                if ( floatval($d['monto']) < 0 ) {
+                    $total_recuperado += abs( floatval($d['monto']) );
+                }
+            }
+        }
+
+        // 5. Enviar la bóveda estructurada al Frontend para pintar el Acordeón
+        $this->send_success( [
+            'kpis' => [
+                'total_nomina'     => $total_nomina,
+                'total_recuperado' => $total_recuperado,
+                'participantes'    => $participantes_activos
+            ],
+            'vendedores' => $balances
+        ] );
+    }
+}
+--- FIN DEL ARCHIVO: class-suite-ajax-financial-balance.php ---
+
 --- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-inventory.php ---
 <?php
 /**
@@ -2904,24 +3016,43 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
 
         $factura_url = '';
         $pod_url = '';
+        
+        // Límite estricto de 3.5MB para evitar Timeouts con la API de Telegram
+        $max_size_bytes = 3.5 * 1024 * 1024; 
 
         // Procesar Factura (Opcional)
         if ( ! empty( $_FILES['factura_file']['name'] ) ) {
+            // 🛡️ BARRERA 1: Peso de Factura y Errores de Servidor
+            if ( $_FILES['factura_file']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['factura_file']['size'] > $max_size_bytes ) {
+                $this->send_error( 'La Factura Fiscal excede el límite de peso estricto (3.5MB).', 400 );
+                return; // <--- 🛑 FRENO DE EMERGENCIA VITAL
+            }
+            
             $move_factura = wp_handle_upload( $_FILES['factura_file'], $upload_overrides );
+            
             if ( $move_factura && ! isset( $move_factura['error'] ) ) {
                 $factura_url = $move_factura['url'];
             } else {
                 $this->send_error( 'Error al subir la Factura Fiscal: ' . $move_factura['error'], 500 );
+                return;
             }
         }
 
         // Procesar POD (Opcional)
         if ( ! empty( $_FILES['pod_file']['name'] ) ) {
+            // 🛡️ BARRERA 2: Peso del POD y Errores de Servidor
+            if ( $_FILES['pod_file']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['pod_file']['size'] > $max_size_bytes ) {
+                $this->send_error( 'La Guía de Encomienda (POD) excede el límite de peso estricto (3.5MB).', 400 );
+                return; // <--- 🛑 FRENO DE EMERGENCIA VITAL
+            }
+
             $move_pod = wp_handle_upload( $_FILES['pod_file'], $upload_overrides );
+            
             if ( $move_pod && ! isset( $move_pod['error'] ) ) {
                 $pod_url = $move_pod['url'];
             } else {
                 $this->send_error( 'Error al subir la Guía de Encomienda: ' . $move_pod['error'], 500 );
+                return;
             }
         }
 
@@ -3918,6 +4049,13 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
             if ( ! function_exists( 'wp_handle_upload' ) ) {
                 require_once ABSPATH . 'wp-admin/includes/file.php';
             }
+            
+            // --- 🛡️ BARRERA ZERO-TRUST: Límite estricto de 3.5MB para Telegram ---
+            $max_size_bytes = 3.5 * 1024 * 1024;
+            if ( $_FILES['comprobante']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['comprobante']['size'] > $max_size_bytes ) {
+                $this->send_error( 'El comprobante excede el límite de peso estricto (3.5MB). Por favor, comprima el archivo e intente de nuevo.', 400 );
+                return; // 🛑 FRENO DE EMERGENCIA VITAL
+            }
 
             // Dictadura de MIME Types: Solo Imágenes y PDFs
             $upload_overrides = [
@@ -3932,6 +4070,13 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
 
             $movefile = wp_handle_upload( $_FILES['comprobante'], $upload_overrides );
 
+			
+			
+			
+			
+			
+			
+			
             if ( $movefile && ! isset( $movefile['error'] ) ) {
                 $comprobante_url = $movefile['url']; // URL pública/segura generada
             } else {
@@ -4605,22 +4750,44 @@ class Suite_Telegram_Webhook extends WP_REST_Controller {
         }
         $quote_model = new Suite_Model_Quote();
 
+		
+	
+		
+		
+		
         $action_msg = '';
 
         // 3. LÓGICA DE NEGOCIO (CONEXIÓN CON EL ERP)
         if ( strpos( $callback_data, 'approve_payment_' ) === 0 ) {
 
             $quote_id = intval( str_replace( 'approve_payment_', '', $callback_data ) );
-            $quote_model->update_order_status( $quote_id, 'por_enviar' );
-            $action_msg = '✅ Pago Aprobado. La orden ha sido enviada a Logística.';
+            
+            // --- BARRERA ZERO-TRUST: Verificar estado actual antes de actuar ---
+            $current_order = $quote_model->get( $quote_id );
+            
+            if ( ! $current_order || $current_order->estado !== 'pagado' ) {
+                $action_msg = '⚠️ Acción denegada: La orden ya no está en estado "Pagado". Posiblemente fue procesada vía Web.';
+            } else {
+                $quote_model->update_order_status( $quote_id, 'por_enviar' );
+                $action_msg = '✅ Pago Aprobado. La orden ha sido enviada a Logística.';
+            }
 
         } elseif ( strpos( $callback_data, 'reject_payment_' ) === 0 ) {
 
             $quote_id = intval( str_replace( 'reject_payment_', '', $callback_data ) );
-            $quote_model->update_order_status( $quote_id, 'emitida' );
-            $action_msg = '❌ Pago Rechazado. La orden fue devuelta a Pendiente.';
+            
+            // --- BARRERA ZERO-TRUST ---
+            $current_order = $quote_model->get( $quote_id );
+            
+            if ( ! $current_order || $current_order->estado !== 'pagado' ) {
+                $action_msg = '⚠️ Acción denegada: La orden ya no está en estado "Pagado".';
+            } else {
+                $quote_model->update_order_status( $quote_id, 'emitida' );
+                $action_msg = '❌ Pago Rechazado. La orden fue devuelta a Pendiente.';
+            }
 
         } else {
+			
             return new WP_REST_Response( 'OK', 200 );
         }
 

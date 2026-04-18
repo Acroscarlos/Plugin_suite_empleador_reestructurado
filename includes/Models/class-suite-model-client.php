@@ -111,8 +111,8 @@ class Suite_Model_Client extends Suite_Model_Base {
         
         // Extraemos también las URLs de los comprobantes logísticos para la UI
         $sql = $this->wpdb->prepare(
-            "SELECT id, codigo_cotizacion as codigo, fecha_emision as fecha, total_usd as total, estado, factura_fiscal_url, pod_url 
-             FROM {$tabla_cotizaciones} 
+            "SELECT id, codigo_cotizacion as codigo, fecha_emision as fecha, total_usd as total, estado, factura_fiscal_url, pod_url, retencion_url 
+             FROM {$tabla_cotizaciones}
              WHERE cliente_id = %d", 
              intval($client_id)
         );
