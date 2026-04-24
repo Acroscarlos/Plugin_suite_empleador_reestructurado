@@ -21,6 +21,9 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             sku VARCHAR(100) NOT NULL,
             nombre_producto VARCHAR(255),
             precio_venta DECIMAL(10,2) DEFAULT 0,
+            precio_divisas DECIMAL(10,2) DEFAULT 0,
+            velocidad_venta DECIMAL(10,2) DEFAULT 0, /* <--- NUEVA COLUMNA (KPI) */
+            runway_dias INT DEFAULT 999, /* <--- NUEVA COLUMNA (Autonomía) */
             status_prediccion VARCHAR(50),
             inventario_entrante VARCHAR(10),
             disponibilidad_millennium FLOAT DEFAULT 0,

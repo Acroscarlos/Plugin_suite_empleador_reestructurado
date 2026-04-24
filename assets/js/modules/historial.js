@@ -203,6 +203,75 @@ const SuiteHistorial = (function($) {
                 }).catch(() => Swal.fire('Error', 'Falla de conexión al subir el archivo.', 'error'));
             }
         });
+		
+		// NUEVO: Modal Asíncrono para Buzón Fiscal Manual
+        $('#btn-upload-manual-fiscal').on('click', function(e) {
+            e.preventDefault();
+
+            Swal.fire({
+                title: 'Buzón Fiscal Externo',
+                html: `
+                    <div style="text-align: left; margin-top: 15px;">
+                        <p style="font-size: 13px; color: #64748b; margin-bottom: 15px;">Usa este buzón SOLO para documentos rezagados o de meses contables cerrados.</p>
+                        <input type="text" id="manual-cliente" class="suite-input" placeholder="Nombre completo del Cliente *" style="width: 100%; margin-bottom: 10px; padding: 10px;" required>
+                        <input type="text" id="manual-rif" class="suite-input" placeholder="RIF / CI (Ej: J-12345678) *" style="width: 100%; margin-bottom: 10px; padding: 10px;" required>
+
+                        <select id="manual-tipo" class="suite-input" style="width: 100%; margin-bottom: 15px; padding: 10px;">
+                            <option value="Factura Fiscal">Factura Fiscal</option>
+                            <option value="Retención Fiscal">Retención Fiscal</option>
+                        </select>
+
+                        <label style="font-size: 12px; font-weight: bold; color: #475569; display: block; margin-bottom: 5px;">Adjuntar Archivo (Max 3.5MB)</label>
+                        <input type="file" id="manual-file" class="suite-input" accept="application/pdf, image/*" style="width: 100%; padding: 8px;">
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '📤 Enviar a Contabilidad',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#4f46e5',
+                showLoaderOnConfirm: true,
+                preConfirm: () => {
+                    const cliente = document.getElementById('manual-cliente').value.trim();
+                    const rif = document.getElementById('manual-rif').value.trim();
+                    const tipo = document.getElementById('manual-tipo').value;
+                    const fileInput = document.getElementById('manual-file');
+
+                    if (!cliente || !rif || fileInput.files.length === 0) {
+                        Swal.showValidationMessage('Por favor completa todos los campos obligatorios.');
+                        return false;
+                    }
+
+                    const file = fileInput.files[0]; // <-- CORRECCIÓN CRÍTICA DE LA IA
+                    
+                    // Validación JS estricta (3.5MB = 3670016 bytes)
+                    if (file.size > 3670016) {
+                        Swal.showValidationMessage('El archivo supera el límite de 3.5MB permitido.');
+                        return false;
+                    }
+
+                    let formData = new FormData();
+                    formData.append('cliente', cliente);
+                    formData.append('rif', rif);
+                    formData.append('tipo', tipo);
+                    formData.append('fiscal_file', file);
+
+                    // <-- CORRECCIÓN: Usar nuestra arquitectura V8 nativa
+                    return SuiteAPI.postForm('suite_upload_manual_document', formData).then(res => {
+                        if (!res.success) throw new Error(res.data.message || 'Error del servidor');
+                        return res;
+                    }).catch(error => {
+                        Swal.showValidationMessage(`Error: ${error.message}`);
+                    });
+                },
+                allowOutsideClick: () => !Swal.isLoading()
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire('¡Enviado!', 'El documento ha sido sellado y enviado al canal de contabilidad.', 'success');
+                }
+            });
+        });
+		
+		
     };
 
     return {

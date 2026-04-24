@@ -677,18 +677,56 @@ const SuiteKanban = (function($) {
                 if (res.success) {
                     const cot = res.data.cotizacion;
                     
-                    // 1. Procesar la imagen o el PDF
+					
+					
+					
+					
+					
+					
+					
+					
+                    // 1. Procesar la imagen, PDF o RECIBO BDV (JSON)
                     let imgHtml = '';
                     if (cot.comprobante_pago_url) {
                         const fileUrl = cot.comprobante_pago_url;
-                        if (fileUrl.toLowerCase().endsWith('.pdf')) {
-                            imgHtml = `<a href="${fileUrl}" target="_blank" class="btn-modern-action" style="background:#dc2626; color:white; display:block; text-align:center; padding:10px; margin-bottom:15px; text-decoration:none;">📄 ABRIR PDF DEL COMPROBANTE</a>`;
+                        
+                        // PARCHE BDV: Detectar si es un JSON generado por la integración Woo
+                        if (fileUrl.includes('"is_bdv":true')) {
+                            try {
+                                let bdv = JSON.parse(fileUrl);
+                                imgHtml = `
+                                    <div style="background: #f0fdf4; border: 2px dashed #16a34a; padding: 15px; border-radius: 8px; margin-bottom: 15px; text-align: left;">
+                                        <h4 style="color: #166534; margin-top:0; border-bottom:1px solid #bbf7d0; padding-bottom:5px;">✅ RECIBO BDV CONCILIACIÓN</h4>
+                                        <p style="margin: 5px 0;"><strong>💳 Referencia:</strong> <span style="color:#0f172a;">${bdv.ref || 'N/D'}</span></p>
+                                        <p style="margin: 5px 0;"><strong>🇻🇪 Monto VES:</strong> <span style="color:#0f172a;">${bdv.ves || '0.00'} Bs.</span></p>
+                                        <p style="margin: 5px 0;"><strong>🪪 C.I. Pagador:</strong> <span style="color:#0f172a;">${bdv.ci || 'N/D'}</span></p>
+                                        <p style="margin: 5px 0;"><strong>⏱️ Timestamp:</strong> <span style="color:#0f172a;">${bdv.ts || 'N/D'}</span></p>
+                                    </div>
+                                `;
+                            } catch(e) {
+                                imgHtml = `<div style="background:#fee2e2; color:#dc2626; padding:10px; border-radius:5px; text-align:center; margin-bottom:15px; font-weight:bold;">⚠️ Error leyendo recibo digital BDV.</div>`;
+                            }
+                        } 
+                        // FLUJO NORMAL: Si no es JSON, es una URL normal (PDF o Imagen)
+                        else if (fileUrl.toLowerCase().endsWith('.pdf')) {
+                            imgHtml = `<a href="${fileUrl}" target="_blank" class="btn-modern-action" style="background:#dc2626; color:white; display:block; text-align:center; padding:10px; margin-bottom:15px; text-decoration:none; border-radius:8px;">📄 ABRIR PDF DEL COMPROBANTE</a>`;
                         } else {
                             imgHtml = `<a href="${fileUrl}" target="_blank"><img src="${fileUrl}" style="width:100%; max-height:300px; object-fit:contain; border:1px solid #cbd5e1; border-radius:8px; margin-bottom:15px; background:#fff; cursor:zoom-in;" title="Clic para ampliar"></a>`;
                         }
                     } else {
                         imgHtml = `<div style="background:#fee2e2; color:#dc2626; padding:10px; border-radius:5px; text-align:center; margin-bottom:15px; font-weight:bold;">⚠️ El vendedor no adjuntó archivo físico.</div>`;
                     }
+					
+					
+					
+					
+					
+					
+					
+					
+					
+					
+					
 
                     // 2. Procesar tabla de datos (Añadidas Alertas Fiscales y Urgencia)
                     let fiscalHtml = '';

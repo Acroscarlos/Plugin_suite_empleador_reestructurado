@@ -181,7 +181,27 @@ class Suite_Ajax_Client_Profile extends Suite_AJAX_Controller {
             $this->send_error( 'El cliente no existe.', 404 );
         }
 
+        // --- BARRERA DE SEGURIDAD IDOR PARA EXPEDIENTES ---
+        $user = wp_get_current_user();
+        $user_id = get_current_user_id();
+        
+        $es_dueño = ( intval( $cliente->vendedor_id ) === $user_id || intval( $cliente->vendedor_id ) === 0 );
+        $is_admin = current_user_can( 'manage_options' );
+        $is_gerente = in_array( 'suite_gerente', (array)$user->roles ) || in_array( 'gerente', (array)$user->roles );
+        $tiene_bandera_global = current_user_can( 'suite_view_all_customers' );
+
+        // Si no es el dueño, ni admin, ni gerente, ni tiene la bandera -> Bloquear.
+        if ( ! $es_dueño && ! $is_admin && ! $is_gerente && ! $tiene_bandera_global ) {
+            $this->send_error( 'Acceso Denegado: No tiene permisos para ver el expediente de un cliente que no le pertenece.', 403 );
+            return;
+        }
+        // --- FIN BARRERA ---
+
         $stats = $clientModel->get_client_stats( $id );
+		
+		
+		
+		
         $history = $clientModel->get_client_history( $id );
 
         // Formateo de las fechas de KPIs (Blindado para retrocompatibilidad y objetos nulos)

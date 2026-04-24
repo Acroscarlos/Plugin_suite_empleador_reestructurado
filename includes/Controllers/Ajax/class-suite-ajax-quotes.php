@@ -126,9 +126,13 @@ class Suite_Ajax_Quote_History extends Suite_AJAX_Controller {
         
         $is_admin = current_user_can( 'manage_options' );
         $is_logistica = in_array( 'suite_logistica', (array) $user->roles );
-        $tiene_acceso_global = ( $is_admin || $is_logistica );
+        
+        // --- INYECCIÓN RBAC: Nueva Bandera de Historial ---
+        $tiene_bandera_historial = current_user_can( 'suite_view_all_quotes' );
+        
+        // El acceso global se otorga si es Admin, Logística, O tiene la nueva bandera
+        $tiene_acceso_global = ( $is_admin || $is_logistica || $tiene_bandera_historial );
 
-		
         $quote_model = new Suite_Model_Quote();
         $history = $quote_model->get_vendor_history( $user_id, 500, $tiene_acceso_global );
         
@@ -140,10 +144,8 @@ class Suite_Ajax_Quote_History extends Suite_AJAX_Controller {
             $r->is_pending_retention = ($r->estado === 'despachado' && $r->agente_retencion == '1' && empty($r->retencion_url));
 
             $r->fecha_fmt = date( 'd/m/Y', strtotime( $r->fecha_emision ) );
-			
-			
-			
-			$r->fecha_cruda = strtotime( $r->fecha_emision );
+            
+            $r->fecha_cruda = strtotime( $r->fecha_emision );
             $r->total_fmt = number_format( floatval( $r->total_usd ), 2 );
             $r->cliente_nombre = empty( $r->cliente_nombre ) ? 'N/A' : esc_html( $r->cliente_nombre );
 
@@ -161,7 +163,8 @@ class Suite_Ajax_Quote_History extends Suite_AJAX_Controller {
                 $r->estado = 'emitida';
             }
             $r->can_change_status = $tiene_acceso_global;
-        // Separar en dos arreglos para aplicar "Gravedad" al inicio
+            
+            // Separar en dos arreglos para aplicar "Gravedad" al inicio
             if ( $r->is_pending_retention ) {
                 $pending_retentions[] = $r;
             } else {
@@ -1098,6 +1101,58 @@ class Suite_Ajax_Upload_Retention extends Suite_AJAX_Controller {
 				
                 $this->send_error( 'Fallo al guardar en BD.' );
             }
+        } else {
+            $this->send_error( $movefile['error'] );
+        }
+    }
+}
+
+
+/**
+ * Endpoint para subir Documentos Fiscales Extemporáneos (Manuales)
+ */
+class Suite_Ajax_Upload_Manual_Document extends Suite_AJAX_Controller {
+    
+    protected $action_name = 'suite_upload_manual_document';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        $cliente = sanitize_text_field( $_POST['cliente'] ?? '' );
+        $rif     = sanitize_text_field( $_POST['rif'] ?? '' );
+        $tipo    = sanitize_text_field( $_POST['tipo'] ?? '' );
+        $vendedor_id = get_current_user_id();
+
+        if ( empty( $cliente ) || empty( $rif ) || empty( $_FILES['fiscal_file']['name'] ) ) {
+            $this->send_error( 'Faltan datos obligatorios.' );
+        }
+
+        // Validación estricta de peso en backend (3.5MB máximo)
+        $max_size = 3.5 * 1024 * 1024;
+        if ( $_FILES['fiscal_file']['size'] > $max_size || $_FILES['fiscal_file']['error'] === UPLOAD_ERR_INI_SIZE ) {
+            $this->send_error( 'El archivo excede el límite de 3.5MB permitido por el servidor.' );
+        }
+
+        // Importar librería de WordPress para subida segura de archivos
+        if ( ! function_exists( 'wp_handle_upload' ) ) {
+            require_once( ABSPATH . 'wp-admin/includes/file.php' );
+        }
+
+        $uploadedfile     = $_FILES['fiscal_file'];
+        $upload_overrides = array( 'test_form' => false );
+        $movefile         = wp_handle_upload( $uploadedfile, $upload_overrides );
+
+        if ( $movefile && ! isset( $movefile['error'] ) ) {
+            $file_url = $movefile['url'];
+
+            // Regla de Negocio: Reusar el Bot que ya tenemos configurado apuntando al grupo Fiscal
+            if ( class_exists('Suite_Telegram_Bot') ) {
+                $telegram = new Suite_Telegram_Bot();
+                $codigo_ref = "MANUAL - " . strtoupper( $rif ) . " (" . $cliente . ")";
+                // ID 0 porque no hay orden atada, usa automáticamente el fiscal_chat_id
+                $telegram->send_fiscal_document( 0, $codigo_ref, $vendedor_id, $tipo, $file_url );
+            }
+
+            $this->send_success( array( 'message' => 'Documento procesado y enviado con éxito.', 'url' => $file_url ) );
         } else {
             $this->send_error( $movefile['error'] );
         }

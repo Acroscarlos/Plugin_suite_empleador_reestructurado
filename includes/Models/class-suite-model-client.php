@@ -27,16 +27,23 @@ class Suite_Model_Client extends Suite_Model_Base {
         $is_admin = current_user_can('manage_options');
         $is_gerente = in_array('suite_gerente', (array)$user->roles) || in_array('gerente', (array)$user->roles);
         
+        // --- INYECCIÓN RBAC: Validación de la nueva bandera ---
+        $tiene_bandera_global = current_user_can( 'suite_view_all_customers' );
+        
         $sql = "SELECT * FROM {$this->table_name}";
         
         // Zero-Trust: Filtro estricto si es vendedor regular
-        if ( ! $is_admin && ! $is_gerente ) {
-            $sql .= $this->wpdb->prepare(" WHERE vendedor_id = %d", get_current_user_id());
+        // Si no es admin, no es gerente Y NO tiene la bandera global, se restringe la vista
+        if ( ! $is_admin && ! $is_gerente && ! $tiene_bandera_global ) {
+            // Se muestran los suyos y los huérfanos (vendedor_id = 0)
+            $sql .= $this->wpdb->prepare(" WHERE vendedor_id = %d OR vendedor_id = 0", get_current_user_id());
         }
         
         $sql .= $this->wpdb->prepare(" ORDER BY id DESC LIMIT %d OFFSET %d", intval($limit), intval($offset));
         return $this->wpdb->get_results( $sql );
     }
+	
+	
 
     /**
      * Busca clientes por Nombre/Razón Social o por RIF/CI con Seguridad RLS.
@@ -46,15 +53,19 @@ class Suite_Model_Client extends Suite_Model_Base {
         $is_admin = current_user_can('manage_options');
         $is_gerente = in_array('suite_gerente', (array)$user->roles) || in_array('gerente', (array)$user->roles);
         
+        // --- INYECCIÓN RBAC: Nueva Bandera Global ---
+        $tiene_bandera_global = current_user_can( 'suite_view_all_customers' );
+
         $term_clean = strtoupper( preg_replace( '/[^A-Z0-9]/', '', $term ) );
         $term_name = $term;
 
         // Construcción SQL Base con paréntesis para aislar el OR
         $sql = "SELECT * FROM {$this->table_name} WHERE (nombre_razon LIKE %s OR rif_ci LIKE %s)";
         
-        // Zero-Trust: El vendedor solo puede buscar dentro de sus propios clientes
-        if ( ! $is_admin && ! $is_gerente ) {
-            $sql .= $this->wpdb->prepare(" AND vendedor_id = %d", get_current_user_id());
+        // Zero-Trust: Si no tiene poderes de supervisor/admin, aislar la búsqueda
+        if ( ! $is_admin && ! $is_gerente && ! $tiene_bandera_global ) {
+            // Solo busca entre sus clientes O los que no tienen vendedor (huérfanos)
+            $sql .= $this->wpdb->prepare(" AND (vendedor_id = %d OR vendedor_id = 0)", get_current_user_id());
         }
         
         $sql .= " LIMIT 10";

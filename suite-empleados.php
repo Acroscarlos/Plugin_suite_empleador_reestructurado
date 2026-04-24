@@ -31,6 +31,7 @@ function suite_empleados_init() {
     // Core
     require_once SUITE_PATH . 'includes/Core/class-activator.php';
     require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
+	require_once SUITE_PATH . 'includes/Core/class-suite-email-engine.php';
 
     // Modelos (Capa de Base de Datos y Lógica de Negocio)
     require_once SUITE_PATH . 'includes/Models/class-suite-model-base.php';
@@ -87,7 +88,7 @@ function suite_empleados_init() {
 	new Suite_Ajax_Get_Inventory();
 	new Suite_Ajax_Process_Super_Pago();
 	new Suite_Ajax_Upload_Retention();
-	
+	new Suite_Ajax_Upload_Manual_Document();
     // Módulo 1: Tablero Kanban (Pedidos)
     new Suite_Ajax_Kanban_Data();
     new Suite_Ajax_Kanban_Status();
@@ -123,7 +124,9 @@ function suite_empleados_init() {
 	new Suite_Ajax_Update_Role_Cap();
 
     // Gestor de la Vista Principal (Shortcode y encolado de assets)
+    new Suite_WooCommerce_Integration();
     new Suite_Shortcode_Controller();
+	
 }
 add_action( 'plugins_loaded', 'suite_empleados_init' );
 add_action( 'rest_api_init', function () {

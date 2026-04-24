@@ -15,21 +15,7 @@ const SuiteMarketing = (function($) {
     // MÉTODOS DE PROCESAMIENTO DE DATOS
     // ==========================================
 
-    const processDoughnutData = function(rawData) {
-        const aglomerado = {};
-        
-        // Sumar Volumen USD agrupado estrictamente por Canal
-        rawData.forEach(item => {
-            const canal = item.canal_venta || 'No Definido';
-            if (!aglomerado[canal]) aglomerado[canal] = 0;
-            aglomerado[canal] += parseFloat(item.volumen_usd);
-        });
-
-        return {
-            labels: Object.keys(aglomerado),
-            values: Object.values(aglomerado)
-        };
-    };
+    
 
     const processLineData = function(rawData) {
         const aglomerado = {};
@@ -60,48 +46,7 @@ const SuiteMarketing = (function($) {
         if (chartCanales) chartCanales.destroy();
         if (chartTendencias) chartTendencias.destroy();
 
-        // --- 1. GRÁFICO DE DONA (Canales) ---
-        const dData = processDoughnutData(data);
-        const ctxCanales = document.getElementById('chart-canales-venta').getContext('2d');
         
-        chartCanales = new Chart(ctxCanales, {
-            type: 'doughnut',
-            data: {
-                labels: dData.labels,
-                datasets: [{
-                    data: dData.values,
-                    backgroundColor: [
-                        '#0073aa', // Azul WP
-                        '#10b981', // Verde Éxito
-                        '#f59e0b', // Naranja/Amarillo
-                        '#8b5cf6', // Púrpura
-                        '#dc2626', // Rojo RV
-                        '#64748b'  // Gris
-                    ],
-                    borderWidth: 0,
-                    hoverOffset: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'right', labels: { font: { size: 13 } } },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.label || '';
-                                if (label) { label += ': '; }
-                                if (context.parsed !== null) {
-                                    label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed);
-                                }
-                                return label;
-                            }
-                        }
-                    }
-                }
-            }
-        });
 
         // --- 2. GRÁFICO DE LÍNEAS (Tendencias) ---
         const lData = processLineData(data);
@@ -149,16 +94,132 @@ const SuiteMarketing = (function($) {
                 headers: { 
                     'X-WP-Nonce': suite_vars.rest_nonce 
                 },
+				
+				
+				
                 success: function(res) {
                     if (res.success && res.data) {
-                        renderCharts(res.data);
+                        // 1. Renderizar Gráfico de Líneas (Tendencia)
+                        // Ya no renderizamos la dona, así que solo llamamos a la función
+                        // que procesa la línea. Vamos a ignorar el error si 'chart-canales-venta' no existe.
+                        try {
+                            renderCharts(res.data);
+                        } catch(e) {
+                            console.log("Aviso: Gráfico de dona removido del DOM.");
+                        }
+
+                        // 2. Procesar Inteligencia Táctica
+                        if (res.tactics) {
+                            // ... (Gancho y Sobrestock igual que antes)
+                            if (res.tactics.estrella) {
+                                $('#bi-estrella-nombre').text(res.tactics.estrella.producto_nombre);
+                            } else {
+                                $('#bi-estrella-nombre').text('Sin data de ventas.');
+                            }
+
+                            if (res.tactics.sobrestock) {
+                                $('#bi-sobrestock-nombre').text(res.tactics.sobrestock.nombre_producto);
+                                $('#bi-sobrestock-qty').text(res.tactics.sobrestock.stock_total);
+                            } else {
+                                $('#bi-sobrestock-nombre').text('Inventario Saludable ✅');
+                                $('#bi-sobrestock-qty').text('');
+                            }
+                            
+                            // 3. Tarjeta de Combo (Sin Copy)
+                            if (res.tactics.combo) {
+                                $('#bi-combo-sugerido').html(`
+                                    <span style="color:#059669; font-size:13px;">⭐ ${res.tactics.combo.gancho}</span><br>
+                                    <span style="color:#64748b; font-size:11px;">➕ (En combo con)</span><br>
+                                    <span style="color:#dc2626; font-size:13px;">📦 ${res.tactics.combo.impulso}</span>
+                                `);
+                            } else {
+                                $('#bi-combo-sugerido').text('Datos insuficientes para generar combos.');
+                            }
+
+                            // 4. Llenar Tabla Top 5 (NUEVAS COLUMNAS DE VELOCIDAD)
+                            if (res.tactics.top5 && res.tactics.top5.length > 0) {
+                                let htmlTop5 = '';
+                                let totalRunway = 0;
+                                let productosValidosParaPromedio = 0;
+
+                                res.tactics.top5.forEach(prod => {
+                                    // Asegurarnos de que las variables existan (fallback a 0 o 999)
+                                    let velocidad = parseFloat(prod.velocidad_venta || 0).toFixed(2);
+                                    let runway = parseInt(prod.runway_dias || 999);
+                                    
+                                    // Lógica del Semáforo para la fila
+                                    let colorRunway = '#64748b'; // Gris (Estancado > 60)
+                                    let etiquetaRunway = runway + ' días';
+                                    
+                                    if (runway < 15) {
+                                        colorRunway = '#ef4444'; // Rojo (Crítico)
+                                        etiquetaRunway = `<b>${runway} días</b> ⚠️`;
+                                    } else if (runway >= 15 && runway <= 60) {
+                                        colorRunway = '#10b981'; // Verde (Sano)
+                                    } else if (runway >= 999) {
+                                        etiquetaRunway = 'Estancado';
+                                    }
+
+                                    // Sumar para el promedio del Panel Global (ignorar estancados puros)
+                                    if(runway < 999) {
+                                        totalRunway += runway;
+                                        productosValidosParaPromedio++;
+                                    }
+
+                                    htmlTop5 += `
+                                        <tr style="border-bottom: 1px solid #f1f5f9;">
+                                            <td style="padding: 12px; font-weight: 500; color: #0f172a;">${prod.producto_nombre}</td>
+                                            <td style="padding: 12px; text-align: center; color: #475569;">${prod.qty}</td>
+                                            <td style="padding: 12px; text-align: right; font-weight: bold; color: #059669;">$${parseFloat(prod.ingresos).toFixed(2)}</td>
+                                            <td style="padding: 12px; text-align: center; border-left: 1px dashed #cbd5e1; color: #64748b;">${velocidad} u/d</td>
+                                            <td style="padding: 12px; text-align: center; color: ${colorRunway};">${etiquetaRunway}</td>
+                                        </tr>
+                                    `;
+                                });
+                                $('#bi-top5-body').html(htmlTop5);
+
+                                // 5. Actualizar el Instrumento de "Nave Espacial" (Promedio Global)
+                                if(productosValidosParaPromedio > 0) {
+                                    let promedioRunway = Math.round(totalRunway / productosValidosParaPromedio);
+                                    $('#bi-global-runway').text(promedioRunway);
+
+                                    let barColor = '#10b981';
+                                    let barWidth = '50%';
+                                    let adviceText = '🟢 Ritmo saludable. Mantener presupuesto de promocion actual.';
+
+                                    if(promedioRunway < 15) {
+                                        barColor = '#ef4444'; // Rojo
+                                        barWidth = '15%';
+                                        adviceText = '🔴 ALERTA: Quiebre de stock inminente en Top Ventas. Pausar promocion publicitaria.';
+                                    } else if (promedioRunway > 60) {
+                                        barColor = '#f59e0b'; // Amarillo/Naranja
+                                        barWidth = '90%';
+                                        adviceText = '🟠 ADVERTENCIA: Rotación muy lenta en el Top 5. Inyectar tráfico o armar combos.';
+                                    }
+
+                                    $('#bi-global-runway').css('color', barColor).css('text-shadow', `0 0 10px ${barColor}40`);
+                                    $('#bi-runway-bar').css('background', barColor).css('width', barWidth);
+                                    $('#bi-runway-advice').html(adviceText).css('color', barColor).css('background', `${barColor}15`).css('border', `1px solid ${barColor}30`);
+
+                                } else {
+                                    $('#bi-global-runway').text('--');
+                                    $('#bi-runway-advice').text('Datos insuficientes para calcular autonomía.');
+                                }
+
+                            } else {
+                                $('#bi-top5-body').html('<tr><td colspan="5" style="text-align: center; padding: 15px; color: #94a3b8;">Sin ventas en los últimos 30 días.</td></tr>');
+                            }
+                        }
                     }
                 },
+				
+				
+				
+				
                 error: function(err) {
                     if(err.status === 401 || err.status === 403) {
                         alert('🔒 Acceso Denegado: Su rol no tiene permisos para ver analíticas o su sesión expiró.');
                     } else {
-                        $('#chart-canales-venta').parent().html('<div style="padding:20px; color:#dc2626;">Error al cargar datos.</div>');
                         $('#chart-tendencia-ventas').parent().html('<div style="padding:20px; color:#dc2626;">Error al cargar datos.</div>');
                     }
                 }

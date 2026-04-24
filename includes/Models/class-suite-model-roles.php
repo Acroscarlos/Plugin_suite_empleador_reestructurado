@@ -46,7 +46,9 @@ class Suite_Model_Roles {
             ],
             'Nivel 3 (Datos Sensibles)' => [
                 'suite_data_detailed_stock'    => 'Ver Costos Base de Stock',
-                'suite_data_marketing_transit' => 'Ver Data de Tránsito en BI'
+                'suite_data_marketing_transit' => 'Ver Data de Tránsito en BI',
+				'suite_view_all_customers'     => 'Ver Todos los Clientes (Global)',
+				'suite_view_all_quotes'        => 'Ver Todo el Historial de Cotizaciones'
             ]
         ];
     }

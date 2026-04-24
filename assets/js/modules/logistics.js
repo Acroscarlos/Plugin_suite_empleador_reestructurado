@@ -71,6 +71,22 @@ const SuiteLogistics = (function($) {
             $('#modal-confirm-dispatch').fadeIn();
         });
 
+		// 2. CERRAR MODAL Y LIMPIAR (Restaurado)
+        $('#close-modal-dispatch, #btn-cancel-dispatch').off('click').on('click', function(e) {
+            e.preventDefault();
+            
+            // Ocultar el modal
+            $('#modal-confirm-dispatch').fadeOut('fast');
+            
+            // Limpiar el formulario y resetear estilos de la caja fiscal
+            $('#form-confirm-dispatch')[0].reset();
+            $('#box-factura-fiscal').css({'border-color': '#e2e8f0', 'background': '#ffffff'});
+            $('#label-factura-fiscal').css('color', '#475569').text('📸 Adjuntar Factura Fiscal Física (Opcional)');
+        });
+		
+		
+		
+		
         // 3. REFRESCAR TABLA (SPA - Sincronización Viva con Kanban)
         $('#btn-refresh-logistics').off('click').on('click', function(e) {
             e.preventDefault();
@@ -116,12 +132,42 @@ const SuiteLogistics = (function($) {
                             if (!isFiscal && !isRetencion) fiscalTags = `<span style="color: #94a3b8; font-size: 12px; font-style: italic;">Estándar (Sin requisitos)</span>`;
 
                             // Botones de Acción Mantenidos Exactos
-                            let btnPago = comprobanteUrl !== '#'
+                            // Ocultar botón si es WooCommerce
+                            let btnPago = (comprobanteUrl !== '#' && p.canal_venta !== 'WooCommerce Web')
                                 ? `<a href="${comprobanteUrl}" target="_blank" class="btn-modern-action" style="background: #dbeafe; color: #2563eb; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight:bold;" title="Ver Comprobante de Pago">💳 Pago</a>`
-                                : `<span style="background: #f1f5f9; color: #cbd5e1; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight:bold; cursor: not-allowed;" title="Sin comprobante adjunto">💳 Pago</span>`;
+                                : (p.canal_venta === 'WooCommerce Web' ? '' : `<span style="background: #f1f5f9; color: #cbd5e1; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight:bold; cursor: not-allowed;" title="Sin comprobante adjunto">💳 Pago</span>`);
+
+                            // NUEVO: Preparar info de pago para la columna de detalles
+                            let infoPagoWoo = (p.canal_venta === 'WooCommerce Web' && p.comprobante_pago_url) 
+                                ? `<div style="margin-top: 8px; padding: 5px; background: #f0fdf4; border-radius: 4px; border: 1px solid #bbf7d0; font-size: 11px; color: #166534;"><strong>💳 Pago:</strong> ${p.comprobante_pago_url}</div>` 
+                                : '';
+							
+							
+							
+							
 
                             let printUrl = `${suite_vars.ajax_url}?action=suite_print_quote&id=${p.id}&nonce=${suite_vars.nonce}`;
                             let pickUrl = `${suite_vars.ajax_url}?action=suite_print_picking&id=${p.id}&nonce=${suite_vars.nonce}`;
+							
+							
+							// NUEVO: Botón Global de WhatsApp
+                            let waPhone = p.telefono_cliente || p.wa_phone || ''; // Intentamos extraer el teléfono
+                            let btnWa = '';
+                            if (waPhone) {
+                                // Limpiamos el número para la API de WhatsApp
+                                let cleanPhone = waPhone.replace(/[^0-9+]/g, '');
+                                let msg = encodeURIComponent(`Hola ${p.cliente_nombre}, le contactamos del equipo de despachos de UNI-T respecto a su orden #${p.codigo_cotizacion}. `);
+                                btnWa = `<a href="https://api.whatsapp.com/send?phone=${cleanPhone}&text=${msg}" target="_blank" class="btn-modern-action" style="background: #10b981; color: white; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight:bold; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);" title="Contactar por WhatsApp">📱 Chat</a>`;
+                            }
+							
+							
+							
+							
+							
+							
+							
+							
+							
 
                             html += `
                             <tr style="border-bottom: 1px solid #f1f5f9;" id="log-row-${p.id}">
@@ -140,20 +186,32 @@ const SuiteLogistics = (function($) {
                                         ${fiscalTags}
                                     </div>
                                 </td>
+
+
+
                                 <td style="padding: 15px; max-width: 250px; white-space: normal;">
                                     <strong style="color: #059669; font-size: 13px;">[${tipoEnvio.toUpperCase()}]</strong><br>
                                     <span style="color: #475569; font-size: 12px; line-height: 1.4; display: inline-block; margin-top: 4px;">
                                         ${direccion.replace(/\n/g, '<br>')}
                                     </span>
+                                    ${infoPagoWoo}
                                 </td>
+
+
+
                                 <td style="padding: 15px; text-align: center;">
                                     <div style="display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                                        ${btnWa}
                                         <a href="${printUrl}" target="_blank" class="btn-modern-action" style="background: #f1f5f9; color: #475569; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight:bold;" title="Imprimir Orden">🖨️ Orden</a>
                                         <a href="${pickUrl}" target="_blank" class="btn-modern-action" style="background: #f59e0b; color: white; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight:bold; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);" title="Generar Hoja de Picking">📋 Picking</a>
                                         ${btnPago}
-                                        <button type="button" class="btn-modern-action trigger-dispatch" data-id="${p.id}" data-code="${p.codigo_cotizacion}" data-fiscal="${isFiscal}" style="background: #10b981; color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">📦 Despachar</button>
+                                        <button type="button" class="btn-modern-action trigger-dispatch" data-id="${p.id}" data-code="${p.codigo_cotizacion}" data-fiscal="${isFiscal}" style="background: #4f46e5; color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.3);">📦 Despachar</button>
                                     </div>
                                 </td>
+
+
+
+
                             </tr>`;
                         });
                     } else {

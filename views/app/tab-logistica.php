@@ -101,12 +101,23 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
                                 </div>
                             </td>
                             
+							
+							
+							
                             <td style="padding: 15px; max-width: 250px; white-space: normal;">
-                                <strong style="color: #059669; font-size: 13px;">[<?php echo esc_html( strtoupper( $tipo_envio ) ); ?>]</strong><br>
-                                <span style="color: #475569; font-size: 12px; line-height: 1.4; display: inline-block; margin-top: 4px;">
-                                    <?php echo nl2br(esc_html( $direccion )); ?>
-                                </span>
-                            </td>
+								<strong style="color: #059669; font-size: 13px;">[<?php echo esc_html( strtoupper( $tipo_envio ) ); ?>]</strong><br>
+								<span style="color: #475569; font-size: 12px; line-height: 1.4; display: inline-block; margin-top: 4px;">
+									<?php echo nl2br(esc_html( $direccion )); ?>
+								</span>
+								<?php if ( $pedido->canal_venta === 'WooCommerce Web' && ! empty( $pedido->comprobante_pago_url ) ) : ?>
+									<div style="margin-top: 8px; padding: 5px; background: #f0fdf4; border-radius: 4px; border: 1px solid #bbf7d0; font-size: 11px; color: #166534;">
+										<strong>💳 Pago:</strong> <?php echo esc_html( $pedido->comprobante_pago_url ); ?>
+									</div>
+								<?php endif; ?>
+							</td>
+							
+							
+							
                             
                             <td style="padding: 15px; text-align: center;">
                                 <div style="display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;">
@@ -118,10 +129,19 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
                                         📋 Picking
                                     </a>
                                     
-                                    <?php if ( $has_comprobante ) : ?>
-                                        <a href="<?php echo esc_url( $comprobante_url ); ?>" target="_blank" class="btn-modern-action" style="background: #dbeafe; color: #2563eb; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight:bold;" title="Ver Comprobante de Pago">
+									
+									
+									
+                                    <?php if ( $has_comprobante && $pedido->canal_venta !== 'WooCommerce Web' ) : ?>
+                                        <a href="<?php 
+echo esc_url( $comprobante_url ); ?>" target="_blank" class="btn-modern-action" style="background: #dbeafe; color: #2563eb; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight:bold;"
+title="Ver Comprobante de Pago">
                                             💳 Pago
                                         </a>
+									
+									
+									
+									
                                     <?php else : ?>
                                         <span style="background: #f1f5f9; color: #cbd5e1; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight:bold; cursor: not-allowed;" title="Sin comprobante adjunto">💳 Pago</span>
                                     <?php endif; ?>

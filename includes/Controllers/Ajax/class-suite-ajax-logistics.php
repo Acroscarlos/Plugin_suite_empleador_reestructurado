@@ -167,14 +167,16 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
             [ '%d' ]
         );
 
-		
-		
-		
-		
-		
         if ( $updated === false ) {
             $this->send_error( 'Ocurrió un error al actualizar la base de datos.', 500 );
         }
+
+        // --- 📧 FASE B: NOTIFICACIÓN AUTOMÁTICA AL CLIENTE (CORREO) ---
+        if ( class_exists('Suite_Email_Engine') ) {
+            $email_engine = new Suite_Email_Engine();
+            $email_engine->send_dispatch_notification($quote_id);
+        }
+        // --------------------------------------------------------------
 
         // --- 🚀 DISPARO A TELEGRAM (FACTURA FISCAL) ---
         // Si el despachador subió una Factura, le avisamos a Contabilidad
@@ -190,7 +192,7 @@ class Suite_Ajax_Upload_POD extends Suite_AJAX_Controller {
         // ----------------------------------------------
 
         $this->send_success( [
-            'message' => "✅ Despacho procesado (Loyverse: $recibo_loyverse). Comisiones en espera de auditoría."
+            'message' => "✅ Despacho procesado (Loyverse: $recibo_loyverse). El cliente ha sido notificado por correo."
         ] );
 		
 		

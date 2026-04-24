@@ -325,6 +325,10 @@ class Suite_Shortcode_Controller {
                     if (tabId === "TabHistorial" && typeof SuiteHistorial !== "undefined") {
                         SuiteHistorial.refresh(); 
                     }
+					if (tabId === "TabInventario" && typeof SuiteInventory !== "undefined") {
+						SuiteInventory.refresh();
+					}
+					
                 };
 
             });
