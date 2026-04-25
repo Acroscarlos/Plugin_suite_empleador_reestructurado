@@ -1,927 +1,7 @@
-=================================================================
-🧩 MÓDULO LÓGICO: Slice_E_Comisiones_Ledger
-Contiene el Stack completo: Base Core + Vistas + JS + AJAX + Models
-=================================================================
+# 🧩 MÓDULO LÓGICO: Slice_E_Comisiones_Ledger
 
-=================================================================
-🏛️ ARCHIVOS CORE (COMPARTIDOS)
-Clases base, singletons, API handlers y estilos globales.
-=================================================================
-
---- INICIO DEL ARCHIVO: suite-empleados.php ---
-<?php
-/**
- * Plugin Name: Suite de Empleados (ERP Intranet)
- * Plugin URI: https://mitiendaunit.com/intranet_1
- * Description: Sistema modular V8.0 para gestión de Inventario, CRM, Logística, Gamificación y Cerebro de Demanda (IA). Arquitectura MVC.
- * Version: 8.0.0
- * Author: DevOps Team & RV Automation Technology
- * Text Domain: suite-empleados
- * License: GPLv2 or later
- */
-
-// 1. SEGURIDAD: Evitar acceso directo
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
-
-// 2. CONSTANTES DEL SISTEMA
-define( 'SUITE_VERSION', '8.0.0' );
-define( 'SUITE_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SUITE_URL', plugin_dir_url( __FILE__ ) );
-
-/**
- * 3. INICIALIZADOR DEL SISTEMA (Orquestador MVC)
- * Se engancha a 'plugins_loaded' para asegurar que el core de WP esté listo.
- */
-function suite_empleados_init() {
-    
-    // --- A. CARGA DE DEPENDENCIAS (REQUIRE_ONCE) ---
-    // [Error 1.1 Corregido]: Rutas apuntando a los nombres reales de los archivos.
-
-    // Core
-    require_once SUITE_PATH . 'includes/Core/class-activator.php';
-    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
-
-    // Modelos (Capa de Base de Datos y Lógica de Negocio)
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-base.php';
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-client.php';
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-quote.php';
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-inventory.php';
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-commission.php';
-	require_once SUITE_PATH . 'includes/Models/class-suite-model-roles.php';    
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-employee.php'; 
-	require_once SUITE_PATH . 'includes/Models/class-suite-model-product.php';
-
-
-    // Controladores Base
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-controller.php';
-
-    // Controladores AJAX (Módulos de la UI)
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-client.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-quotes.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-kanban.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-commissions.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-logistics.php';
-	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-employees.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-roles.php';
-	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-products.php';
-	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-inventory.php';
-    // Controladores API REST (Data Lake y Machine Learning)
-    require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-stats.php';
-	// Controladores de la API REST
-	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-sync.php';
-	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-telegram-webhook.php'; // <--- FASE 4.1: WEBHOOK TELEGRAM
-
-
-    // Controlador del Administrador / Frontend (Shortcodes y Vistas)
-    require_once SUITE_PATH . 'includes/Controllers/Admin/class-suite-shortcode-controller.php';
-
-    // --- B. INSTANCIACIÓN DE CONTROLADORES (Encendiendo los motores) ---
-
-    // Módulo de Clientes (CRM) - [Las 5 nuevas clases divididas]
-    new Suite_Ajax_Client_Search();
-    new Suite_Ajax_Client_Add();
-    new Suite_Ajax_Client_Import();
-    new Suite_Ajax_Client_Delete();
-    new Suite_Ajax_Client_Profile();
-	new Suite_Ajax_Log_Export();
-
-    // Módulo de Cotizaciones
-    new Suite_Ajax_Quote_Save();
-    new Suite_Ajax_Quote_History();
-    new Suite_Ajax_Quote_Status();
-	new Suite_Ajax_Print_Quote();
-	new Suite_Ajax_Get_Products();
-	new Suite_Ajax_Quote_Details();
-	new Suite_Ajax_Get_Inventory();
-	new Suite_Ajax_Process_Super_Pago();
-	
-    // Módulo 1: Tablero Kanban (Pedidos)
-    new Suite_Ajax_Kanban_Data();
-    new Suite_Ajax_Kanban_Status();
-	new Suite_Ajax_Reverse_Logistics();
-
-    // Módulo 3: Logística y Despacho
-    new Suite_Ajax_Upload_POD();
-    new Suite_Ajax_Print_Picking();
-
-    // Módulo 4: Dashboard de Comisiones y Gamificación
-    new Suite_Ajax_Dashboard_Stats();
-	new Suite_Ajax_Freeze_Commissions();
-	new Suite_Ajax_Commission_Audit(); 
-	new Suite_Ajax_Process_Audit_Action();
-    new Suite_Ajax_Hall_of_Fame();
-	new Suite_Ajax_Pay_Selected();
-	new Suite_Ajax_Register_Abono();
-	new Suite_Ajax_Run_Manual_Audit();
-	
-    // Módulo 5: Cerebro de Demanda (REST API)
-    new Suite_API_Stats();
-	new Suite_API_Sync();
-	
-	// Módulo 6:--- NUEVO MÓDULO: GESTIÓN DE EQUIPO Y ROLES (RBAC) ---
-    new Suite_Ajax_Employee_List();
-    new Suite_Ajax_Employee_Save();
-    new Suite_Ajax_Employee_Delete();
-    new Suite_Ajax_Role_List();
-    new Suite_Ajax_Role_Save();
-    new Suite_Ajax_Role_Delete();
-	new Suite_Ajax_Update_Role_Cap();
-
-    // Gestor de la Vista Principal (Shortcode y encolado de assets)
-    new Suite_Shortcode_Controller();
-}
-add_action( 'plugins_loaded', 'suite_empleados_init' );
-add_action( 'rest_api_init', function () {
-	$telegram_webhook = new Suite_Telegram_Webhook();
-	$telegram_webhook->register_routes();
-	});
-
-/**
- * 4. ACTIVACIÓN DEL PLUGIN
- * Crea las tablas, define roles usando dbDelta y programa Cron Jobs.
- */
-function suite_plugin_activate() {
-    // 1. Instalación de BD y Roles
-    require_once SUITE_PATH . 'includes/Core/class-activator.php';
-    if ( class_exists( 'Suite_Activator' ) && method_exists( 'Suite_Activator', 'activate' ) ) {
-        Suite_Activator::activate();
-    } elseif ( function_exists( 'suite_install_db' ) ) {
-        suite_install_db(); 
-    }
-
-    // 2. Programación de Tareas Automáticas (Data Lake)
-    // [Error 3.1 Corregido]: El Cron ahora se registra ESTRICTAMENTE UNA VEZ en la activación.
-    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
-    if ( class_exists( 'Suite_Cron_Jobs' ) ) {
-        $cron_jobs = new Suite_Cron_Jobs();
-        $cron_jobs->schedule_events();
-    }
-}
-register_activation_hook( __FILE__, 'suite_plugin_activate' );
-
-
-/**
- * 5. DESACTIVACIÓN DEL PLUGIN
- * Limpia los Cron Jobs activos para no dejar basura en la memoria de WordPress.
- */
-function suite_plugin_deactivate() {
-    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
-    if ( class_exists( 'Suite_Cron_Jobs' ) ) {
-        $cron_jobs = new Suite_Cron_Jobs();
-        $cron_jobs->clear_events();
-    }
-}
-register_deactivation_hook( __FILE__, 'suite_plugin_deactivate' );
---- FIN DEL ARCHIVO: suite-empleados.php ---
-
---- INICIO DEL ARCHIVO: assets/css/suite-styles.css ---
-/* ==========================================
-   MODALES, PESTAÑAS Y FORMULARIOS
-   ========================================== */
-.suite-modal {
-    display: none;
-    position: fixed;
-    z-index: 9999;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.6);
-}
-
-.suite-modal-content {
-    background-color: #ffffff;
-    padding: 25px;
-    border-radius: 12px;
-    width: 90%;
-    max-width: 500px;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    max-height: 90vh;
-    overflow-y: auto;
-}
-
-.close-modal {
-    position: absolute;
-    top: 15px;
-    right: 20px;
-    font-size: 24px;
-    font-weight: bold;
-    color: #64748b;
-    cursor: pointer;
-    transition: color 0.2s;
-}
-
-.close-modal:hover {
-    color: #0f172a;
-}
-
-.suite-tabs-modern {
-    display: flex;
-	flex-wrap: nowrap !important;      /* Impide que salten de línea */
-    overflow-x: auto;                  /* Activa el scroll horizontal en pantallas pequeñas */
-    -webkit-overflow-scrolling: touch;
-    gap: 10px;
-    border-bottom: 2px solid #e2e8f0;
-    margin-bottom: 20px;
-    background: #f8fafc;
-    padding: 10px 10px 0 10px;
-    border-radius: 8px 8px 0 0;
-	scrollbar-width: none;             /* Firefox */
-    -ms-overflow-style: none;
-}
-.suite-tabs-modern::-webkit-scrollbar {
-    display: none;
-}
-
-.tab-btn {
-	flex-shrink: 0;                    /* Evita que los botones se achiquen si no caben */
-    white-space: nowrap;
-    padding: 12px 20px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    font-weight: 600;
-    color: #64748b;
-    border-radius: 8px 8px 0 0;
-    transition: all 0.3s;
-}
-
-.tab-btn:hover {
-    background: #f1f5f9;
-    color: #334155;
-}
-
-.tab-btn.active {
-    background: #ffffff;
-    color: #0073aa;
-    border: 1px solid #e2e8f0;
-    border-bottom: 2px solid #ffffff;
-    margin-bottom: -2px;
-}
-
-.form-group-row {
-    display: flex;
-    gap: 15px;
-    align-items: center;
-    margin-bottom: 15px;
-}
-.form-group-row > div {
-    flex: 1;
-}
---- FIN DEL ARCHIVO: suite-styles.css ---
-
---- INICIO DEL ARCHIVO: assets/js/core/api.js ---
-/**
- * SuiteAPI - Orquestador de Peticiones AJAX
- * * Centraliza las llamadas al servidor, inyectando automáticamente 
- * credenciales de seguridad (Nonces) y enrutamiento (URL).
- */
-const SuiteAPI = (function($) {
-    'use strict';
-
-    // Variables privadas extraídas de la localización de WP
-    const apiUrl = suite_vars.ajax_url;
-    const sysNonce = suite_vars.nonce;
-
-    /**
-     * Interceptor Global de Errores
-     * Captura expiración de sesión (401) o fallos de permisos (403)
-     */
-    const handleAjaxError = function(error, reject) {
-        if (error.status === 401 || error.status === 403) {
-            alert('🔒 Su sesión ha expirado o fue cerrada por seguridad. Por favor, recargue la página e inicie sesión nuevamente.');
-        }
-        reject(error);
-    };
-
-    /**
-     * Petición POST estándar para JSON
-     * * @param {string} action - El nombre del hook de WP (ej. 'suite_search_client_ajax')
-     * @param {object} data - Datos a enviar
-     * @returns {Promise}
-     */
-    const post = function(action, data = {}) {
-        return new Promise((resolve, reject) => {
-            // Inyección automática de parámetros obligatorios
-            const payload = {
-                ...data,
-                action: action,
-                nonce: sysNonce
-            };
-
-            $.post(apiUrl, payload)
-                .done(response => resolve(response))
-                .fail(error => handleAjaxError(error, reject)); // <-- Interceptor inyectado
-        });
-    };
-
-    /**
-     * Petición POST para subir archivos (FormData)
-     * Utilizado para la importación de CSV o futuras subidas de fotos (POD)
-     * * @param {string} action - El nombre del hook de WP
-     * @param {FormData} formData - Objeto FormData instanciado
-     * @returns {Promise}
-     */
-    const postForm = function(action, formData) {
-        return new Promise((resolve, reject) => {
-            // Inyección en FormData
-            formData.append('action', action);
-            formData.append('nonce', sysNonce);
-
-            $.ajax({
-                url: apiUrl,
-                type: 'POST',
-                data: formData,
-                processData: false, // Vital para que jQuery no procese el archivo
-                contentType: false, // Vital para que el navegador asigne el boundary multipart
-                success: response => resolve(response),
-                error: error => handleAjaxError(error, reject) // <-- Interceptor inyectado
-            });
-        });
-    };
-
-    // API Pública Revelada
-    return {
-        post: post,
-        postForm: postForm
-    };
-
-})(jQuery);
---- FIN DEL ARCHIVO: api.js ---
-
---- INICIO DEL ARCHIVO: assets/js/core/state.js ---
-/**
- * SuiteState - Manejador de Estado Inmutable (Store)
- * 
- * Centraliza los datos financieros y el carrito de compras.
- * Previene la manipulación directa desde el objeto global window.
- */
-const SuiteState = (function() {
-    'use strict';
-
-    // ==========================================
-    // VARIABLES PRIVADAS (El "Estado")
-    // ==========================================
-    let cart = [];
-    let totalUSD = 0.00;
-    let totalBS = 0.00;
-    let tasaBCV = 1.00; // Se actualizará al inicializar la app
-
-    // ==========================================
-    // MÉTODOS PRIVADOS
-    // ==========================================
-    
-    /**
-     * Recalcula los totales matemáticos cada vez que el carrito cambia.
-     * Mantiene la lógica financiera blindada.
-     */
-    const calculateTotals = function() {
-        totalUSD = cart.reduce((sum, item) => {
-            let qty = parseInt(item.qty) || 0;
-            let price = parseFloat(item.price) || 0;
-            return sum + (qty * price);
-        }, 0);
-
-        totalBS = totalUSD * tasaBCV;
-    };
-
-    // ==========================================
-    // API PÚBLICA (Métodos Revelados)
-    // ==========================================
-    return {
-        /**
-         * Retorna una COPIA INMUTABLE del carrito.
-         * Si alguien muta este array externamente, no afectará al original.
-         * @returns {Array}
-         */
-        getCart: function() {
-            return [...cart]; 
-        },
-
-        /**
-         * Añade un producto al carrito y recalcula.
-         * Si el SKU ya existe, suma la cantidad en lugar de duplicar la fila.
-         * @param {Object} item 
-         */
-        addItem: function(item) {
-            // Normalizar datos: Prohibir cantidades negativas o cero
-            item.qty = Math.max(1, parseInt(item.qty) || 1);
-            item.price = Math.max(0, parseFloat(item.price) || 0.00);
-
-            const existingIndex = cart.findIndex(i => i.sku === item.sku);
-            if (existingIndex > -1) {
-                cart[existingIndex].qty += item.qty;
-            } else {
-                cart.push(item);
-            }
-            calculateTotals();
-        },
-
-        /**
-         * Actualiza un campo específico de una fila (ej. cantidad o precio editado).
-         * @param {number} index - Índice en el array
-         * @param {string} field - 'qty' o 'price'
-         * @param {number|string} value - Nuevo valor
-         */
-        updateItem: function(index, field, value) {
-            if (cart[index]) {
-                if (field === 'qty') {
-                    cart[index][field] = Math.max(1, parseInt(value) || 1);
-                } else {
-                    cart[index][field] = Math.max(0, parseFloat(value) || 0);
-                }
-                calculateTotals();
-            }
-        },
-
-        /**
-         * Elimina un producto del carrito.
-         * @param {number} index 
-         */
-        removeItem: function(index) {
-            if (cart[index]) {
-                cart.splice(index, 1);
-                calculateTotals();
-            }
-        },
-
-        /**
-         * Vacía el carrito por completo (útil al guardar con éxito).
-         */
-        clearCart: function() {
-            cart = [];
-            calculateTotals();
-        },
-
-        /**
-         * Actualiza la tasa BCV del día.
-         * @param {number} tasa 
-         */
-        setTasa: function(tasa) {
-            tasaBCV = parseFloat(tasa) || 1;
-            calculateTotals();
-        },
-
-        /**
-         * Devuelve un snapshot de los totales financieros formateados.
-         * @returns {Object}
-         */
-        getTotals: function() {
-            return {
-                usd: totalUSD.toFixed(2),
-                bs: totalBS.toFixed(2),
-                tasa: tasaBCV.toFixed(2)
-            };
-        }
-    };
-})();
-
---- FIN DEL ARCHIVO: state.js ---
-
---- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-controller.php ---
-<?php
-/**
- * Clase Abstracta: Controlador AJAX Base
- *
- * Centraliza la seguridad, el registro de hooks y las respuestas estandarizadas
- * para todas las peticiones AJAX del sistema.
- *
- * @package SuiteEmpleados\Controllers\Ajax
- */
-
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
-
-abstract class Suite_AJAX_Controller {
-
-    /**
-     * El nombre de la acción AJAX (Ej. 'suite_search_client_ajax')
-     * @var string
-     */
-    protected $action_name;
-
-    /**
-     * El permiso mínimo requerido para ejecutar esta acción.
-     * @var string
-     */
-    protected $required_capability = 'read'; // Por defecto, cualquier usuario logueado en la intranet
-
-    /**
-     * Constructor.
-     * Registra dinámicamente el hook wp_ajax basándose en $action_name.
-     */
-    public function __construct() {
-        if ( empty( $this->action_name ) ) {
-            // Evitar registro si la clase hija no definió el nombre de la acción
-            return;
-        }
-
-        // Registrar el endpoint (Solo para usuarios logueados)
-        add_action( 'wp_ajax_' . $this->action_name, [ $this, 'handle_request' ] );
-    }
-
-    /**
-     * Manejador principal de la petición.
-     * Ejecuta las barreras de seguridad antes de procesar la lógica.
-     */
-    public function handle_request() {
-        // 1. Barrera CSRF: Validación de Nonce Estricto (Retrocompatibilidad)
-        if ( ! check_ajax_referer( 'suite_quote_nonce', 'nonce', false ) ) {
-            $this->send_error( 'Fallo de seguridad CSRF o sesión caducada.', 403 );
-        }
-
-        // 2. Barrera de Permisos: Verificación del Rol del Usuario
-        if ( ! current_user_can( $this->required_capability ) ) {
-            $this->send_error( 'Privilegios insuficientes para realizar esta acción.', 401 );
-        }
-
-        // 3. Ejecutar la lógica de negocio específica de la clase hija
-        $this->process();
-    }
-
-    /**
-     * Método abstracto que las clases hijas DEBEN implementar.
-     * Aquí es donde irá la lógica real (ej. buscar cliente, guardar cotización).
-     */
-    abstract protected function process();
-
-    /**
-     * Helper para enviar una respuesta exitosa estandarizada.
-     *
-     * @param mixed $data Los datos a devolver (Array, Objeto, String).
-     */
-    protected function send_success( $data = [] ) {
-        wp_send_json_success( $data );
-    }
-
-    /**
-     * Helper para enviar una respuesta de error estandarizada.
-     *
-     * @param string $message Mensaje de error para el frontend.
-     * @param int    $code    Código HTTP simulado.
-     */
-    protected function send_error( $message, $code = 400 ) {
-        wp_send_json_error( [
-            'message' => $message,
-            'code'    => $code
-        ] );
-    }
-}
---- FIN DEL ARCHIVO: class-suite-ajax-controller.php ---
-
---- INICIO DEL ARCHIVO: includes/Core/class-activator.php ---
-<?php
-// SEGURIDAD: Evitar acceso directo
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
-
-/**
- * Función de Instalación de Base de Datos
- * Crea las tablas críticas: Inventario, Clientes, Cotizaciones, Items, etc.
- */
-if ( ! function_exists( 'suite_install_db' ) ) {
-    function suite_install_db() {
-        global $wpdb;
-        $charset_collate = $wpdb->get_charset_collate();
-
-        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-
-        // 1. Tabla Inventario (Cache)
-        $sql_inventario = "CREATE TABLE {$wpdb->prefix}suite_inventario_cache (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            sku VARCHAR(100) NOT NULL,
-            nombre_producto VARCHAR(255),
-            precio_venta DECIMAL(10,2) DEFAULT 0,
-            status_prediccion VARCHAR(50),
-            inventario_entrante VARCHAR(10),
-            disponibilidad_millennium FLOAT DEFAULT 0,
-            disponibilidad_galerias FLOAT DEFAULT 0,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            UNIQUE KEY idx_sku (sku)
-        ) $charset_collate;";
-
-        // 2. Tabla Clientes (CRM)
-        $sql_clientes = "CREATE TABLE {$wpdb->prefix}suite_clientes (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-			vendedor_id bigint(20) DEFAULT 0,
-            nombre_razon VARCHAR(255) NOT NULL,
-            rif_ci VARCHAR(50) NOT NULL,
-            direccion TEXT,
-            ciudad VARCHAR(100),
-            estado VARCHAR(100),
-            telefono VARCHAR(50),
-            email VARCHAR(100),
-            contacto_persona VARCHAR(150),
-            notas TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            UNIQUE KEY idx_rif (rif_ci)
-        ) $charset_collate;";
-
-        // 3. Tabla Cotizaciones
-        $sql_cotizaciones = "CREATE TABLE {$wpdb->prefix}suite_cotizaciones (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            codigo_cotizacion VARCHAR(20) NOT NULL,
-            cliente_nombre VARCHAR(255),
-            cliente_rif VARCHAR(50),
-            cliente_id bigint(20) NOT NULL DEFAULT 0,
-            direccion_entrega TEXT,
-            fecha_emision DATETIME DEFAULT CURRENT_TIMESTAMP,
-            validez_dias INT DEFAULT 10,
-            moneda VARCHAR(5) DEFAULT 'USD',
-            vendedor_id bigint(20),
-            total_bs DECIMAL(15,2),
-            total_usd DECIMAL(15,2),
-            tasa_bcv DECIMAL(10,2),
-            estado VARCHAR(20) DEFAULT 'emitida',
-            canal_venta VARCHAR(100),
-            metodo_pago VARCHAR(100),
-            metodo_entrega VARCHAR(100),
-            url_captura_pago TEXT,
-            recibo_loyverse VARCHAR(100),
-			factura_fiscal_url VARCHAR(255),
-            pod_url TEXT,
-            
-            /* --- INICIO FASE 1: NUEVOS CAMPOS KANBAN V2 --- */
-            forma_pago VARCHAR(50),
-            fecha_pago DATETIME,
-            requiere_factura TINYINT(1) DEFAULT 0,
-            agente_retencion TINYINT(1) DEFAULT 0,
-            comprobante_pago_url TEXT,
-            tipo_envio VARCHAR(50),
-            agencia_envio VARCHAR(100),
-            direccion_envio TEXT,
-            prioridad TINYINT(1) DEFAULT 0,
-            alerta_loyverse TEXT,
-            /* --- FIN FASE 1 --- */
-            
-            PRIMARY KEY  (id)
-        ) $charset_collate;";
-
-        // 4. Tabla Libro Mayor de Comisiones (Ledger)
-        $sql_comisiones = "CREATE TABLE {$wpdb->prefix}suite_comisiones_ledger (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            quote_id bigint(20) NOT NULL,
-            vendedor_id bigint(20) NOT NULL,
-            monto_base_usd DECIMAL(15,2) DEFAULT 0,
-            comision_ganada_usd DECIMAL(15,2) DEFAULT 0,
-            estado_pago VARCHAR(20) DEFAULT 'pendiente',
-            /* --- FASE 5: AUDITORÍA LOYVERSE --- */
-            recibo_loyverse VARCHAR(100) DEFAULT NULL,
-            estado_auditoria VARCHAR(20) DEFAULT 'pendiente',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            KEY idx_vendedor (vendedor_id)
-        ) $charset_collate;";
-
-        // 5. Tabla Gamificación y Premios
-        $sql_premios = "CREATE TABLE {$wpdb->prefix}suite_premios_mensuales (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            vendedor_id bigint(20) NOT NULL,
-            mes INT NOT NULL,
-            anio INT NOT NULL,
-            premio_nombre VARCHAR(100) NOT NULL,
-            monto_premio DECIMAL(10,2) DEFAULT 0,
-            asignado_manualmente TINYINT(1) DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            KEY idx_mes_anio (mes, anio)
-        ) $charset_collate;";
-
-        // 6. Tabla Items (Detalle)
-        $sql_items = "CREATE TABLE {$wpdb->prefix}suite_cotizaciones_items (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            cotizacion_id bigint(20) NOT NULL,
-            sku VARCHAR(100),
-            producto_nombre VARCHAR(255),
-            cantidad INT,
-            precio_unitario_usd DECIMAL(15,2),
-            tiempo_entrega VARCHAR(100),
-            subtotal_usd DECIMAL(15,2),
-            PRIMARY KEY  (id),
-            KEY idx_cotizacion (cotizacion_id)
-        ) $charset_collate;";
-
-        // 7. Tabla de Auditoría (Logs)
-        $sql_logs = "CREATE TABLE {$wpdb->prefix}suite_logs (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            usuario_id bigint(20) NOT NULL,
-            accion VARCHAR(50) NOT NULL,
-            detalle TEXT,
-            ip VARCHAR(45),
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            KEY idx_usuario (usuario_id)
-        ) $charset_collate;";
-
-        // 8. Tabla Data Lake / Inventario Histórico (Módulo 5 - IA)
-        $sql_historico = "CREATE TABLE {$wpdb->prefix}suite_inventario_historico (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            fecha_snapshot DATE NOT NULL,
-            sku VARCHAR(100) NOT NULL,
-            stock_disponible INT DEFAULT 0,
-            precio DECIMAL(10,2) DEFAULT 0,
-            categoria VARCHAR(100) DEFAULT 'General',
-            PRIMARY KEY  (id),
-            KEY idx_fecha (fecha_snapshot),
-            KEY idx_sku (sku)
-        ) $charset_collate;";
-
-        // --- EJECUCIÓN ÚNICA DE DB-DELTA ---
-        dbDelta( $sql_inventario );
-        dbDelta( $sql_clientes );
-        dbDelta( $sql_cotizaciones );
-        dbDelta( $sql_items );
-        dbDelta( $sql_comisiones );
-        dbDelta( $sql_premios );
-        dbDelta( $sql_logs );
-        dbDelta( $sql_historico ); // Data Lake agregado correctamente
-
-        // Ajuste de Auto-Increment para Cotizaciones (Inicio en 15000)
-        $count = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}suite_cotizaciones" );
-        if ( $count == 0 ) {
-            $wpdb->query( "ALTER TABLE {$wpdb->prefix}suite_cotizaciones AUTO_INCREMENT = 15000" );
-        }
-		
-		// --- PARCHE EN CALIENTE: Añadir vendedor_id si el plugin ya estaba instalado ---
-        $column_check = $wpdb->get_results( "SHOW COLUMNS FROM {$wpdb->prefix}suite_clientes LIKE 'vendedor_id'" );
-        if ( empty( $column_check ) ) {
-            $wpdb->query( "ALTER TABLE {$wpdb->prefix}suite_clientes ADD vendedor_id bigint(20) DEFAULT 0 AFTER id" );
-        }
-		
-		// --- PARCHE EN CALIENTE FASE 5: Añadir columnas al Ledger ---
-        $tabla_ledger_check = $wpdb->prefix . 'suite_comisiones_ledger';
-        
-        $col_loyverse = $wpdb->get_results( "SHOW COLUMNS FROM {$tabla_ledger_check} LIKE 'recibo_loyverse'" );
-        if ( empty( $col_loyverse ) ) {
-            $wpdb->query( "ALTER TABLE {$tabla_ledger_check} ADD recibo_loyverse VARCHAR(100) DEFAULT NULL" );
-        }
-
-        $col_auditoria = $wpdb->get_results( "SHOW COLUMNS FROM {$tabla_ledger_check} LIKE 'estado_auditoria'" );
-        if ( empty( $col_auditoria ) ) {
-            $wpdb->query( "ALTER TABLE {$tabla_ledger_check} ADD estado_auditoria VARCHAR(20) DEFAULT 'pendiente'" );
-        }
-
-        // --- CREACIÓN DE ROLES (Ejecutar una vez) ---
-        add_role('suite_vendedor', 'Vendedor Suite', array('read' => true, 'suite_access' => true));
-        add_role('suite_logistica', 'Logística Suite', array('read' => true, 'suite_access' => true));
-        add_role('suite_marketing', 'Marketing y Análisis', array('read' => true, 'suite_access' => true));
-
-        $admin = get_role('administrator');
-        if ( $admin ) {
-            $admin->add_cap('suite_access'); // Asegurar que admin tenga acceso
-        }
-    }
-}
---- FIN DEL ARCHIVO: class-activator.php ---
-
---- INICIO DEL ARCHIVO: includes/Models/class-suite-model-base.php ---
-<?php
-/**
- * Clase Abstracta: Modelo Base de Base de Datos
- *
- * Centraliza la interacción con $wpdb, proporcionando métodos CRUD
- * blindados contra inyecciones SQL y estandarizados para todos los módulos.
- *
- * @package SuiteEmpleados\Models
- */
-
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
-
-abstract class Suite_Model_Base {
-
-    /**
-     * Instancia global de WordPress DB
-     * @var wpdb
-     */
-    protected $wpdb;
-
-    /**
-     * Nombre completo de la tabla (incluyendo el prefijo wp_)
-     * @var string
-     */
-    protected $table_name;
-
-    /**
-     * Llave primaria de la tabla (por defecto 'id')
-     * @var string
-     */
-    protected $primary_key = 'id';
-
-    /**
-     * Constructor. Inicializa la conexión a DB y define el nombre de la tabla.
-     */
-    public function __construct() {
-        global $wpdb;
-        $this->wpdb = $wpdb;
-        
-        // $this->set_table_name() debe ser definido obligatoriamente por la clase hija
-        $this->table_name = $this->wpdb->prefix . $this->set_table_name();
-    }
-
-    /**
-     * Define el nombre de la tabla sin el prefijo de WordPress.
-     * Ej: return 'suite_clientes';
-     *
-     * @return string
-     */
-    abstract protected function set_table_name();
-
-    /**
-     * Obtiene un registro específico por su ID.
-     *
-     * @param int $id El ID del registro.
-     * @return object|null Objeto con los datos o null si no existe.
-     */
-    public function get( $id ) {
-        $sql = $this->wpdb->prepare( 
-            "SELECT * FROM {$this->table_name} WHERE {$this->primary_key} = %d", 
-            intval( $id ) 
-        );
-        return $this->wpdb->get_row( $sql );
-    }
-
-    /**
-     * Obtiene una lista de registros con límite y offset (paginación básica).
-     *
-     * @param int $limit Límite de resultados.
-     * @param int $offset Punto de inicio.
-     * @return array Array de objetos.
-     */
-    public function get_all( $limit = 100, $offset = 0 ) {
-        $sql = $this->wpdb->prepare( 
-            "SELECT * FROM {$this->table_name} ORDER BY {$this->primary_key} DESC LIMIT %d OFFSET %d", 
-            intval( $limit ), 
-            intval( $offset ) 
-        );
-        return $this->wpdb->get_results( $sql );
-    }
-
-    /**
-     * Inserta un nuevo registro de forma segura.
-     *
-     * @param array $data Array asociativo [ 'columna' => 'valor' ].
-     * @return int|false El ID insertado o false en caso de error.
-     */
-    public function insert( $data ) {
-        $inserted = $this->wpdb->insert( $this->table_name, $data );
-        if ( $inserted ) {
-            return $this->wpdb->insert_id;
-        }
-        return false;
-    }
-
-    /**
-     * Actualiza un registro existente de forma segura.
-     *
-     * @param int   $id   El ID del registro a actualizar.
-     * @param array $data Array asociativo [ 'columna' => 'valor' ].
-     * @return bool True si se actualizó, false en caso de error.
-     */
-    public function update( $id, $data ) {
-        $updated = $this->wpdb->update( 
-            $this->table_name, 
-            $data, 
-            [ $this->primary_key => intval( $id ) ] 
-        );
-        
-        // $updated devuelve false en error, o el número de filas afectadas (puede ser 0 si los datos eran idénticos)
-        return $updated !== false;
-    }
-
-    /**
-     * Elimina un registro por su ID de forma segura.
-     *
-     * @param int $id El ID del registro a eliminar.
-     * @return bool True en éxito, false en error.
-     */
-    public function delete( $id ) {
-        $deleted = $this->wpdb->delete( 
-            $this->table_name, 
-            [ $this->primary_key => intval( $id ) ] 
-        );
-        return $deleted !== false;
-    }
-
-}
---- FIN DEL ARCHIVO: class-suite-model-base.php ---
-
-=================================================================
-📂 ARCHIVOS ESPECÍFICOS DEL MÓDULO
-=================================================================
-
---- INICIO DEL ARCHIVO: assets/js/modules/commissions.js ---
+### ARCHIVO: `assets/js/modules/commissions.js`
+```js
 /**
  * SuiteCommissions - Módulo del Dashboard Financiero y Gamificación
  * 
@@ -971,28 +51,51 @@ const SuiteCommissions = (function($) {
         $('.pill-btn').on('click', function(e) {
             e.preventDefault();
             
-            // UI: Cambiar color del botón activo
+			
+			
+			
+			
+			
+            // UI: Cambiar color del botón activo y contraste de texto
             $('.pill-btn').removeClass('active').css({
                 'background': 'transparent',
+                'color': '#64748b', // Gris estándar
                 'border': '1px solid #cbd5e1'
             });
+            
             $(this).addClass('active').css({
                 'background': '#fff',
+                'color': '#0f172a', // Negro para lectura clara
                 'border': '1px solid #cbd5e1'
             });
+			
+			
+			
 
             const target = $(this).data('target');
             
+			
+			
+			
             // Lógica SPA: Ocultar todo y mostrar el contenedor solicitado
-            $('#comisiones-dashboard-view, #comisiones-audit-view, #comisiones-fame-view').hide();
+            $('#comisiones-dashboard-view, #comisiones-audit-view, #comisiones-fame-view, #comisiones-balance-view').hide(); // <-- Agregada la nueva vista aquí
             $('#' + target).fadeIn();
 
-            // Lazy load de DataTables y Salón de la Fama (Solo carga si no se había cargado antes)
+            // Lazy load de DataTables, Salón de la Fama y Bóveda Contable
             if (target === 'comisiones-audit-view' && !auditTable) {
                 loadAuditTable();
             } else if (target === 'comisiones-fame-view' && !fameLoaded) {
                 loadHallOfFame();
+            } else if (target === 'comisiones-balance-view') {
+                // Siempre cargamos data fresca al abrir la bóveda contable
+                let currentMonth = new Date().getMonth() + 1;
+                let currentYear = new Date().getFullYear();
+                loadFinancialBalance(currentMonth, currentYear);
             }
+			
+			
+			
+			
         });
     };
 
@@ -1136,10 +239,101 @@ const SuiteCommissions = (function($) {
             $('#fame-cards-container').html('<p style="color:#dc2626;">Error al cargar el Salón de la Fama.</p>');
         });
     };
-    // ==========================================
-    // FIN FASE 3.2: SPA & DATATABLES
-    // ==========================================
+    
+	const loadFinancialBalance = function(mes, anio) {
+        $('#balance-accordion-container').html('<div style="text-align:center; padding:40px;"><span style="font-size:24px;">⏳</span><br><p style="color:#64748b; margin-top:10px;">Procesando bóveda contable...</p></div>');
 
+        SuiteAPI.post('suite_get_financial_balance', { mes: mes, anio: anio }).then(res => {
+            if (res.success) {
+                const data = res.data;
+
+                // Animación suave de números
+                $('#kpi-total-nomina').text('$' + parseFloat(data.kpis.total_nomina).toFixed(2));
+                $('#kpi-total-recuperado').text('$' + parseFloat(data.kpis.total_recuperado).toFixed(2));
+                $('#kpi-participantes').text(data.kpis.participantes);
+
+                if(data.vendedores.length === 0) {
+                    $('#balance-accordion-container').html('<div style="background:#f8fafc; padding:20px; border-radius:8px; text-align:center; color:#64748b; border:1px dashed #cbd5e1;">No hay registros contables pendientes en este período.</div>');
+                    return;
+                }
+
+                let html = '';
+                data.vendedores.forEach(v => {
+                    // Lógica UX de Colores y Advertencias
+                    let isNegative = v.neto < 0;
+                    let colorClass = isNegative ? '#dc2626' : '#059669'; // Rojo si debe, Verde si cobra
+                    let bgHeader   = isNegative ? '#fef2f2' : '#ffffff';
+                    let netText = isNegative
+                        ? `-$${Math.abs(v.neto).toFixed(2)} <span style="font-size:10px; font-weight:bold; background:#fee2e2; color:#991b1b; padding:4px 8px; border-radius:6px; margin-left:8px; vertical-align:middle;">A FAVOR DE EMPRESA</span>`
+                        : `+$${parseFloat(v.neto).toFixed(2)}`;
+
+                    let warningIcon = v.advertencia_auditoria ? `<span title="⚠️ Alerta de Auditoría POS: Hay incongruencias" style="cursor:help; margin-left:8px; font-size:16px;">⚠️</span>` : '';
+
+                    // Diseño de Acordeón
+                    html += `
+                    <div style="border: 1px solid ${isNegative ? '#fecaca' : '#e2e8f0'}; border-radius: 10px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.02); transition: all 0.2s ease;">
+                        
+
+
+
+                        <div class="acc-header" style="background:${bgHeader}; padding:15px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition: background 0.2s;">
+
+
+
+
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <div style="width:32px; height:32px; border-radius:50%; background:#e2e8f0; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#475569;">
+                                    ${v.vendedor_nombre.charAt(0).toUpperCase()}
+                                </div>
+                                <strong style="color:#1e293b; font-size:15px;">${v.vendedor_nombre} ${warningIcon}</strong>
+                            </div>
+                            <strong style="color:${colorClass}; font-size:18px;">${netText}</strong>
+                        </div>
+
+                        <div class="acc-body" style="display:none; padding:0 20px 20px 20px; background:${bgHeader};">
+                            <div style="border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 5px;">
+                                <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left;">
+                                    <thead>
+                                        <tr style="color:#64748b;">
+                                            <th style="padding:6px 0; border-bottom:1px solid #e2e8f0;">Fecha</th>
+                                            <th style="padding:6px 0; border-bottom:1px solid #e2e8f0;">Concepto</th>
+                                            <th style="padding:6px 0; border-bottom:1px solid #e2e8f0;">Auditoría</th>
+                                            <th style="padding:6px 0; border-bottom:1px solid #e2e8f0; text-align:right;">Monto</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${v.detalles.map(d => {
+                                            let isEgreso = d.monto < 0;
+                                            let rowColor = isEgreso ? '#dc2626' : '#059669';
+                                            let signo = isEgreso ? '-' : '+';
+                                            let auditBg = d.estado_auditoria === 'verificado' ? '#dcfce7' : (d.estado_auditoria === 'incongruente' ? '#fee2e2' : '#f1f5f9');
+                                            let auditCl = d.estado_auditoria === 'verificado' ? '#166534' : (d.estado_auditoria === 'incongruente' ? '#991b1b' : '#64748b');
+
+                                            return `
+                                            <tr>
+                                                <td style="padding:8px 0; color:#475569; border-bottom:1px solid #f8fafc;">${d.fecha}</td>
+                                                <td style="padding:8px 0; color:#334155; font-weight:500; border-bottom:1px solid #f8fafc;">${d.concepto}</td>
+                                                <td style="padding:8px 0; border-bottom:1px solid #f8fafc;">
+                                                    <span style="background:${auditBg}; color:${auditCl}; padding:3px 8px; border-radius:12px; font-size:10px; font-weight:bold; text-transform:uppercase;">${d.estado_auditoria}</span>
+                                                </td>
+                                                <td style="padding:8px 0; text-align:right; font-weight:bold; color:${rowColor}; border-bottom:1px solid #f8fafc;">
+                                                    ${signo}$${Math.abs(d.monto).toFixed(2)}
+                                                </td>
+                                            </tr>`;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>`;
+                });
+
+                $('#balance-accordion-container').html(html);
+            }
+        }).catch(err => {
+            $('#balance-accordion-container').html('<p style="text-align:center; color:#dc2626; padding:20px;">❌ Error de conexión al cargar la bóveda contable.</p>');
+        });
+    };
 	
 	// ==========================================
     // EVENT LISTENERS
@@ -1405,6 +599,18 @@ const SuiteCommissions = (function($) {
         });
         // --- FIN REPARACIÓN ---
         
+		// Motor de Acordeón para el Balance de Pagos
+        $(document).on('click', '.acc-header', function() {
+            const body = $(this).next('.acc-body');
+            
+            // Animación de rotación o cambio de fondo si lo deseas
+            $(this).css('background', body.is(':visible') ? '#ffffff' : '#f1f5f9');
+            
+            body.slideToggle(250);
+        });
+		
+		
+		
     };
 	
 	
@@ -1444,9 +650,10 @@ const SuiteCommissions = (function($) {
     };
 
 })(jQuery);
---- FIN DEL ARCHIVO: commissions.js ---
+```
 
---- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-commissions.php ---
+### ARCHIVO: `includes/Controllers/Ajax/class-suite-ajax-commissions.php`
+```php
 <?php
 /**
  * Controlador AJAX: Dashboard Financiero y Gamificación (Módulo 4)
@@ -1988,9 +1195,10 @@ class Suite_Ajax_Register_Abono extends Suite_AJAX_Controller {
         }
     }
 }
---- FIN DEL ARCHIVO: class-suite-ajax-commissions.php ---
+```
 
---- INICIO DEL ARCHIVO: includes/Models/class-suite-model-commission.php ---
+### ARCHIVO: `includes/Models/class-suite-model-commission.php`
+```php
 <?php
 /**
  * Modelo de Base de Datos: Comisiones, Metas y Gamificación (Módulo 4)
@@ -2316,12 +1524,66 @@ class Suite_Model_Commission extends Suite_Model_Base {
     }
 	
 	
-	
+	public function get_global_balances( $mes, $anio ) {
+        global $wpdb;
+        $tabla = $wpdb->prefix . 'suite_comisiones_ledger'; // Nombre correcto 
+
+        $start_date = sprintf( "%04d-%02d-01 00:00:00", $anio, $mes );
+        $end_date   = date( "Y-m-t 23:59:59", strtotime( $start_date ) );
+
+		
+		
+		
+        // CORRECCIÓN FORENSE: Solo extraemos el dinero que legítimamente está "pendiente" de pago o descuento.
+        // Ignoramos por completo los registros "pagados" y "anulados".
+        $transacciones = $wpdb->get_results( $wpdb->prepare( "
+            SELECT id, vendedor_id, quote_id, comision_ganada_usd, estado_auditoria, created_at
+            FROM {$tabla}
+            WHERE created_at BETWEEN %s AND %s
+            AND estado_pago = 'pendiente'
+            ORDER BY created_at ASC
+        ", $start_date, $end_date ) );
+		
+		
+		
+		
+
+        $balances = array();
+        foreach ( $transacciones as $tx ) {
+            $v_id = $tx->vendedor_id;
+            if ( ! isset( $balances[$v_id] ) ) {
+                $balances[$v_id] = [
+                    'vendedor_nombre' => get_userdata($v_id)->display_name,
+                    'neto' => 0,
+                    'advertencia_auditoria' => false,
+                    'detalles' => []
+                ];
+            }
+
+            $monto = floatval( $tx->comision_ganada_usd );
+            $balances[$v_id]['neto'] += $monto;
+
+            if ( in_array( $tx->estado_auditoria, ['incongruente', 'pendiente'] ) ) {
+                $balances[$v_id]['advertencia_auditoria'] = true;
+            }
+
+            $concepto = ($tx->quote_id > 0) ? "Comisión Orden #{$tx->quote_id}" : "Bono / Ajuste Manual";
+            
+            $balances[$v_id]['detalles'][] = [
+                'fecha' => date( 'd/m/Y', strtotime($tx->created_at) ),
+                'concepto' => $concepto,
+                'monto' => $monto,
+                'estado_auditoria' => $tx->estado_auditoria
+            ];
+        }
+        return array_values( $balances );
+    }
 	
 }
---- FIN DEL ARCHIVO: class-suite-model-commission.php ---
+```
 
---- INICIO DEL ARCHIVO: views/app/tab-comisiones.php ---
+### ARCHIVO: `views/app/tab-comisiones.php`
+```php
 <?php
 
 /**
@@ -2361,7 +1623,21 @@ $is_b2b = get_user_meta( $vendedor_id, 'suite_is_b2b', true ) == '1';
         <h2 style="margin:0; font-size: 22px; color: #0f172a;">🏆 Comisiones y Rendimiento</h2>
     </div>
 
-	<div class="suite-pills-nav" style="display:flex; gap:10px; margin: 20px 25px 0 25px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	<div class="suite-pills-nav" style="display:flex; gap:10px; margin: 20px 25px 0 25px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; flex-wrap: wrap;">
         
         <?php if ( ! $is_b2b ) : ?>
             <button class="tab-btn active pill-btn" data-target="comisiones-dashboard-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: #fff; cursor: pointer;">📊 Dashboard Actual</button>
@@ -2372,7 +1648,20 @@ $is_b2b = get_user_meta( $vendedor_id, 'suite_is_b2b', true ) == '1';
         <?php if ( ! $is_b2b ) : ?>
             <button class="tab-btn pill-btn" data-target="comisiones-fame-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: transparent; cursor: pointer;">🎖️ Salón de la Fama</button>
         <?php endif; ?>
-        </div>
+        
+        
+		
+		<?php if ( current_user_can('manage_options') ) : ?>
+            <button class="tab-btn pill-btn" data-target="comisiones-balance-view" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 14px; background: transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">⚖️ Balance de Pagos</button>
+        <?php endif; ?>
+		
+		
+        
+    </div>
+	
+	
+	
+	
 
 	<?php if ( ! $is_b2b ) : ?>
     <div id="comisiones-dashboard-view">
@@ -2573,10 +1862,44 @@ color: #7c3aed; margin-top: 2px;">Evaluado a fin de mes según Kanban de Proyect
     </div>
 
 <?php if ( ! $is_b2b ) : ?>
-    <div id="comisiones-fame-view" style="display:none; padding: 25px;">
+	
+	
+	
+	
+	
+	
+	
+    <div id="comisiones-fame-view" style="display:none; padding: 25px;">
         <h3 style="color: #0f172a; margin-bottom: 15px; font-size: 18px;">🎖️ Salón de la Fama Histórico</h3>
         <div id="fame-cards-container" style="display:flex; flex-wrap:wrap; gap:20px;">
         </div>
+    </div>
+    <?php endif; ?>
+
+    <?php if ( current_user_can('manage_options') ) : ?>
+    <div id="comisiones-balance-view" style="display:none; padding: 25px;">
+        
+        <div style="display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap;">
+            <div style="flex:1; min-width:200px; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border:1px solid #bbf7d0; padding:20px; border-radius:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <small style="color:#166534; font-weight:bold; text-transform:uppercase;">💰 Total Nómina a Pagar</small>
+                <strong id="kpi-total-nomina" style="display:block; font-size:28px; color:#15803d; margin-top:5px;">$0.00</strong>
+            </div>
+            <div style="flex:1; min-width:200px; background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%); border:1px solid #fecdd3; padding:20px; border-radius:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <small style="color:#9f1239; font-weight:bold; text-transform:uppercase;">♻️ Abonos Retenidos</small>
+                <strong id="kpi-total-recuperado" style="display:block; font-size:28px; color:#be123c; margin-top:5px;">$0.00</strong>
+            </div>
+            <div style="flex:1; min-width:200px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border:1px solid #e2e8f0; padding:20px; border-radius:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <small style="color:#334155; font-weight:bold; text-transform:uppercase;">👥 Participantes Activos</small>
+                <strong id="kpi-participantes" style="display:block; font-size:28px; color:#0f172a; margin-top:5px;">0</strong>
+            </div>
+        </div>
+
+        <h3 style="color: #0f172a; margin-bottom: 15px; font-size: 18px;">📑 Detalles por Vendedor</h3>
+        
+        <div id="balance-accordion-container">
+            <p style="text-align:center; color:#64748b;">Seleccione esta pestaña para cargar los datos.</p>
+        </div>
+
     </div>
     <?php endif; ?>
 
@@ -2586,5 +1909,5 @@ color: #7c3aed; margin-top: 2px;">Evaluado a fin de mes según Kanban de Proyect
 
 
 
---- FIN DEL ARCHIVO: tab-comisiones.php ---
+```
 

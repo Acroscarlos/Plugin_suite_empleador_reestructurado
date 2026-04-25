@@ -1,927 +1,7 @@
-=================================================================
-🧩 MÓDULO LÓGICO: Slice_B_Cotizador_Historial
-Contiene el Stack completo: Base Core + Vistas + JS + AJAX + Models
-=================================================================
+# 🧩 MÓDULO LÓGICO: Slice_B_Cotizador_Historial
 
-=================================================================
-🏛️ ARCHIVOS CORE (COMPARTIDOS)
-Clases base, singletons, API handlers y estilos globales.
-=================================================================
-
---- INICIO DEL ARCHIVO: suite-empleados.php ---
-<?php
-/**
- * Plugin Name: Suite de Empleados (ERP Intranet)
- * Plugin URI: https://mitiendaunit.com/intranet_1
- * Description: Sistema modular V8.0 para gestión de Inventario, CRM, Logística, Gamificación y Cerebro de Demanda (IA). Arquitectura MVC.
- * Version: 8.0.0
- * Author: DevOps Team & RV Automation Technology
- * Text Domain: suite-empleados
- * License: GPLv2 or later
- */
-
-// 1. SEGURIDAD: Evitar acceso directo
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
-
-// 2. CONSTANTES DEL SISTEMA
-define( 'SUITE_VERSION', '8.0.0' );
-define( 'SUITE_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SUITE_URL', plugin_dir_url( __FILE__ ) );
-
-/**
- * 3. INICIALIZADOR DEL SISTEMA (Orquestador MVC)
- * Se engancha a 'plugins_loaded' para asegurar que el core de WP esté listo.
- */
-function suite_empleados_init() {
-    
-    // --- A. CARGA DE DEPENDENCIAS (REQUIRE_ONCE) ---
-    // [Error 1.1 Corregido]: Rutas apuntando a los nombres reales de los archivos.
-
-    // Core
-    require_once SUITE_PATH . 'includes/Core/class-activator.php';
-    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
-
-    // Modelos (Capa de Base de Datos y Lógica de Negocio)
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-base.php';
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-client.php';
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-quote.php';
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-inventory.php';
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-commission.php';
-	require_once SUITE_PATH . 'includes/Models/class-suite-model-roles.php';    
-    require_once SUITE_PATH . 'includes/Models/class-suite-model-employee.php'; 
-	require_once SUITE_PATH . 'includes/Models/class-suite-model-product.php';
-
-
-    // Controladores Base
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-controller.php';
-
-    // Controladores AJAX (Módulos de la UI)
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-client.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-quotes.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-kanban.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-commissions.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-logistics.php';
-	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-employees.php';
-    require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-roles.php';
-	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-products.php';
-	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-inventory.php';
-    // Controladores API REST (Data Lake y Machine Learning)
-    require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-stats.php';
-	// Controladores de la API REST
-	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-sync.php';
-	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-telegram-webhook.php'; // <--- FASE 4.1: WEBHOOK TELEGRAM
-
-
-    // Controlador del Administrador / Frontend (Shortcodes y Vistas)
-    require_once SUITE_PATH . 'includes/Controllers/Admin/class-suite-shortcode-controller.php';
-
-    // --- B. INSTANCIACIÓN DE CONTROLADORES (Encendiendo los motores) ---
-
-    // Módulo de Clientes (CRM) - [Las 5 nuevas clases divididas]
-    new Suite_Ajax_Client_Search();
-    new Suite_Ajax_Client_Add();
-    new Suite_Ajax_Client_Import();
-    new Suite_Ajax_Client_Delete();
-    new Suite_Ajax_Client_Profile();
-	new Suite_Ajax_Log_Export();
-
-    // Módulo de Cotizaciones
-    new Suite_Ajax_Quote_Save();
-    new Suite_Ajax_Quote_History();
-    new Suite_Ajax_Quote_Status();
-	new Suite_Ajax_Print_Quote();
-	new Suite_Ajax_Get_Products();
-	new Suite_Ajax_Quote_Details();
-	new Suite_Ajax_Get_Inventory();
-	new Suite_Ajax_Process_Super_Pago();
-	
-    // Módulo 1: Tablero Kanban (Pedidos)
-    new Suite_Ajax_Kanban_Data();
-    new Suite_Ajax_Kanban_Status();
-	new Suite_Ajax_Reverse_Logistics();
-
-    // Módulo 3: Logística y Despacho
-    new Suite_Ajax_Upload_POD();
-    new Suite_Ajax_Print_Picking();
-
-    // Módulo 4: Dashboard de Comisiones y Gamificación
-    new Suite_Ajax_Dashboard_Stats();
-	new Suite_Ajax_Freeze_Commissions();
-	new Suite_Ajax_Commission_Audit(); 
-	new Suite_Ajax_Process_Audit_Action();
-    new Suite_Ajax_Hall_of_Fame();
-	new Suite_Ajax_Pay_Selected();
-	new Suite_Ajax_Register_Abono();
-	new Suite_Ajax_Run_Manual_Audit();
-	
-    // Módulo 5: Cerebro de Demanda (REST API)
-    new Suite_API_Stats();
-	new Suite_API_Sync();
-	
-	// Módulo 6:--- NUEVO MÓDULO: GESTIÓN DE EQUIPO Y ROLES (RBAC) ---
-    new Suite_Ajax_Employee_List();
-    new Suite_Ajax_Employee_Save();
-    new Suite_Ajax_Employee_Delete();
-    new Suite_Ajax_Role_List();
-    new Suite_Ajax_Role_Save();
-    new Suite_Ajax_Role_Delete();
-	new Suite_Ajax_Update_Role_Cap();
-
-    // Gestor de la Vista Principal (Shortcode y encolado de assets)
-    new Suite_Shortcode_Controller();
-}
-add_action( 'plugins_loaded', 'suite_empleados_init' );
-add_action( 'rest_api_init', function () {
-	$telegram_webhook = new Suite_Telegram_Webhook();
-	$telegram_webhook->register_routes();
-	});
-
-/**
- * 4. ACTIVACIÓN DEL PLUGIN
- * Crea las tablas, define roles usando dbDelta y programa Cron Jobs.
- */
-function suite_plugin_activate() {
-    // 1. Instalación de BD y Roles
-    require_once SUITE_PATH . 'includes/Core/class-activator.php';
-    if ( class_exists( 'Suite_Activator' ) && method_exists( 'Suite_Activator', 'activate' ) ) {
-        Suite_Activator::activate();
-    } elseif ( function_exists( 'suite_install_db' ) ) {
-        suite_install_db(); 
-    }
-
-    // 2. Programación de Tareas Automáticas (Data Lake)
-    // [Error 3.1 Corregido]: El Cron ahora se registra ESTRICTAMENTE UNA VEZ en la activación.
-    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
-    if ( class_exists( 'Suite_Cron_Jobs' ) ) {
-        $cron_jobs = new Suite_Cron_Jobs();
-        $cron_jobs->schedule_events();
-    }
-}
-register_activation_hook( __FILE__, 'suite_plugin_activate' );
-
-
-/**
- * 5. DESACTIVACIÓN DEL PLUGIN
- * Limpia los Cron Jobs activos para no dejar basura en la memoria de WordPress.
- */
-function suite_plugin_deactivate() {
-    require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
-    if ( class_exists( 'Suite_Cron_Jobs' ) ) {
-        $cron_jobs = new Suite_Cron_Jobs();
-        $cron_jobs->clear_events();
-    }
-}
-register_deactivation_hook( __FILE__, 'suite_plugin_deactivate' );
---- FIN DEL ARCHIVO: suite-empleados.php ---
-
---- INICIO DEL ARCHIVO: assets/css/suite-styles.css ---
-/* ==========================================
-   MODALES, PESTAÑAS Y FORMULARIOS
-   ========================================== */
-.suite-modal {
-    display: none;
-    position: fixed;
-    z-index: 9999;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.6);
-}
-
-.suite-modal-content {
-    background-color: #ffffff;
-    padding: 25px;
-    border-radius: 12px;
-    width: 90%;
-    max-width: 500px;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    max-height: 90vh;
-    overflow-y: auto;
-}
-
-.close-modal {
-    position: absolute;
-    top: 15px;
-    right: 20px;
-    font-size: 24px;
-    font-weight: bold;
-    color: #64748b;
-    cursor: pointer;
-    transition: color 0.2s;
-}
-
-.close-modal:hover {
-    color: #0f172a;
-}
-
-.suite-tabs-modern {
-    display: flex;
-	flex-wrap: nowrap !important;      /* Impide que salten de línea */
-    overflow-x: auto;                  /* Activa el scroll horizontal en pantallas pequeñas */
-    -webkit-overflow-scrolling: touch;
-    gap: 10px;
-    border-bottom: 2px solid #e2e8f0;
-    margin-bottom: 20px;
-    background: #f8fafc;
-    padding: 10px 10px 0 10px;
-    border-radius: 8px 8px 0 0;
-	scrollbar-width: none;             /* Firefox */
-    -ms-overflow-style: none;
-}
-.suite-tabs-modern::-webkit-scrollbar {
-    display: none;
-}
-
-.tab-btn {
-	flex-shrink: 0;                    /* Evita que los botones se achiquen si no caben */
-    white-space: nowrap;
-    padding: 12px 20px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    font-weight: 600;
-    color: #64748b;
-    border-radius: 8px 8px 0 0;
-    transition: all 0.3s;
-}
-
-.tab-btn:hover {
-    background: #f1f5f9;
-    color: #334155;
-}
-
-.tab-btn.active {
-    background: #ffffff;
-    color: #0073aa;
-    border: 1px solid #e2e8f0;
-    border-bottom: 2px solid #ffffff;
-    margin-bottom: -2px;
-}
-
-.form-group-row {
-    display: flex;
-    gap: 15px;
-    align-items: center;
-    margin-bottom: 15px;
-}
-.form-group-row > div {
-    flex: 1;
-}
---- FIN DEL ARCHIVO: suite-styles.css ---
-
---- INICIO DEL ARCHIVO: assets/js/core/api.js ---
-/**
- * SuiteAPI - Orquestador de Peticiones AJAX
- * * Centraliza las llamadas al servidor, inyectando automáticamente 
- * credenciales de seguridad (Nonces) y enrutamiento (URL).
- */
-const SuiteAPI = (function($) {
-    'use strict';
-
-    // Variables privadas extraídas de la localización de WP
-    const apiUrl = suite_vars.ajax_url;
-    const sysNonce = suite_vars.nonce;
-
-    /**
-     * Interceptor Global de Errores
-     * Captura expiración de sesión (401) o fallos de permisos (403)
-     */
-    const handleAjaxError = function(error, reject) {
-        if (error.status === 401 || error.status === 403) {
-            alert('🔒 Su sesión ha expirado o fue cerrada por seguridad. Por favor, recargue la página e inicie sesión nuevamente.');
-        }
-        reject(error);
-    };
-
-    /**
-     * Petición POST estándar para JSON
-     * * @param {string} action - El nombre del hook de WP (ej. 'suite_search_client_ajax')
-     * @param {object} data - Datos a enviar
-     * @returns {Promise}
-     */
-    const post = function(action, data = {}) {
-        return new Promise((resolve, reject) => {
-            // Inyección automática de parámetros obligatorios
-            const payload = {
-                ...data,
-                action: action,
-                nonce: sysNonce
-            };
-
-            $.post(apiUrl, payload)
-                .done(response => resolve(response))
-                .fail(error => handleAjaxError(error, reject)); // <-- Interceptor inyectado
-        });
-    };
-
-    /**
-     * Petición POST para subir archivos (FormData)
-     * Utilizado para la importación de CSV o futuras subidas de fotos (POD)
-     * * @param {string} action - El nombre del hook de WP
-     * @param {FormData} formData - Objeto FormData instanciado
-     * @returns {Promise}
-     */
-    const postForm = function(action, formData) {
-        return new Promise((resolve, reject) => {
-            // Inyección en FormData
-            formData.append('action', action);
-            formData.append('nonce', sysNonce);
-
-            $.ajax({
-                url: apiUrl,
-                type: 'POST',
-                data: formData,
-                processData: false, // Vital para que jQuery no procese el archivo
-                contentType: false, // Vital para que el navegador asigne el boundary multipart
-                success: response => resolve(response),
-                error: error => handleAjaxError(error, reject) // <-- Interceptor inyectado
-            });
-        });
-    };
-
-    // API Pública Revelada
-    return {
-        post: post,
-        postForm: postForm
-    };
-
-})(jQuery);
---- FIN DEL ARCHIVO: api.js ---
-
---- INICIO DEL ARCHIVO: assets/js/core/state.js ---
-/**
- * SuiteState - Manejador de Estado Inmutable (Store)
- * 
- * Centraliza los datos financieros y el carrito de compras.
- * Previene la manipulación directa desde el objeto global window.
- */
-const SuiteState = (function() {
-    'use strict';
-
-    // ==========================================
-    // VARIABLES PRIVADAS (El "Estado")
-    // ==========================================
-    let cart = [];
-    let totalUSD = 0.00;
-    let totalBS = 0.00;
-    let tasaBCV = 1.00; // Se actualizará al inicializar la app
-
-    // ==========================================
-    // MÉTODOS PRIVADOS
-    // ==========================================
-    
-    /**
-     * Recalcula los totales matemáticos cada vez que el carrito cambia.
-     * Mantiene la lógica financiera blindada.
-     */
-    const calculateTotals = function() {
-        totalUSD = cart.reduce((sum, item) => {
-            let qty = parseInt(item.qty) || 0;
-            let price = parseFloat(item.price) || 0;
-            return sum + (qty * price);
-        }, 0);
-
-        totalBS = totalUSD * tasaBCV;
-    };
-
-    // ==========================================
-    // API PÚBLICA (Métodos Revelados)
-    // ==========================================
-    return {
-        /**
-         * Retorna una COPIA INMUTABLE del carrito.
-         * Si alguien muta este array externamente, no afectará al original.
-         * @returns {Array}
-         */
-        getCart: function() {
-            return [...cart]; 
-        },
-
-        /**
-         * Añade un producto al carrito y recalcula.
-         * Si el SKU ya existe, suma la cantidad en lugar de duplicar la fila.
-         * @param {Object} item 
-         */
-        addItem: function(item) {
-            // Normalizar datos: Prohibir cantidades negativas o cero
-            item.qty = Math.max(1, parseInt(item.qty) || 1);
-            item.price = Math.max(0, parseFloat(item.price) || 0.00);
-
-            const existingIndex = cart.findIndex(i => i.sku === item.sku);
-            if (existingIndex > -1) {
-                cart[existingIndex].qty += item.qty;
-            } else {
-                cart.push(item);
-            }
-            calculateTotals();
-        },
-
-        /**
-         * Actualiza un campo específico de una fila (ej. cantidad o precio editado).
-         * @param {number} index - Índice en el array
-         * @param {string} field - 'qty' o 'price'
-         * @param {number|string} value - Nuevo valor
-         */
-        updateItem: function(index, field, value) {
-            if (cart[index]) {
-                if (field === 'qty') {
-                    cart[index][field] = Math.max(1, parseInt(value) || 1);
-                } else {
-                    cart[index][field] = Math.max(0, parseFloat(value) || 0);
-                }
-                calculateTotals();
-            }
-        },
-
-        /**
-         * Elimina un producto del carrito.
-         * @param {number} index 
-         */
-        removeItem: function(index) {
-            if (cart[index]) {
-                cart.splice(index, 1);
-                calculateTotals();
-            }
-        },
-
-        /**
-         * Vacía el carrito por completo (útil al guardar con éxito).
-         */
-        clearCart: function() {
-            cart = [];
-            calculateTotals();
-        },
-
-        /**
-         * Actualiza la tasa BCV del día.
-         * @param {number} tasa 
-         */
-        setTasa: function(tasa) {
-            tasaBCV = parseFloat(tasa) || 1;
-            calculateTotals();
-        },
-
-        /**
-         * Devuelve un snapshot de los totales financieros formateados.
-         * @returns {Object}
-         */
-        getTotals: function() {
-            return {
-                usd: totalUSD.toFixed(2),
-                bs: totalBS.toFixed(2),
-                tasa: tasaBCV.toFixed(2)
-            };
-        }
-    };
-})();
-
---- FIN DEL ARCHIVO: state.js ---
-
---- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-controller.php ---
-<?php
-/**
- * Clase Abstracta: Controlador AJAX Base
- *
- * Centraliza la seguridad, el registro de hooks y las respuestas estandarizadas
- * para todas las peticiones AJAX del sistema.
- *
- * @package SuiteEmpleados\Controllers\Ajax
- */
-
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
-
-abstract class Suite_AJAX_Controller {
-
-    /**
-     * El nombre de la acción AJAX (Ej. 'suite_search_client_ajax')
-     * @var string
-     */
-    protected $action_name;
-
-    /**
-     * El permiso mínimo requerido para ejecutar esta acción.
-     * @var string
-     */
-    protected $required_capability = 'read'; // Por defecto, cualquier usuario logueado en la intranet
-
-    /**
-     * Constructor.
-     * Registra dinámicamente el hook wp_ajax basándose en $action_name.
-     */
-    public function __construct() {
-        if ( empty( $this->action_name ) ) {
-            // Evitar registro si la clase hija no definió el nombre de la acción
-            return;
-        }
-
-        // Registrar el endpoint (Solo para usuarios logueados)
-        add_action( 'wp_ajax_' . $this->action_name, [ $this, 'handle_request' ] );
-    }
-
-    /**
-     * Manejador principal de la petición.
-     * Ejecuta las barreras de seguridad antes de procesar la lógica.
-     */
-    public function handle_request() {
-        // 1. Barrera CSRF: Validación de Nonce Estricto (Retrocompatibilidad)
-        if ( ! check_ajax_referer( 'suite_quote_nonce', 'nonce', false ) ) {
-            $this->send_error( 'Fallo de seguridad CSRF o sesión caducada.', 403 );
-        }
-
-        // 2. Barrera de Permisos: Verificación del Rol del Usuario
-        if ( ! current_user_can( $this->required_capability ) ) {
-            $this->send_error( 'Privilegios insuficientes para realizar esta acción.', 401 );
-        }
-
-        // 3. Ejecutar la lógica de negocio específica de la clase hija
-        $this->process();
-    }
-
-    /**
-     * Método abstracto que las clases hijas DEBEN implementar.
-     * Aquí es donde irá la lógica real (ej. buscar cliente, guardar cotización).
-     */
-    abstract protected function process();
-
-    /**
-     * Helper para enviar una respuesta exitosa estandarizada.
-     *
-     * @param mixed $data Los datos a devolver (Array, Objeto, String).
-     */
-    protected function send_success( $data = [] ) {
-        wp_send_json_success( $data );
-    }
-
-    /**
-     * Helper para enviar una respuesta de error estandarizada.
-     *
-     * @param string $message Mensaje de error para el frontend.
-     * @param int    $code    Código HTTP simulado.
-     */
-    protected function send_error( $message, $code = 400 ) {
-        wp_send_json_error( [
-            'message' => $message,
-            'code'    => $code
-        ] );
-    }
-}
---- FIN DEL ARCHIVO: class-suite-ajax-controller.php ---
-
---- INICIO DEL ARCHIVO: includes/Core/class-activator.php ---
-<?php
-// SEGURIDAD: Evitar acceso directo
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
-
-/**
- * Función de Instalación de Base de Datos
- * Crea las tablas críticas: Inventario, Clientes, Cotizaciones, Items, etc.
- */
-if ( ! function_exists( 'suite_install_db' ) ) {
-    function suite_install_db() {
-        global $wpdb;
-        $charset_collate = $wpdb->get_charset_collate();
-
-        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-
-        // 1. Tabla Inventario (Cache)
-        $sql_inventario = "CREATE TABLE {$wpdb->prefix}suite_inventario_cache (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            sku VARCHAR(100) NOT NULL,
-            nombre_producto VARCHAR(255),
-            precio_venta DECIMAL(10,2) DEFAULT 0,
-            status_prediccion VARCHAR(50),
-            inventario_entrante VARCHAR(10),
-            disponibilidad_millennium FLOAT DEFAULT 0,
-            disponibilidad_galerias FLOAT DEFAULT 0,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            UNIQUE KEY idx_sku (sku)
-        ) $charset_collate;";
-
-        // 2. Tabla Clientes (CRM)
-        $sql_clientes = "CREATE TABLE {$wpdb->prefix}suite_clientes (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-			vendedor_id bigint(20) DEFAULT 0,
-            nombre_razon VARCHAR(255) NOT NULL,
-            rif_ci VARCHAR(50) NOT NULL,
-            direccion TEXT,
-            ciudad VARCHAR(100),
-            estado VARCHAR(100),
-            telefono VARCHAR(50),
-            email VARCHAR(100),
-            contacto_persona VARCHAR(150),
-            notas TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            UNIQUE KEY idx_rif (rif_ci)
-        ) $charset_collate;";
-
-        // 3. Tabla Cotizaciones
-        $sql_cotizaciones = "CREATE TABLE {$wpdb->prefix}suite_cotizaciones (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            codigo_cotizacion VARCHAR(20) NOT NULL,
-            cliente_nombre VARCHAR(255),
-            cliente_rif VARCHAR(50),
-            cliente_id bigint(20) NOT NULL DEFAULT 0,
-            direccion_entrega TEXT,
-            fecha_emision DATETIME DEFAULT CURRENT_TIMESTAMP,
-            validez_dias INT DEFAULT 10,
-            moneda VARCHAR(5) DEFAULT 'USD',
-            vendedor_id bigint(20),
-            total_bs DECIMAL(15,2),
-            total_usd DECIMAL(15,2),
-            tasa_bcv DECIMAL(10,2),
-            estado VARCHAR(20) DEFAULT 'emitida',
-            canal_venta VARCHAR(100),
-            metodo_pago VARCHAR(100),
-            metodo_entrega VARCHAR(100),
-            url_captura_pago TEXT,
-            recibo_loyverse VARCHAR(100),
-			factura_fiscal_url VARCHAR(255),
-            pod_url TEXT,
-            
-            /* --- INICIO FASE 1: NUEVOS CAMPOS KANBAN V2 --- */
-            forma_pago VARCHAR(50),
-            fecha_pago DATETIME,
-            requiere_factura TINYINT(1) DEFAULT 0,
-            agente_retencion TINYINT(1) DEFAULT 0,
-            comprobante_pago_url TEXT,
-            tipo_envio VARCHAR(50),
-            agencia_envio VARCHAR(100),
-            direccion_envio TEXT,
-            prioridad TINYINT(1) DEFAULT 0,
-            alerta_loyverse TEXT,
-            /* --- FIN FASE 1 --- */
-            
-            PRIMARY KEY  (id)
-        ) $charset_collate;";
-
-        // 4. Tabla Libro Mayor de Comisiones (Ledger)
-        $sql_comisiones = "CREATE TABLE {$wpdb->prefix}suite_comisiones_ledger (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            quote_id bigint(20) NOT NULL,
-            vendedor_id bigint(20) NOT NULL,
-            monto_base_usd DECIMAL(15,2) DEFAULT 0,
-            comision_ganada_usd DECIMAL(15,2) DEFAULT 0,
-            estado_pago VARCHAR(20) DEFAULT 'pendiente',
-            /* --- FASE 5: AUDITORÍA LOYVERSE --- */
-            recibo_loyverse VARCHAR(100) DEFAULT NULL,
-            estado_auditoria VARCHAR(20) DEFAULT 'pendiente',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            KEY idx_vendedor (vendedor_id)
-        ) $charset_collate;";
-
-        // 5. Tabla Gamificación y Premios
-        $sql_premios = "CREATE TABLE {$wpdb->prefix}suite_premios_mensuales (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            vendedor_id bigint(20) NOT NULL,
-            mes INT NOT NULL,
-            anio INT NOT NULL,
-            premio_nombre VARCHAR(100) NOT NULL,
-            monto_premio DECIMAL(10,2) DEFAULT 0,
-            asignado_manualmente TINYINT(1) DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            KEY idx_mes_anio (mes, anio)
-        ) $charset_collate;";
-
-        // 6. Tabla Items (Detalle)
-        $sql_items = "CREATE TABLE {$wpdb->prefix}suite_cotizaciones_items (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            cotizacion_id bigint(20) NOT NULL,
-            sku VARCHAR(100),
-            producto_nombre VARCHAR(255),
-            cantidad INT,
-            precio_unitario_usd DECIMAL(15,2),
-            tiempo_entrega VARCHAR(100),
-            subtotal_usd DECIMAL(15,2),
-            PRIMARY KEY  (id),
-            KEY idx_cotizacion (cotizacion_id)
-        ) $charset_collate;";
-
-        // 7. Tabla de Auditoría (Logs)
-        $sql_logs = "CREATE TABLE {$wpdb->prefix}suite_logs (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            usuario_id bigint(20) NOT NULL,
-            accion VARCHAR(50) NOT NULL,
-            detalle TEXT,
-            ip VARCHAR(45),
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            KEY idx_usuario (usuario_id)
-        ) $charset_collate;";
-
-        // 8. Tabla Data Lake / Inventario Histórico (Módulo 5 - IA)
-        $sql_historico = "CREATE TABLE {$wpdb->prefix}suite_inventario_historico (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            fecha_snapshot DATE NOT NULL,
-            sku VARCHAR(100) NOT NULL,
-            stock_disponible INT DEFAULT 0,
-            precio DECIMAL(10,2) DEFAULT 0,
-            categoria VARCHAR(100) DEFAULT 'General',
-            PRIMARY KEY  (id),
-            KEY idx_fecha (fecha_snapshot),
-            KEY idx_sku (sku)
-        ) $charset_collate;";
-
-        // --- EJECUCIÓN ÚNICA DE DB-DELTA ---
-        dbDelta( $sql_inventario );
-        dbDelta( $sql_clientes );
-        dbDelta( $sql_cotizaciones );
-        dbDelta( $sql_items );
-        dbDelta( $sql_comisiones );
-        dbDelta( $sql_premios );
-        dbDelta( $sql_logs );
-        dbDelta( $sql_historico ); // Data Lake agregado correctamente
-
-        // Ajuste de Auto-Increment para Cotizaciones (Inicio en 15000)
-        $count = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}suite_cotizaciones" );
-        if ( $count == 0 ) {
-            $wpdb->query( "ALTER TABLE {$wpdb->prefix}suite_cotizaciones AUTO_INCREMENT = 15000" );
-        }
-		
-		// --- PARCHE EN CALIENTE: Añadir vendedor_id si el plugin ya estaba instalado ---
-        $column_check = $wpdb->get_results( "SHOW COLUMNS FROM {$wpdb->prefix}suite_clientes LIKE 'vendedor_id'" );
-        if ( empty( $column_check ) ) {
-            $wpdb->query( "ALTER TABLE {$wpdb->prefix}suite_clientes ADD vendedor_id bigint(20) DEFAULT 0 AFTER id" );
-        }
-		
-		// --- PARCHE EN CALIENTE FASE 5: Añadir columnas al Ledger ---
-        $tabla_ledger_check = $wpdb->prefix . 'suite_comisiones_ledger';
-        
-        $col_loyverse = $wpdb->get_results( "SHOW COLUMNS FROM {$tabla_ledger_check} LIKE 'recibo_loyverse'" );
-        if ( empty( $col_loyverse ) ) {
-            $wpdb->query( "ALTER TABLE {$tabla_ledger_check} ADD recibo_loyverse VARCHAR(100) DEFAULT NULL" );
-        }
-
-        $col_auditoria = $wpdb->get_results( "SHOW COLUMNS FROM {$tabla_ledger_check} LIKE 'estado_auditoria'" );
-        if ( empty( $col_auditoria ) ) {
-            $wpdb->query( "ALTER TABLE {$tabla_ledger_check} ADD estado_auditoria VARCHAR(20) DEFAULT 'pendiente'" );
-        }
-
-        // --- CREACIÓN DE ROLES (Ejecutar una vez) ---
-        add_role('suite_vendedor', 'Vendedor Suite', array('read' => true, 'suite_access' => true));
-        add_role('suite_logistica', 'Logística Suite', array('read' => true, 'suite_access' => true));
-        add_role('suite_marketing', 'Marketing y Análisis', array('read' => true, 'suite_access' => true));
-
-        $admin = get_role('administrator');
-        if ( $admin ) {
-            $admin->add_cap('suite_access'); // Asegurar que admin tenga acceso
-        }
-    }
-}
---- FIN DEL ARCHIVO: class-activator.php ---
-
---- INICIO DEL ARCHIVO: includes/Models/class-suite-model-base.php ---
-<?php
-/**
- * Clase Abstracta: Modelo Base de Base de Datos
- *
- * Centraliza la interacción con $wpdb, proporcionando métodos CRUD
- * blindados contra inyecciones SQL y estandarizados para todos los módulos.
- *
- * @package SuiteEmpleados\Models
- */
-
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
-
-abstract class Suite_Model_Base {
-
-    /**
-     * Instancia global de WordPress DB
-     * @var wpdb
-     */
-    protected $wpdb;
-
-    /**
-     * Nombre completo de la tabla (incluyendo el prefijo wp_)
-     * @var string
-     */
-    protected $table_name;
-
-    /**
-     * Llave primaria de la tabla (por defecto 'id')
-     * @var string
-     */
-    protected $primary_key = 'id';
-
-    /**
-     * Constructor. Inicializa la conexión a DB y define el nombre de la tabla.
-     */
-    public function __construct() {
-        global $wpdb;
-        $this->wpdb = $wpdb;
-        
-        // $this->set_table_name() debe ser definido obligatoriamente por la clase hija
-        $this->table_name = $this->wpdb->prefix . $this->set_table_name();
-    }
-
-    /**
-     * Define el nombre de la tabla sin el prefijo de WordPress.
-     * Ej: return 'suite_clientes';
-     *
-     * @return string
-     */
-    abstract protected function set_table_name();
-
-    /**
-     * Obtiene un registro específico por su ID.
-     *
-     * @param int $id El ID del registro.
-     * @return object|null Objeto con los datos o null si no existe.
-     */
-    public function get( $id ) {
-        $sql = $this->wpdb->prepare( 
-            "SELECT * FROM {$this->table_name} WHERE {$this->primary_key} = %d", 
-            intval( $id ) 
-        );
-        return $this->wpdb->get_row( $sql );
-    }
-
-    /**
-     * Obtiene una lista de registros con límite y offset (paginación básica).
-     *
-     * @param int $limit Límite de resultados.
-     * @param int $offset Punto de inicio.
-     * @return array Array de objetos.
-     */
-    public function get_all( $limit = 100, $offset = 0 ) {
-        $sql = $this->wpdb->prepare( 
-            "SELECT * FROM {$this->table_name} ORDER BY {$this->primary_key} DESC LIMIT %d OFFSET %d", 
-            intval( $limit ), 
-            intval( $offset ) 
-        );
-        return $this->wpdb->get_results( $sql );
-    }
-
-    /**
-     * Inserta un nuevo registro de forma segura.
-     *
-     * @param array $data Array asociativo [ 'columna' => 'valor' ].
-     * @return int|false El ID insertado o false en caso de error.
-     */
-    public function insert( $data ) {
-        $inserted = $this->wpdb->insert( $this->table_name, $data );
-        if ( $inserted ) {
-            return $this->wpdb->insert_id;
-        }
-        return false;
-    }
-
-    /**
-     * Actualiza un registro existente de forma segura.
-     *
-     * @param int   $id   El ID del registro a actualizar.
-     * @param array $data Array asociativo [ 'columna' => 'valor' ].
-     * @return bool True si se actualizó, false en caso de error.
-     */
-    public function update( $id, $data ) {
-        $updated = $this->wpdb->update( 
-            $this->table_name, 
-            $data, 
-            [ $this->primary_key => intval( $id ) ] 
-        );
-        
-        // $updated devuelve false en error, o el número de filas afectadas (puede ser 0 si los datos eran idénticos)
-        return $updated !== false;
-    }
-
-    /**
-     * Elimina un registro por su ID de forma segura.
-     *
-     * @param int $id El ID del registro a eliminar.
-     * @return bool True en éxito, false en error.
-     */
-    public function delete( $id ) {
-        $deleted = $this->wpdb->delete( 
-            $this->table_name, 
-            [ $this->primary_key => intval( $id ) ] 
-        );
-        return $deleted !== false;
-    }
-
-}
---- FIN DEL ARCHIVO: class-suite-model-base.php ---
-
-=================================================================
-📂 ARCHIVOS ESPECÍFICOS DEL MÓDULO
-=================================================================
-
---- INICIO DEL ARCHIVO: assets/js/modules/historial.js ---
+### ARCHIVO: `assets/js/modules/historial.js`
+```js
 /**
  * SuiteHistorial - Módulo de Historial de Cotizaciones
  * Permite buscar, imprimir, enviar por WA y CLONAR pedidos hacia el Cotizador.
@@ -975,17 +55,34 @@ const SuiteHistorial = (function($) {
                     // Botón Imprimir PDF
                     let printBtn = `<a href="${suite_vars.ajax_url}?action=suite_print_quote&id=${r.id}&nonce=${suite_vars.nonce}" target="_blank" class="btn-modern-action small" style="color:#475569;" title="Imprimir PDF">🖨️</a>`;
 
-                    // Botón Clonar (La acción estrella)
+					
+					
+					
+					
+                    // Botón Clonar
                     let cloneBtn = `<button class="btn-modern-action small btn-clone-quote" data-id="${r.id}" style="color:#0073aa; border-color:#bae6fd;" title="Clonar al Cotizador">🔄 Clonar</button>`;
 
-                    table.row.add([
+                    // NUEVO: Botón Retención y Color de Alerta
+                    let retencionBtn = '';
+                    let rowBgColor = '';
+                    if (r.is_pending_retention) {
+                        retencionBtn = `<button class="btn-modern-action small btn-upload-retencion" data-id="${r.id}" style="background:#fef08a; color:#854d0e; border-color:#fde047; font-weight:bold;" title="Subir Retención Fiscal">📥 Adjuntar Retención</button>`;
+                        rowBgColor = '#fef9c3'; // Amarillo tenue
+                    }
+
+                    let rowNode = table.row.add([
                         { display: r.fecha_fmt, sort: r.fecha_cruda }, 
                         `<strong>#${r.codigo_cotizacion}</strong>`,
                         r.cliente_nombre,
                         `$${r.total_fmt}`,
                         `<span class="status-pill ${badgeClass}">${r.estado.toUpperCase()}</span>`,
-                        `<div style="display:flex; gap:5px;">${printBtn} ${waBtn} ${cloneBtn}</div>`
-                    ]);
+                        `<div style="display:flex; gap:5px;">${printBtn} ${waBtn} ${cloneBtn} ${retencionBtn}</div>`
+                    ]).node();
+
+                    // Aplicar el color de fondo a la fila si está pendiente
+                    if (rowBgColor) {
+                        $(rowNode).css('background-color', rowBgColor);
+                    }
 					
 					
 					
@@ -1057,6 +154,128 @@ const SuiteHistorial = (function($) {
                 btn.prop('disabled', false).html('🔄 Clonar');
             });
         });
+		
+		
+		// Disparador Súper-Modal de Retención Fiscal
+        $('#historyTable').on('click', '.btn-upload-retencion', async function(e) {
+            e.preventDefault();
+            const quoteId = $(this).data('id');
+
+            const { value: file } = await Swal.fire({
+                title: 'Adjuntar Retención',
+                text: 'Suba la planilla de retención del cliente para liberar este pedido de las alertas.',
+                input: 'file',
+                inputAttributes: { 'accept': 'application/pdf, image/*' },
+                showCancelButton: true,
+                confirmButtonText: 'Subir Archivo',
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (file) {
+                // --- 🛡️ NUEVO: BARRERA DE PESO (5MB MAX) ---
+                const maxSizeBytes = 5 * 1024 * 1024; // 5 Megabytes en bytes
+                if (file.size > maxSizeBytes) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Archivo muy pesado',
+                        text: 'El comprobante de retención no debe superar los 5MB para no saturar el servidor. Por favor, comprima el PDF o reduzca la calidad de la imagen e intente de nuevo.',
+                        confirmButtonColor: '#d97706'
+                    });
+                    return; // 🛑 Detenemos la subida inmediatamente
+                }
+                // -------------------------------------------
+
+                Swal.fire({ title: 'Subiendo documento...', allowOutsideClick: false });
+                Swal.showLoading();
+
+                let formData = new FormData();
+                formData.append('action', 'suite_upload_retention');
+				
+				
+				
+                formData.append('nonce', suite_vars.nonce);
+                formData.append('quote_id', quoteId);
+                formData.append('retencion_file', file);
+
+                SuiteAPI.postForm('suite_upload_retention', formData).then(res => {
+                    if (res.success) {
+                        Swal.fire('¡Éxito!', 'Retención adjuntada. El expediente ha sido actualizado.', 'success');
+                        loadHistory(); // Recarga la tabla de inmediato
+                    } else {
+                        Swal.fire('Error', res.data.message || 'Error del servidor.', 'error');
+                    }
+                }).catch(() => Swal.fire('Error', 'Falla de conexión al subir el archivo.', 'error'));
+            }
+        });
+		
+		// NUEVO: Modal Asíncrono para Buzón Fiscal Manual
+        $('#btn-upload-manual-fiscal').on('click', function(e) {
+            e.preventDefault();
+
+            Swal.fire({
+                title: 'Buzón Fiscal Externo',
+                html: `
+                    <div style="text-align: left; margin-top: 15px;">
+                        <p style="font-size: 13px; color: #64748b; margin-bottom: 15px;">Usa este buzón SOLO para documentos rezagados o de meses contables cerrados.</p>
+                        <input type="text" id="manual-cliente" class="suite-input" placeholder="Nombre completo del Cliente *" style="width: 100%; margin-bottom: 10px; padding: 10px;" required>
+                        <input type="text" id="manual-rif" class="suite-input" placeholder="RIF / CI (Ej: J-12345678) *" style="width: 100%; margin-bottom: 10px; padding: 10px;" required>
+
+                        <select id="manual-tipo" class="suite-input" style="width: 100%; margin-bottom: 15px; padding: 10px;">
+                            <option value="Factura Fiscal">Factura Fiscal</option>
+                            <option value="Retención Fiscal">Retención Fiscal</option>
+                        </select>
+
+                        <label style="font-size: 12px; font-weight: bold; color: #475569; display: block; margin-bottom: 5px;">Adjuntar Archivo (Max 3.5MB)</label>
+                        <input type="file" id="manual-file" class="suite-input" accept="application/pdf, image/*" style="width: 100%; padding: 8px;">
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '📤 Enviar a Contabilidad',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#4f46e5',
+                showLoaderOnConfirm: true,
+                preConfirm: () => {
+                    const cliente = document.getElementById('manual-cliente').value.trim();
+                    const rif = document.getElementById('manual-rif').value.trim();
+                    const tipo = document.getElementById('manual-tipo').value;
+                    const fileInput = document.getElementById('manual-file');
+
+                    if (!cliente || !rif || fileInput.files.length === 0) {
+                        Swal.showValidationMessage('Por favor completa todos los campos obligatorios.');
+                        return false;
+                    }
+
+                    const file = fileInput.files[0]; // <-- CORRECCIÓN CRÍTICA DE LA IA
+                    
+                    // Validación JS estricta (3.5MB = 3670016 bytes)
+                    if (file.size > 3670016) {
+                        Swal.showValidationMessage('El archivo supera el límite de 3.5MB permitido.');
+                        return false;
+                    }
+
+                    let formData = new FormData();
+                    formData.append('cliente', cliente);
+                    formData.append('rif', rif);
+                    formData.append('tipo', tipo);
+                    formData.append('fiscal_file', file);
+
+                    // <-- CORRECCIÓN: Usar nuestra arquitectura V8 nativa
+                    return SuiteAPI.postForm('suite_upload_manual_document', formData).then(res => {
+                        if (!res.success) throw new Error(res.data.message || 'Error del servidor');
+                        return res;
+                    }).catch(error => {
+                        Swal.showValidationMessage(`Error: ${error.message}`);
+                    });
+                },
+                allowOutsideClick: () => !Swal.isLoading()
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire('¡Enviado!', 'El documento ha sido sellado y enviado al canal de contabilidad.', 'success');
+                }
+            });
+        });
+		
+		
     };
 
     return {
@@ -1068,9 +287,10 @@ const SuiteHistorial = (function($) {
         refresh: loadHistory
     };
 })(jQuery);
---- FIN DEL ARCHIVO: historial.js ---
+```
 
---- INICIO DEL ARCHIVO: assets/js/modules/quoter.js ---
+### ARCHIVO: `assets/js/modules/quoter.js`
+```js
 /**
  * SuiteQuoter - Módulo UI del Cotizador y Punto de Venta (POS)
  * Reconstrucción V11: Mobile-First, RIF Atómico y Carrito Independiente.
@@ -1509,9 +729,10 @@ const SuiteQuoter = (function($) {
     };
 
 })(jQuery);
---- FIN DEL ARCHIVO: quoter.js ---
+```
 
---- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-quotes.php ---
+### ARCHIVO: `includes/Controllers/Ajax/class-suite-ajax-quotes.php`
+```php
 <?php
 /**
  * Controlador AJAX: Cotizador y Venta (Módulo 2: Seguridad Aplicada)
@@ -1640,14 +861,26 @@ class Suite_Ajax_Quote_History extends Suite_AJAX_Controller {
         
         $is_admin = current_user_can( 'manage_options' );
         $is_logistica = in_array( 'suite_logistica', (array) $user->roles );
-        $tiene_acceso_global = ( $is_admin || $is_logistica );
+        
+        // --- INYECCIÓN RBAC: Nueva Bandera de Historial ---
+        $tiene_bandera_historial = current_user_can( 'suite_view_all_quotes' );
+        
+        // El acceso global se otorga si es Admin, Logística, O tiene la nueva bandera
+        $tiene_acceso_global = ( $is_admin || $is_logistica || $tiene_bandera_historial );
 
         $quote_model = new Suite_Model_Quote();
         $history = $quote_model->get_vendor_history( $user_id, 500, $tiene_acceso_global );
+        
+        $pending_retentions = [];
+        $normal_history = [];
 
         foreach ( $history as $r ) {
+            // Lógica de Retención Pendiente
+            $r->is_pending_retention = ($r->estado === 'despachado' && $r->agente_retencion == '1' && empty($r->retencion_url));
+
             $r->fecha_fmt = date( 'd/m/Y', strtotime( $r->fecha_emision ) );
-			$r->fecha_cruda = strtotime( $r->fecha_emision );
+            
+            $r->fecha_cruda = strtotime( $r->fecha_emision );
             $r->total_fmt = number_format( floatval( $r->total_usd ), 2 );
             $r->cliente_nombre = empty( $r->cliente_nombre ) ? 'N/A' : esc_html( $r->cliente_nombre );
 
@@ -1665,9 +898,19 @@ class Suite_Ajax_Quote_History extends Suite_AJAX_Controller {
                 $r->estado = 'emitida';
             }
             $r->can_change_status = $tiene_acceso_global;
+            
+            // Separar en dos arreglos para aplicar "Gravedad" al inicio
+            if ( $r->is_pending_retention ) {
+                $pending_retentions[] = $r;
+            } else {
+                $normal_history[] = $r;
+            }
         }
 
-        $this->send_success( $history );
+        // Combinar: Los de alerta amarilla arriba, el resto abajo
+        $sorted_history = array_merge($pending_retentions, $normal_history);
+
+        $this->send_success( $sorted_history );
     }
 }
 
@@ -2280,6 +1523,11 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
         $direccion_fisica  = sanitize_textarea_field( $_POST['direccion_envio'] ?? '' );
         $prioridad         = isset($_POST['prioridad']) ? intval($_POST['prioridad']) : 0;
 
+		
+		
+		
+        $sucursal_retiro = sanitize_text_field( $_POST['sucursal_retiro'] ?? '' ); // CAPTURAMOS LA SUCURSAL
+
         // 3. CONCATENACIÓN INTELIGENTE DE LOGÍSTICA
         $direccion_final = '';
         if ( $tipo_envio === 'Nacional' ) {
@@ -2287,7 +1535,7 @@ class Suite_Ajax_Process_Super_Pago extends Suite_AJAX_Controller {
         } elseif ( $tipo_envio === 'Motorizado' ) {
             $direccion_final = "Receptor: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor \nDir: $direccion_fisica";
         } elseif ( $tipo_envio === 'Retiro' ) {
-            $direccion_final = "Retira en Tienda: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor";
+            $direccion_final = "Retira en Tienda: $nombre_receptor | RIF: $rif_receptor | Tel: $telefono_receptor \nSucursal Asignada: $sucursal_retiro";
         }
 
         // 4. BÓVEDA SEGURA: MANEJO DE ARCHIVO MULTIPART
@@ -2398,7 +1646,7 @@ class Suite_Telegram_Bot {
     
     private $bot_token = '8190650297:AAEhx-eQygWnbid7mjcSQuN2KV4SigE6k38';
     private $chat_id   = '-5199565623'; 
-
+	private $fiscal_chat_id = '-5244447469';
     /**
      * Envía la alerta de pago con el comprobante y botones interactivos.
      */
@@ -2447,10 +1695,208 @@ class Suite_Telegram_Bot {
             'blocking' => true // Queremos saber si salió, pero con un timeout razonable
         ) );
     }
-}
---- FIN DEL ARCHIVO: class-suite-ajax-quotes.php ---
+	
+	/**
+     * Envía una alerta al Canal FISCAL con Facturas o Retenciones.
+     */
+    public function send_fiscal_document( $quote_id, $codigo_cotizacion, $vendedor_id, $tipo_documento, $file_url ) {
+        if ( empty( $this->bot_token ) || empty( $this->fiscal_chat_id ) ) return false;
 
---- INICIO DEL ARCHIVO: views/app/tab-cotizador.php ---
+        $is_pdf     = ( substr( strtolower( $file_url ), -4 ) === '.pdf' );
+        $endpoint   = $is_pdf ? 'sendDocument' : 'sendPhoto';
+        $file_param = $is_pdf ? 'document' : 'photo';
+
+        $vendedor_info   = get_userdata( $vendedor_id );
+        $vendedor_nombre = $vendedor_info ? $vendedor_info->display_name : 'ID: ' . $vendedor_id;
+        $emoji = $tipo_documento === 'Retención Fiscal' ? '🧾' : '📸';
+
+        $caption  = "{$emoji} <b>NUEVO DOCUMENTO FISCAL</b> {$emoji}\n\n";
+        $caption .= "📌 <b>Tipo:</b> {$tipo_documento}\n";
+        $caption .= "🛍️ <b>Orden:</b> #{$codigo_cotizacion}\n";
+        $caption .= "👤 <b>Vendedor:</b> {$vendedor_nombre}\n\n";
+        $caption .= "<i>Archivo listo para revisión contable.</i>";
+
+        $body = array(
+            'chat_id'    => $this->fiscal_chat_id, // <-- APUNTA AL GRUPO FISCAL
+            $file_param  => $file_url,
+            'caption'    => $caption,
+            'parse_mode' => 'HTML'
+        );
+
+        return wp_remote_post( "https://api.telegram.org/bot{$this->bot_token}/{$endpoint}", array(
+            'body' => $body, 'timeout' => 5, 'blocking' => false 
+        ) );
+    }
+}
+
+/**
+ * Endpoint Admin: Revertir orden de 'Por Enviar' a 'Pagado' (Error Logístico)
+ */
+class Suite_Ajax_Reverse_To_Paid extends Suite_AJAX_Controller {
+    
+    protected $action_name = 'suite_reverse_to_paid';
+    protected $required_capability = 'manage_options'; // Estrictamente Administrador
+
+    protected function process() {
+        global $wpdb;
+        $tabla_cot = $wpdb->prefix . 'suite_cotizaciones';
+
+        $order_id = isset( $_POST['order_id'] ) ? intval( $_POST['order_id'] ) : 0;
+        if ( ! $order_id ) {
+            $this->send_error( 'ID de cotización ausente.' );
+        }
+
+        $estado_actual = $wpdb->get_var( $wpdb->prepare( "SELECT estado FROM {$tabla_cot} WHERE id = %d", $order_id ) );
+
+        if ( $estado_actual !== 'por_enviar' ) {
+            $this->send_error( 'Esta orden no se puede revertir porque no está en la columna Por Enviar.' );
+        }
+
+        // Ejecutamos el reverso a "pagado"
+        $updated = $wpdb->update(
+            $tabla_cot,
+            [ 'estado' => 'pagado' ], 
+            [ 'id' => $order_id ],
+            [ '%s' ],
+            [ '%d' ]
+        );
+
+        if ( $updated !== false ) {
+            if ( function_exists('suite_record_log') ) {
+                suite_record_log( 'reverso_logistico_pagado', "Orden #{$order_id} revertida de 'por_enviar' a 'pagado'." );
+            }
+            $this->send_success( 'Orden revertida a Pagado exitosamente.' );
+        } else {
+            $this->send_error( 'Error al actualizar la base de datos.' );
+        }
+    }
+}
+
+
+
+/**
+ * 6. Endpoint para subir Comprobantes de Retención
+ */
+class Suite_Ajax_Upload_Retention extends Suite_AJAX_Controller {
+    protected $action_name = 'suite_upload_retention';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        global $wpdb;
+        $quote_id = isset($_POST['quote_id']) ? intval($_POST['quote_id']) : 0;
+
+        if ( ! $quote_id || empty( $_FILES['retencion_file']['name'] ) ) {
+            $this->send_error( 'Datos o archivo ausentes.' );
+        }
+
+        // --- 🛡️ NUEVO: BARRERA ZERO-TRUST (5MB MAX) EN SERVIDOR ---
+        $max_size_bytes = 5 * 1024 * 1024; // 5MB
+        if ( $_FILES['retencion_file']['size'] > $max_size_bytes || $_FILES['retencion_file']['error'] === UPLOAD_ERR_INI_SIZE ) {
+            $this->send_error( 'Violación de seguridad: El archivo excede el límite de 5MB. Operación cancelada.', 400 );
+            return;
+        }
+        // ----------------------------------------------------------
+
+        require_once( ABSPATH . 'wp-admin/includes/file.php' );
+        $uploadedfile = $_FILES['retencion_file'];
+		
+		
+		
+		
+		
+        $upload_overrides = array( 'test_form' => false ); 
+
+        $movefile = wp_handle_upload( $uploadedfile, $upload_overrides );
+
+        if ( $movefile && ! isset( $movefile['error'] ) ) {
+            $file_url = $movefile['url'];
+            
+            $updated = $wpdb->update(
+                $wpdb->prefix . 'suite_cotizaciones',
+                [ 'retencion_url' => $file_url ],
+                [ 'id' => $quote_id ]
+            );
+
+			
+			
+			
+            if ( $updated !== false ) {
+                // --- 🚀 DISPARO A TELEGRAM (CANAL FISCAL) ---
+                $quote_data = $wpdb->get_row($wpdb->prepare("SELECT codigo_cotizacion, vendedor_id FROM {$wpdb->prefix}suite_cotizaciones WHERE id = %d", $quote_id));
+                if ( $quote_data && class_exists('Suite_Telegram_Bot') ) {
+                    $telegram = new Suite_Telegram_Bot();
+                    $telegram->send_fiscal_document( $quote_id, $quote_data->codigo_cotizacion, $quote_data->vendedor_id, 'Retención Fiscal', $file_url );
+                }
+                // --------------------------------------------
+                
+                $this->send_success( [ 'message' => 'Retención subida y notificada a Contabilidad.', 'url' => $file_url ] );
+            } else {
+				
+				
+				
+                $this->send_error( 'Fallo al guardar en BD.' );
+            }
+        } else {
+            $this->send_error( $movefile['error'] );
+        }
+    }
+}
+
+
+/**
+ * Endpoint para subir Documentos Fiscales Extemporáneos (Manuales)
+ */
+class Suite_Ajax_Upload_Manual_Document extends Suite_AJAX_Controller {
+    
+    protected $action_name = 'suite_upload_manual_document';
+    protected $required_capability = 'read';
+
+    protected function process() {
+        $cliente = sanitize_text_field( $_POST['cliente'] ?? '' );
+        $rif     = sanitize_text_field( $_POST['rif'] ?? '' );
+        $tipo    = sanitize_text_field( $_POST['tipo'] ?? '' );
+        $vendedor_id = get_current_user_id();
+
+        if ( empty( $cliente ) || empty( $rif ) || empty( $_FILES['fiscal_file']['name'] ) ) {
+            $this->send_error( 'Faltan datos obligatorios.' );
+        }
+
+        // Validación estricta de peso en backend (3.5MB máximo)
+        $max_size = 3.5 * 1024 * 1024;
+        if ( $_FILES['fiscal_file']['size'] > $max_size || $_FILES['fiscal_file']['error'] === UPLOAD_ERR_INI_SIZE ) {
+            $this->send_error( 'El archivo excede el límite de 3.5MB permitido por el servidor.' );
+        }
+
+        // Importar librería de WordPress para subida segura de archivos
+        if ( ! function_exists( 'wp_handle_upload' ) ) {
+            require_once( ABSPATH . 'wp-admin/includes/file.php' );
+        }
+
+        $uploadedfile     = $_FILES['fiscal_file'];
+        $upload_overrides = array( 'test_form' => false );
+        $movefile         = wp_handle_upload( $uploadedfile, $upload_overrides );
+
+        if ( $movefile && ! isset( $movefile['error'] ) ) {
+            $file_url = $movefile['url'];
+
+            // Regla de Negocio: Reusar el Bot que ya tenemos configurado apuntando al grupo Fiscal
+            if ( class_exists('Suite_Telegram_Bot') ) {
+                $telegram = new Suite_Telegram_Bot();
+                $codigo_ref = "MANUAL - " . strtoupper( $rif ) . " (" . $cliente . ")";
+                // ID 0 porque no hay orden atada, usa automáticamente el fiscal_chat_id
+                $telegram->send_fiscal_document( 0, $codigo_ref, $vendedor_id, $tipo, $file_url );
+            }
+
+            $this->send_success( array( 'message' => 'Documento procesado y enviado con éxito.', 'url' => $file_url ) );
+        } else {
+            $this->send_error( $movefile['error'] );
+        }
+    }
+}
+```
+
+### ARCHIVO: `views/app/tab-cotizador.php`
+```php
 <?php
 /**
  * Vista: Pestaña del Cotizador (Punto de Venta) - V11 Mobile-First
@@ -2593,9 +2039,10 @@ $tasa_bcv_actual = get_option( 'suite_tasa_bcv', 1.00 );
         </div>
     </div>
 </div>
---- FIN DEL ARCHIVO: tab-cotizador.php ---
+```
 
---- INICIO DEL ARCHIVO: views/app/tab-historial.php ---
+### ARCHIVO: `views/app/tab-historial.php`
+```php
 <?php
 /**
  * Vista: Historial de Cotizaciones
@@ -2604,10 +2051,20 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 ?>
 
 <div id="TabHistorial" class="suite-tab-content" style="display: none;">
-    <div class="suite-header-modern">
-        <h2 style="margin:0; font-size: 22px; color: #0f172a;">📜 Historial de Cotizaciones</h2>
-        <p style="color:#64748b; font-size:14px; margin-top:5px;">Revise, imprima o clone sus cotizaciones y pedidos anteriores.</p>
+	
+	
+	
+    <div class="suite-header-modern" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+        <div>
+            <h2 style="margin:0; font-size: 22px; color: #0f172a;">📜 Historial de Cotizaciones</h2>
+            <p style="color:#64748b; font-size:14px; margin-top:5px;">Revise, imprima o clone sus cotizaciones y pedidos anteriores.</p>
+        </div>
+        <button type="button" id="btn-upload-manual-fiscal" class="btn-save-big" style="background: #4f46e5; color: white; padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3);">
+            📤 Subir Doc. Fiscal Externo
+        </button>
     </div>
+	
+	
     
     <div style="padding: 25px;">
         <div class="suite-table-responsive">
@@ -2629,9 +2086,10 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
         </div>
     </div>
 </div>
---- FIN DEL ARCHIVO: tab-historial.php ---
+```
 
---- INICIO DEL ARCHIVO: views/pdf/layout-cotizacion.php ---
+### ARCHIVO: `views/pdf/layout-cotizacion.php`
+```php
 <?php
 /**
  * Archivo: views/pdf/layout-cotizacion.php
@@ -2640,5 +2098,5 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
---- FIN DEL ARCHIVO: layout-cotizacion.php ---
+```
 

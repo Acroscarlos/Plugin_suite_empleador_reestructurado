@@ -1,14 +1,7 @@
-=================================================================
-🧩 MÓDULO LÓGICO: Slice_F_Marketing_BI
-Contiene el Stack completo: Base Core + Vistas + JS + AJAX + Models
-=================================================================
+# 🏛️ MÓDULO MAESTRO: Core Architecture
 
-=================================================================
-🏛️ ARCHIVOS CORE (COMPARTIDOS)
-Clases base, singletons, API handlers y estilos globales.
-=================================================================
-
---- INICIO DEL ARCHIVO: suite-empleados.php ---
+### ARCHIVO: `suite-empleados.php`
+```php
 <?php
 /**
  * Plugin Name: Suite de Empleados (ERP Intranet)
@@ -42,6 +35,7 @@ function suite_empleados_init() {
     // Core
     require_once SUITE_PATH . 'includes/Core/class-activator.php';
     require_once SUITE_PATH . 'includes/Core/class-suite-cron-jobs.php';
+	require_once SUITE_PATH . 'includes/Core/class-suite-email-engine.php';
 
     // Modelos (Capa de Base de Datos y Lógica de Negocio)
     require_once SUITE_PATH . 'includes/Models/class-suite-model-base.php';
@@ -62,6 +56,7 @@ function suite_empleados_init() {
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-quotes.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-kanban.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-commissions.php';
+	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-financial-balance.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-logistics.php';
 	require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-employees.php';
     require_once SUITE_PATH . 'includes/Controllers/Ajax/class-suite-ajax-roles.php';
@@ -72,7 +67,7 @@ function suite_empleados_init() {
 	// Controladores de la API REST
 	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-sync.php';
 	require_once SUITE_PATH . 'includes/Controllers/Api/class-suite-api-telegram-webhook.php'; // <--- FASE 4.1: WEBHOOK TELEGRAM
-
+	
 
     // Controlador del Administrador / Frontend (Shortcodes y Vistas)
     require_once SUITE_PATH . 'includes/Controllers/Admin/class-suite-shortcode-controller.php';
@@ -96,12 +91,15 @@ function suite_empleados_init() {
 	new Suite_Ajax_Quote_Details();
 	new Suite_Ajax_Get_Inventory();
 	new Suite_Ajax_Process_Super_Pago();
-	
+	new Suite_Ajax_Upload_Retention();
+	new Suite_Ajax_Upload_Manual_Document();
     // Módulo 1: Tablero Kanban (Pedidos)
     new Suite_Ajax_Kanban_Data();
     new Suite_Ajax_Kanban_Status();
 	new Suite_Ajax_Reverse_Logistics();
-
+	new Suite_Ajax_Reverse_To_Paid(); 
+	
+	
     // Módulo 3: Logística y Despacho
     new Suite_Ajax_Upload_POD();
     new Suite_Ajax_Print_Picking();
@@ -115,7 +113,7 @@ function suite_empleados_init() {
 	new Suite_Ajax_Pay_Selected();
 	new Suite_Ajax_Register_Abono();
 	new Suite_Ajax_Run_Manual_Audit();
-	
+	new Suite_Ajax_Financial_Balance();
     // Módulo 5: Cerebro de Demanda (REST API)
     new Suite_API_Stats();
 	new Suite_API_Sync();
@@ -130,7 +128,9 @@ function suite_empleados_init() {
 	new Suite_Ajax_Update_Role_Cap();
 
     // Gestor de la Vista Principal (Shortcode y encolado de assets)
+    new Suite_WooCommerce_Integration();
     new Suite_Shortcode_Controller();
+	
 }
 add_action( 'plugins_loaded', 'suite_empleados_init' );
 add_action( 'rest_api_init', function () {
@@ -174,9 +174,12 @@ function suite_plugin_deactivate() {
     }
 }
 register_deactivation_hook( __FILE__, 'suite_plugin_deactivate' );
---- FIN DEL ARCHIVO: suite-empleados.php ---
 
---- INICIO DEL ARCHIVO: assets/css/suite-styles.css ---
+
+```
+
+### ARCHIVO: `assets/css/suite-styles.css`
+```css
 /* ==========================================
    MODALES, PESTAÑAS Y FORMULARIOS
    ========================================== */
@@ -274,9 +277,10 @@ register_deactivation_hook( __FILE__, 'suite_plugin_deactivate' );
 .form-group-row > div {
     flex: 1;
 }
---- FIN DEL ARCHIVO: suite-styles.css ---
+```
 
---- INICIO DEL ARCHIVO: assets/js/core/api.js ---
+### ARCHIVO: `assets/js/core/api.js`
+```js
 /**
  * SuiteAPI - Orquestador de Peticiones AJAX
  * * Centraliza las llamadas al servidor, inyectando automáticamente 
@@ -353,9 +357,10 @@ const SuiteAPI = (function($) {
     };
 
 })(jQuery);
---- FIN DEL ARCHIVO: api.js ---
+```
 
---- INICIO DEL ARCHIVO: assets/js/core/state.js ---
+### ARCHIVO: `assets/js/core/state.js`
+```js
 /**
  * SuiteState - Manejador de Estado Inmutable (Store)
  * 
@@ -482,9 +487,10 @@ const SuiteState = (function() {
     };
 })();
 
---- FIN DEL ARCHIVO: state.js ---
+```
 
---- INICIO DEL ARCHIVO: includes/Controllers/Ajax/class-suite-ajax-controller.php ---
+### ARCHIVO: `includes/Controllers/Ajax/class-suite-ajax-controller.php`
+```php
 <?php
 /**
  * Clase Abstracta: Controlador AJAX Base
@@ -574,9 +580,10 @@ abstract class Suite_AJAX_Controller {
         ] );
     }
 }
---- FIN DEL ARCHIVO: class-suite-ajax-controller.php ---
+```
 
---- INICIO DEL ARCHIVO: includes/Core/class-activator.php ---
+### ARCHIVO: `includes/Core/class-activator.php`
+```php
 <?php
 // SEGURIDAD: Evitar acceso directo
 if ( ! defined( 'ABSPATH' ) ) {
@@ -600,6 +607,9 @@ if ( ! function_exists( 'suite_install_db' ) ) {
             sku VARCHAR(100) NOT NULL,
             nombre_producto VARCHAR(255),
             precio_venta DECIMAL(10,2) DEFAULT 0,
+            precio_divisas DECIMAL(10,2) DEFAULT 0,
+            velocidad_venta DECIMAL(10,2) DEFAULT 0, /* <--- NUEVA COLUMNA (KPI) */
+            runway_dias INT DEFAULT 999, /* <--- NUEVA COLUMNA (Autonomía) */
             status_prediccion VARCHAR(50),
             inventario_entrante VARCHAR(10),
             disponibilidad_millennium FLOAT DEFAULT 0,
@@ -782,9 +792,10 @@ if ( ! function_exists( 'suite_install_db' ) ) {
         }
     }
 }
---- FIN DEL ARCHIVO: class-activator.php ---
+```
 
---- INICIO DEL ARCHIVO: includes/Models/class-suite-model-base.php ---
+### ARCHIVO: `includes/Models/class-suite-model-base.php`
+```php
 <?php
 /**
  * Clase Abstracta: Modelo Base de Base de Datos
@@ -915,250 +926,5 @@ abstract class Suite_Model_Base {
     }
 
 }
---- FIN DEL ARCHIVO: class-suite-model-base.php ---
-
-=================================================================
-📂 ARCHIVOS ESPECÍFICOS DEL MÓDULO
-=================================================================
-
---- INICIO DEL ARCHIVO: assets/js/modules/marketing.js ---
-/**
- * SuiteMarketing - Módulo de Data Analytics (BI)
- * 
- * Se conecta al endpoint REST de la Suite y renderiza gráficos 
- * interactivos con Chart.js
- */
-const SuiteMarketing = (function($) {
-    'use strict';
-
-    // Instancias globales para poder destruirlas y repintarlas
-    let chartCanales = null;
-    let chartTendencias = null;
-
-    // ==========================================
-    // MÉTODOS DE PROCESAMIENTO DE DATOS
-    // ==========================================
-
-    const processDoughnutData = function(rawData) {
-        const aglomerado = {};
-        
-        // Sumar Volumen USD agrupado estrictamente por Canal
-        rawData.forEach(item => {
-            const canal = item.canal_venta || 'No Definido';
-            if (!aglomerado[canal]) aglomerado[canal] = 0;
-            aglomerado[canal] += parseFloat(item.volumen_usd);
-        });
-
-        return {
-            labels: Object.keys(aglomerado),
-            values: Object.values(aglomerado)
-        };
-    };
-
-    const processLineData = function(rawData) {
-        const aglomerado = {};
-        
-        // Sumar Cantidad de Operaciones agrupado estrictamente por Fecha
-        rawData.forEach(item => {
-            const fecha = item.fecha; // Formato YYYY-MM-DD
-            if (!aglomerado[fecha]) aglomerado[fecha] = 0;
-            aglomerado[fecha] += parseInt(item.cantidad_operaciones);
-        });
-
-        // Ordenar fechas cronológicamente
-        const fechasOrdenadas = Object.keys(aglomerado).sort();
-        const valoresOrdenados = fechasOrdenadas.map(f => aglomerado[f]);
-
-        return {
-            labels: fechasOrdenadas,
-            values: valoresOrdenados
-        };
-    };
-
-    // ==========================================
-    // RENDERIZADO DE CHART.JS
-    // ==========================================
-
-    const renderCharts = function(data) {
-        // Destruir gráficos previos si el usuario hace clic en "Refrescar"
-        if (chartCanales) chartCanales.destroy();
-        if (chartTendencias) chartTendencias.destroy();
-
-        // --- 1. GRÁFICO DE DONA (Canales) ---
-        const dData = processDoughnutData(data);
-        const ctxCanales = document.getElementById('chart-canales-venta').getContext('2d');
-        
-        chartCanales = new Chart(ctxCanales, {
-            type: 'doughnut',
-            data: {
-                labels: dData.labels,
-                datasets: [{
-                    data: dData.values,
-                    backgroundColor: [
-                        '#0073aa', // Azul WP
-                        '#10b981', // Verde Éxito
-                        '#f59e0b', // Naranja/Amarillo
-                        '#8b5cf6', // Púrpura
-                        '#dc2626', // Rojo RV
-                        '#64748b'  // Gris
-                    ],
-                    borderWidth: 0,
-                    hoverOffset: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'right', labels: { font: { size: 13 } } },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.label || '';
-                                if (label) { label += ': '; }
-                                if (context.parsed !== null) {
-                                    label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed);
-                                }
-                                return label;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        // --- 2. GRÁFICO DE LÍNEAS (Tendencias) ---
-        const lData = processLineData(data);
-        const ctxTendencias = document.getElementById('chart-tendencia-ventas').getContext('2d');
-
-        chartTendencias = new Chart(ctxTendencias, {
-            type: 'line',
-            data: {
-                labels: lData.labels,
-                datasets: [{
-                    label: 'Operaciones Cerradas',
-                    data: lData.values,
-                    borderColor: '#dc2626', // Rojo corporativo
-                    backgroundColor: 'rgba(220, 38, 38, 0.1)',
-                    borderWidth: 3,
-                    pointBackgroundColor: '#fff',
-                    pointBorderColor: '#dc2626',
-                    pointRadius: 4,
-                    fill: true,
-                    tension: 0.3 // Hace que la línea sea curva y suave
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } }
-                }
-            }
-        });
-    };
-
-    // ==========================================
-    // API PÚBLICA (Métodos Revelados)
-    // ==========================================
-    return {
-        loadDashboard: function() {
-            // Utilizamos la ruta dinámica al endpoint REST de WordPress
-            const restUrl = suite_vars.rest_url + 'suite/v1/ventas-vs-alcance';
-
-            // Usamos jQuery AJAX inyectando el Nonce nativo de la API REST
-            $.ajax({
-                url: restUrl,
-                method: 'GET',
-                headers: { 
-                    'X-WP-Nonce': suite_vars.rest_nonce 
-                },
-                success: function(res) {
-                    if (res.success && res.data) {
-                        renderCharts(res.data);
-                    }
-                },
-                error: function(err) {
-                    if(err.status === 401 || err.status === 403) {
-                        alert('🔒 Acceso Denegado: Su rol no tiene permisos para ver analíticas o su sesión expiró.');
-                    } else {
-                        $('#chart-canales-venta').parent().html('<div style="padding:20px; color:#dc2626;">Error al cargar datos.</div>');
-                        $('#chart-tendencia-ventas').parent().html('<div style="padding:20px; color:#dc2626;">Error al cargar datos.</div>');
-                    }
-                }
-            });
-        },
-
-        init: function() {
-            // Listo para ser llamado por el enrutador de pestañas
-        }
-    };
-
-})(jQuery);
---- FIN DEL ARCHIVO: marketing.js ---
-
---- INICIO DEL ARCHIVO: includes/Controllers/Api/class-api-stats.php ---
-<?php
-/**
- * Archivo: includes/Controllers/Api/class-api-stats.php
- * Proposito: ...
- */
-
-if ( ! defined( 'ABSPATH' ) ) { exit; }
-
---- FIN DEL ARCHIVO: class-api-stats.php ---
-
---- INICIO DEL ARCHIVO: views/app/tab-marketing.php ---
-<?php
-/**
- * Vista: Cerebro de Demanda y Marketing (Módulo 5)
- * 
- * Muestra visualizaciones de BI (Business Intelligence) utilizando Chart.js 
- * y alimentándose del Data Lake (REST API).
- *
- * @package SuiteEmpleados\Views\App
- */
-
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
-?>
-
-<div id="TabMarketing" class="suite-tab-content" style="display: none;">
-    
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 25px;">
-        <div>
-            <h2 style="margin:0; color:#0f172a; font-size: 24px; font-weight: 800;">📈 Cerebro de Demanda (BI & Marketing)</h2>
-            <p style="color:#64748b; margin-top:5px; font-size: 14px;">Análisis de ventas efectivas e impacto publicitario (Últimos 30 días).</p>
-        </div>
-        <button class="btn-modern-action" onclick="SuiteMarketing.loadDashboard()">🔄 Refrescar Datos</button>
-    </div>
-
-    <!-- Grid de Gráficos -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
-        
-        <!-- Tarjeta 1: Gráfico Doughnut (Canales de Venta) -->
-        <div style="background: #fff; padding: 25px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
-            <h3 style="margin-top: 0; color: #1e293b; font-size: 15px; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px;">
-                Distribución por Canal de Venta (Volumen USD)
-            </h3>
-            <div style="position: relative; height: 320px; width: 100%; margin-top: 15px;">
-                <canvas id="chart-canales-venta"></canvas>
-            </div>
-        </div>
-
-        <!-- Tarjeta 2: Gráfico Lineal (Tendencia de Operaciones) -->
-        <div style="background: #fff; padding: 25px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
-            <h3 style="margin-top: 0; color: #1e293b; font-size: 15px; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px;">
-                Tendencia de Cierres de Venta en el Tiempo
-            </h3>
-            <div style="position: relative; height: 320px; width: 100%; margin-top: 15px;">
-                <canvas id="chart-tendencia-ventas"></canvas>
-            </div>
-        </div>
-
-    </div>
-</div>
-
---- FIN DEL ARCHIVO: tab-marketing.php ---
+```
 
